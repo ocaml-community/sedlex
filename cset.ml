@@ -26,7 +26,7 @@ let rec union c1 c2 =
   match c1,c2 with
     | [], _ -> c2
     | _, [] -> c1
-    | ((i1,j1) as s1)::r1, ((i2,j2) as s2)::r2 ->
+    | ((i1,j1) as s1)::r1, (i2,j2)::r2 ->
 	if (i1 <= i2) then
 	  if j1 + 1 < i2 then s1::(union r1 c2)
 	  else if (j1 < j2) then union r1 ((i1,j2)::r2)

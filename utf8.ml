@@ -90,23 +90,22 @@ let from_stream s =
     | '\240' ->
 	let n2 = Char.code (Stream.next s) in
 	let n3 = Char.code (Stream.next s) in
-	let n2 = Char.code (Stream.next s) in
 	let n4 = Char.code (Stream.next s) in
 	if (n2 lsr 4 != 0b1001) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
 	then raise MalFormed;
         ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
     | '\241'..'\243' as c ->
 	let n1 = Char.code c in
-	let n3 = Char.code (Stream.next s) in
 	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
 	let n4 = Char.code (Stream.next s) in
         if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
 	then raise MalFormed;
         ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
         ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
     | '\244' ->
-	let n3 = Char.code (Stream.next s) in
 	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
 	let n4 = Char.code (Stream.next s) in
         if (n2 lsr 4 != 0b1000) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
 	then raise MalFormed;
