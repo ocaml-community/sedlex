@@ -1,20 +1,44 @@
+VERSION=0.1
+
 all: ulexing.cma pa_ulex.cma
+all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma
 
-ulexing.cma: utf8.mli utf8.ml ulexing.mli ulexing.ml 
-	ocamlc -a -o ulexing.cma utf8.mli utf8.ml ulexing.mli ulexing.ml
 
-pa_ulex.cma: cset.ml ulex.mli ulex.ml pa_ulex.ml
-	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 cset.ml ulex.mli ulex.ml pa_ulex.ml
+install: all
+	ocamlfind install ulex META $(wildcard *.cmi) $(wildcard *.a) $(wildcard *.cma) $(wildcard *.cmxa)
+
+uninstall:
+	ocamlfind remove ulex
+
+ULEXING = utf8.mli utf8.ml ulexing.mli ulexing.ml
+ULEX = cset.ml ulex.mli ulex.ml pa_ulex.ml
+
+ulexing.cma: $(ULEXING)
+	ocamlc -a -o ulexing.cma $(ULEXING)
+ulexing.cmxa: $(ULEXING)
+	ocamlopt -a -o ulexing.cmxa $(ULEXING)
+
+pa_ulex.cma: $(ULEX)
+	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 $(ULEX)
 
 clean:
-	rm -f *.cm* *~ test *.o
+	rm -f *.cm* *~ test *.o *.a
 
-view_test: ulexing.cmo utf8.cmo
-	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" cduce_lexer.ml
+view_test: pa_ulex.cma
+	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
 
-run_test:
-	ocamlc -o test -pp 'camlp4o ./pa_ulex.cma' ulexing.cma cduce_lexer.ml
+run_test: ulexing.cma
+	ocamlc -o test -pp 'camlp4o ./pa_ulex.cma' ulexing.cma test.ml
 	./test
-
 doc:
 	ocamldoc -html ulexing.mli
+
+PACKAGE = ulex-$(VERSION)
+DISTRIB = CHANGES LICENSE META README *.ml *.mli
+.PHONY: package
+package: clean
+	rm -Rf $(PACKAGE)
+	mkdir $(PACKAGE)
+	cp -R $(DISTRIB) $(PACKAGE)/
+	tar czf $(PACKAGE).tar.gz $(PACKAGE)
+	rm -Rf $(PACKAGE)

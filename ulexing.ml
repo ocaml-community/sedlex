@@ -40,6 +40,36 @@ let create f = {
     buf = Array.create chunk_size 0;
 }
 
+let from_stream s =
+  create (fun buf pos len ->
+	    let nb = ref 0 in
+	    (try
+	       while (!nb < len) do
+		 let c = Stream.next s in
+		 buf.(pos + !nb) <- c;
+		 incr nb;
+		 if c = 10 then raise Stream.Failure;
+		 (* Don't bufferize too much for toplevel like apps *)
+	       done;
+	     with Stream.Failure -> ());
+	    !nb)
+
+let from_latin1_stream s =
+  create (fun buf pos len ->
+	    let nb = ref 0 in
+	    (try
+	       while (!nb < len) do
+		 let c = Char.code (Stream.next s) in
+		 buf.(pos + !nb) <- c;
+		 incr nb;
+		 if c = 10 then raise Stream.Failure;
+	       done;
+	     with Stream.Failure -> ());
+	    !nb)
+
+let from_utf8_stream s =
+  from_stream (Utf8.stream_from_char_stream s)
+
 let from_latin1_string s = 
   let len = String.length s in
   {
@@ -49,18 +79,10 @@ let from_latin1_string s =
       finished = true;
   }
 
-let from_latin1_file s =
-  let ic = open_in s in
-  let rec refill nb buf pos len =
-    if len = 0 then nb else
-      match (try Some (input_char ic) with End_of_file -> None) with
-	| Some c ->
-	    buf.(pos) <- Char.code c;
-	    refill (succ nb) buf (succ pos) (pred len)
-	| None ->
-	    nb
-  in
-  create (refill 0)
+let from_latin1_channel ic =
+  from_latin1_stream (Stream.of_channel ic)
+let from_utf8_channel ic =
+  from_stream (Utf8.stream_from_char_stream (Stream.of_channel ic))
 
 let from_int_array a =
   let len = Array.length a in
@@ -128,26 +150,36 @@ let backtrack lexbuf =
 let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 
+let loc lexbuf = (lexbuf.start + lexbuf.offset, lexbuf.pos + lexbuf.offset)
+
 let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
 
-let lexeme_sub lexbuf pos len = 
+let sub_lexeme lexbuf pos len = 
   Array.sub lexbuf.buf (lexbuf.start + pos) len
-let lexeme lexbuf = Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
-let lexeme_char lexbuf pos = lexbuf.buf.(lexbuf.start + pos)
+let lexeme lexbuf = 
+  Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
+let lexeme_char lexbuf pos = 
+  lexbuf.buf.(lexbuf.start + pos)
 
 let to_latin1 c =
   if (c >= 0) && (c < 256) 
   then Char.chr c 
-  else failwith (Printf.sprintf "to_latin1: code point %i cannot be encoded in Latin1" c)
+  else failwith 
+    (Printf.sprintf "to_latin1: code point %i cannot be encoded in Latin1" c)
 
-let latin1_lexeme_char lexbuf pos = to_latin1 (lexeme_char lexbuf pos)
-let latin1_lexeme_sub lexbuf pos len =
+let latin1_lexeme_char lexbuf pos = 
+  to_latin1 (lexeme_char lexbuf pos)
+
+let latin1_sub_lexeme lexbuf pos len =
   let s = String.create len in
   for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
   s
-let latin1_lexeme lexbuf = latin1_lexeme_sub lexbuf 0 (lexbuf.pos - lexbuf.start)
 
-let utf8_lexeme_sub lexbuf pos len =
+let latin1_lexeme lexbuf = 
+  latin1_sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+
+let utf8_sub_lexeme lexbuf pos len =
   Utf8.from_int_array lexbuf.buf (lexbuf.start + pos) len
 
-let utf8_lexeme lexbuf = utf8_lexeme_sub lexbuf 0 (lexbuf.pos - lexbuf.start)
+let utf8_lexeme lexbuf = 
+  utf8_sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)

@@ -42,7 +42,7 @@ let decision l =
   in
   aux l
 
-let limit = 256
+let limit = 8192
 
 let decision_table l =
   let rec aux m accu = function
@@ -175,7 +175,13 @@ let gen_definition loc l =
 
 (* Lexer specification parser *)
 
-let char s = Char.code (Token.eval_char s)
+let char s = 
+  Char.code (Token.eval_char s)
+
+let char_int s =
+  let i = int_of_string s in
+  if (i >=0) && (i < Cset.max_code) then i
+  else failwith ("Invalid Unicode code point: " ^ s)
 
 let regexp_for_string s =
   let rec aux n =
@@ -188,7 +194,7 @@ EXTEND
  GLOBAL: Pcaml.expr Pcaml.str_item;
 
  Pcaml.expr: [
-  [ "lexer"; "with";
+  [ "lexer";
      OPT "|"; l = LIST0 [ r=regexp; "->"; a=Pcaml.expr -> (r,a) ] SEP "|" ->
        gen_definition loc l ]
  ];
@@ -212,7 +218,7 @@ EXTEND
    | r = regexp; "?" -> Ulex.alt Ulex.eps r
    | "("; r = regexp; ")" -> r
    | "_" -> Ulex.chars Cset.any
-   | c = CHAR -> Ulex.chars (Cset.singleton (char c))
+   | c = chr -> Ulex.chars (Cset.singleton c)
    | s = STRING -> regexp_for_string (Token.eval_string s)
    | "["; cc = ch_class; "]" ->  Ulex.chars cc
    | x = LIDENT ->
@@ -223,10 +229,15 @@ EXTEND
    ]
  ];
 
+ chr: [ 
+   [ c = CHAR -> char c
+   | i = INT -> char_int i ]
+ ];
+
  ch_class: [
    [ "^"; cc = ch_class -> Cset.complement cc]
- | [ c1 = CHAR; "-"; c2 = CHAR -> Cset.interval (char c1) (char c2)
-   | c = CHAR -> Cset.singleton (char c)
+ | [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
+   | c = chr -> Cset.singleton c
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
    | s = STRING -> 
        let s = Token.eval_string s in

@@ -18,16 +18,18 @@ val create: (int array -> int -> int -> int) -> lexbuf
     of the input stream.
   *)
 
-val from_latin1_string: string -> lexbuf
-  (** Create a lexbuf from a latin1 encoded string. *)
-
-val from_latin1_file: string -> lexbuf
-
-val from_utf8_string: string -> lexbuf
-  (** Create a lexbuf from a utf8 encoded string. *)
-
+val from_stream: int Stream.t -> lexbuf
 val from_int_array: int array -> lexbuf
-  (** Create a lexbuf from an int array. *)
+
+
+val from_latin1_stream: char Stream.t -> lexbuf
+val from_latin1_channel: in_channel -> lexbuf
+val from_latin1_string: string -> lexbuf
+
+val from_utf8_stream: char Stream.t -> lexbuf
+val from_utf8_channel: in_channel -> lexbuf
+val from_utf8_string: string -> lexbuf
+
 
 (** {6 Actions interface} *)
 
@@ -36,18 +38,20 @@ val from_int_array: int array -> lexbuf
 val lexeme_start: lexbuf -> int
 val lexeme_end: lexbuf -> int
 
+val loc: lexbuf -> int * int
+
 val lexeme_length: lexbuf -> int
 
 
-val lexeme_sub: lexbuf -> int -> int -> int array
+val sub_lexeme: lexbuf -> int -> int -> int array
 val lexeme: lexbuf -> int array
 val lexeme_char: lexbuf -> int -> int
 
-val latin1_lexeme_sub: lexbuf -> int -> int -> string
+val latin1_sub_lexeme: lexbuf -> int -> int -> string
 val latin1_lexeme: lexbuf -> string
 val latin1_lexeme_char: lexbuf -> int -> char
  
-val utf8_lexeme_sub: lexbuf -> int -> int -> string
+val utf8_sub_lexeme: lexbuf -> int -> int -> string
 val utf8_lexeme: lexbuf -> string
 
 (** {6 Internal interface} *)

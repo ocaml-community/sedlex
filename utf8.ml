@@ -7,24 +7,83 @@ let () =
   for i = 224 to 239 do width.(i) <- 3 done;
   for i = 240 to 248 do width.(i) <- 4 done
 
-
 let next s i =
   match s.[i] with
     | '\000'..'\127' as c ->
         Char.code c
-    | '\192'..'\223' as c ->
-        ((Char.code c - 192) lsl 6) lor
-        ((Char.code s.[i+1] - 128))
+    | '\128'..'\223' as c ->
+	let n1 = Char.code c in
+	let n2 = Char.code s.[i+1] in
+        if (n2 < 128) || (n2 > 191) then raise MalFormed;
+        let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
+        if p < 128 then raise MalFormed;
+	p
     | '\224'..'\239' as c ->
-        ((Char.code c - 192) lsl 12) lor
-        ((Char.code s.[i+1] - 128) lsl 6) lor
-        ((Char.code s.[i+2] - 128))
-    | '\240'..'\248' as c ->
-        ((Char.code c - 192) lsl 18) lor
-        ((Char.code s.[i+1] - 128) lsl 12) lor
-        ((Char.code s.[i+2] - 128) lsl 6) lor
-        ((Char.code s.[i+3] - 128))
+	let n1 = Char.code c in
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) 
+	then raise MalFormed;
+        let p =
+          ((n1 land 0b1111) lsl 12) lor ((n2 land 0b111111) lsl 6) lor
+          (n3 land 0b111111)
+        in
+        if (p < 0x800) || (p >= 0xd800 && p < 0xe000) || 
+	  (p >= 0xfffe && p <= 0xffff) then raise MalFormed;
+	p
+    | '\240'..'\247' as c ->
+	let n1 = Char.code c in
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+	let n4 = Char.code s.[i+3] in
+
+        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) ||
+          (n4 < 128) || (n4 > 191) then raise MalFormed;
+        let p = ((n1 land 0b111) lsl 18) lor ((n2 land 0b111111) lsl 12) lor
+                ((n3 land 0b111111) lsl 6) lor (n4 land 0b111111) in
+        if (p < 0x10000) || (p >= 0x110000) then raise MalFormed;
+	p
     | _ -> raise MalFormed
+
+
+let from_stream s =
+  match Stream.next s with
+    | '\000'..'\127' as c ->
+        Char.code c
+    | '\128'..'\223' as c ->
+	let n1 = Char.code c in
+	let n2 = Char.code (Stream.next s) in
+        if (n2 < 128) || (n2 > 191) then raise MalFormed;
+        let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
+        if p < 128 then raise MalFormed;
+	p
+    | '\224'..'\239' as c ->
+	let n1 = Char.code c in
+	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
+        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) 
+	then raise MalFormed;
+        let p =
+          ((n1 land 0b1111) lsl 12) lor ((n2 land 0b111111) lsl 6) lor
+          (n3 land 0b111111)
+        in
+        if (p < 0x800) || (p >= 0xd800 && p < 0xe000) || 
+	  (p >= 0xfffe && p <= 0xffff) then raise MalFormed;
+	p
+    | '\240'..'\247' as c ->
+	let n1 = Char.code c in
+	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
+	let n4 = Char.code (Stream.next s) in
+
+        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) ||
+          (n4 < 128) || (n4 > 191) then raise MalFormed;
+        let p = ((n1 land 0b111) lsl 18) lor ((n2 land 0b111111) lsl 12) lor
+                ((n3 land 0b111111) lsl 6) lor (n4 land 0b111111) in
+        if (p < 0x10000) || (p >= 0x110000) then raise MalFormed;
+	p
+    | _ -> raise MalFormed
+
 
 let compute_len s pos bytes =
   let rec aux n i =
@@ -88,3 +147,10 @@ let from_int_array a apos len =
     if len > 0 then (store b a.(apos); aux (succ apos) (pred len))
     else Buffer.contents b in
   aux apos len
+
+let stream_from_char_stream s =
+  Stream.from 
+    (fun _ ->
+       try Some (from_stream s)
+       with Stream.Failure -> None)
+    
