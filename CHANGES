@@ -1,5 +1,6 @@
-since 0.4
+0.5 release Jul. 8 2004
      * Document how to use a custom implementation for lex buffers
+     * Update to OCaml 3.08
 
 0.4 released Jan. 10 2004
      * Bug fix (accept 1114111 as valid Unicode code point)
