@@ -27,9 +27,14 @@ clean:
 view_test: pa_ulex.cma
 	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
 
-run_test: ulexing.cma
+run_test: ulexing.cma pa_ulex.cma
 	ocamlc -o test -pp 'camlp4o ./pa_ulex.cma' ulexing.cma test.ml
 	./test
+
+custom_ulexing: ulexing.cma pa_ulex.cma
+	ocamlc -o custom_ulexing -pp 'camlp4o ./pa_ulex.cma' ulexing.cma custom_ulexing.ml
+
+
 doc:
 	ocamldoc -html ulexing.mli
 
