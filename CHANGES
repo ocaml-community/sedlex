@@ -1,2 +1,8 @@
+0.2 release Sep. 22 2003
+     * Changed the names of predefined regexp
+     * Fix max_code = 0x10ffff
+     * Lexers that changes encoding on the fly
+     * Documentation of the interface Ulexing
+
 0.1 released Sep. 20 2003
      * Initial release

@@ -23,7 +23,7 @@ Overview
 Lexer specifications
 
 ulex adds a new kind of expression to OCaml: lexer definitions.
-The syntax for this construction is:
+The syntax for the new construction is:
 
   lexer
     R1 -> e1
@@ -78,34 +78,55 @@ ulex provides a set of predefined regexps:
 - letter, digit, extender, base_char,ideographic,combining_char,blank:
   as defined by the XML recommandation
 
+Because ulex is implemented as a syntax extension, it can deal
+with both original and revised syntax (and possibly others).
+
+
+Note that lexer specifications need not be named. Here is
+an example:
+
+  (lexer ("#!" [^ '\n']* "\n")? -> ()) lexbuf
+
 --------------------------------------------------------------------------
 Running a lexer
 
-To run a lexer, you must pass it a Ulexing.lexbuf.
+To run a lexer, you must call it on a Ulexing.lexbuf.
 Such an object represents a Unicode buffer. It can be created
 from Latin1-encoded or utf8-encoded strings, stream, or channels,
-or from integer arrays or streams (that represents Unicode code points).
+or from integer arrays or streams (which represent Unicode code points).
 
 See the interface of the module Ulexing.
+
 
 --------------------------------------------------------------------------
 Using ulex
 
 The first thing to do is to compile and install ulex.
-You need recent versions of OCaml and findlib.
+You need recent versions of OCaml.
 
-make all
-make all.opt (* optional *)
-make install
+  make all
+  make all.opt (* optional *)
 
+1. With findlib
+
+If you have findlib, you can use it to install and use ulex.
 The name of the findlib package is "ulex".
 
-In order to compile an OCaml source file that contains lexer specifications, 
-you need can use a command line like:
+Installation:
+
+  make install
+
+Compilation of OCaml files with lexer specifications:
 
   ocamlfind ocamlc -c -package ulex -syntax camlp4o my_file.ml
 
-Because ulex is implemented as a syntax extension, it can deal
-with both original and revised syntax (and possibly others).
+When linking, you must also include the ulex package:
+  ocamlfind ocamlc -o my_prog -linkpkg -package ulex my_file.cmo
 
-When linking, you must also include the ulex package.
+
+2. Without findlib
+
+You can use ulex without findlib. To compile, you need to run the source
+file through the Camlp4 syntax extension pa_ulex.cma. Moreover, you need to 
+link the application with the runtime support library for ulex 
+(ulexing.cma / ulexing.cmxa).

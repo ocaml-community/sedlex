@@ -1,8 +1,12 @@
+(* NFA *)
+
 type node = { 
   id : int; 
   mutable eps : node list; 
   mutable trans : (Cset.t * node) list;
 }
+
+(* Compilation regexp -> NFA *)
 
 type regexp = node -> node
 
@@ -39,6 +43,8 @@ let chars c succ =
 let compile_re re =
   let final = new_node () in
   (re final, final)
+
+(* Determinization *)
 
 type state = node list
 

@@ -1,4 +1,4 @@
-VERSION=0.1
+VERSION=0.2
 
 all: ulexing.cma pa_ulex.cma
 all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma
@@ -22,7 +22,7 @@ pa_ulex.cma: $(ULEX)
 	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 $(ULEX)
 
 clean:
-	rm -f *.cm* *~ test *.o *.a
+	rm -f *.cm* *~ test *.o *.a *.html *.css
 
 view_test: pa_ulex.cma
 	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
@@ -34,7 +34,7 @@ doc:
 	ocamldoc -html ulexing.mli
 
 PACKAGE = ulex-$(VERSION)
-DISTRIB = CHANGES LICENSE META README *.ml *.mli
+DISTRIB = CHANGES LICENSE META README Makefile *.ml *.mli
 .PHONY: package
 package: clean
 	rm -Rf $(PACKAGE)

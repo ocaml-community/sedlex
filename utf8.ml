@@ -11,78 +11,109 @@ let next s i =
   match s.[i] with
     | '\000'..'\127' as c ->
         Char.code c
-    | '\128'..'\223' as c ->
+    | '\192'..'\223' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
-        if (n2 < 128) || (n2 > 191) then raise MalFormed;
-        let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
-        if p < 128 then raise MalFormed;
-	p
-    | '\224'..'\239' as c ->
+        if (n2 lsr 6 != 0b10) then raise MalFormed;
+        ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
+    | '\224' ->
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+	if (n2 lsr 5 != 0b101) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | ('\225'..'\236' | '\238'..'\239') as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
-        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) 
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | '\237' ->
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+	if (n2 lsr 5 != 0b100) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        0xd000 lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | '\240' ->
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+	let n4 = Char.code s.[i+3] in
+	if (n2 lsr 4 != 0b1001) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
 	then raise MalFormed;
-        let p =
-          ((n1 land 0b1111) lsl 12) lor ((n2 land 0b111111) lsl 6) lor
-          (n3 land 0b111111)
-        in
-        if (p < 0x800) || (p >= 0xd800 && p < 0xe000) || 
-	  (p >= 0xfffe && p <= 0xffff) then raise MalFormed;
-	p
-    | '\240'..'\247' as c ->
+        ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
+    | '\241'..'\243' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
 	let n4 = Char.code s.[i+3] in
-
-        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) ||
-          (n4 < 128) || (n4 > 191) then raise MalFormed;
-        let p = ((n1 land 0b111) lsl 18) lor ((n2 land 0b111111) lsl 12) lor
-                ((n3 land 0b111111) lsl 6) lor (n4 land 0b111111) in
-        if (p < 0x10000) || (p >= 0x110000) then raise MalFormed;
-	p
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+	then raise MalFormed;
+        ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
+        ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
+    | '\244' ->
+	let n2 = Char.code s.[i+1] in
+	let n3 = Char.code s.[i+2] in
+	let n4 = Char.code s.[i+3] in
+        if (n2 lsr 4 != 0b1000) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+	then raise MalFormed;
+        0x100000 lor ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor 
+	(n4 land 0x3f)
     | _ -> raise MalFormed
 
+
+(* With this implementation, a truncated code point will result
+   in Stream.Failure, not in MalFormed. *)
 
 let from_stream s =
   match Stream.next s with
     | '\000'..'\127' as c ->
         Char.code c
-    | '\128'..'\223' as c ->
+    | '\192'..'\223' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code (Stream.next s) in
-        if (n2 < 128) || (n2 > 191) then raise MalFormed;
-        let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
-        if p < 128 then raise MalFormed;
-	p
-    | '\224'..'\239' as c ->
+        if (n2 lsr 6 != 0b10) then raise MalFormed;
+        ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
+    | '\224' ->
+	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
+	if (n2 lsr 5 != 0b101) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | ('\225'..'\236' | '\238'..'\239') as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code (Stream.next s) in
 	let n3 = Char.code (Stream.next s) in
-        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) 
-	then raise MalFormed;
-        let p =
-          ((n1 land 0b1111) lsl 12) lor ((n2 land 0b111111) lsl 6) lor
-          (n3 land 0b111111)
-        in
-        if (p < 0x800) || (p >= 0xd800 && p < 0xe000) || 
-	  (p >= 0xfffe && p <= 0xffff) then raise MalFormed;
-	p
-    | '\240'..'\247' as c ->
-	let n1 = Char.code c in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | '\237' ->
 	let n2 = Char.code (Stream.next s) in
 	let n3 = Char.code (Stream.next s) in
+	if (n2 lsr 5 != 0b100) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        0xd000 lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+    | '\240' ->
+	let n2 = Char.code (Stream.next s) in
+	let n3 = Char.code (Stream.next s) in
+	let n2 = Char.code (Stream.next s) in
 	let n4 = Char.code (Stream.next s) in
-
-        if (n2 < 128) || (n2 > 191) || (n3 < 128) || (n3 > 191) ||
-          (n4 < 128) || (n4 > 191) then raise MalFormed;
-        let p = ((n1 land 0b111) lsl 18) lor ((n2 land 0b111111) lsl 12) lor
-                ((n3 land 0b111111) lsl 6) lor (n4 land 0b111111) in
-        if (p < 0x10000) || (p >= 0x110000) then raise MalFormed;
-	p
+	if (n2 lsr 4 != 0b1001) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+	then raise MalFormed;
+        ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
+    | '\241'..'\243' as c ->
+	let n1 = Char.code c in
+	let n3 = Char.code (Stream.next s) in
+	let n2 = Char.code (Stream.next s) in
+	let n4 = Char.code (Stream.next s) in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+	then raise MalFormed;
+        ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
+        ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
+    | '\244' ->
+	let n3 = Char.code (Stream.next s) in
+	let n2 = Char.code (Stream.next s) in
+	let n4 = Char.code (Stream.next s) in
+        if (n2 lsr 4 != 0b1000) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+	then raise MalFormed;
+        0x100000 lor ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor 
+	(n4 land 0x3f)
     | _ -> raise MalFormed
+
 
 
 let compute_len s pos bytes =
@@ -110,24 +141,21 @@ let to_int_array s pos bytes =
 (**************************)
 
 let width_code_point p =
-  if p <= 127 then 1
+  if p <= 0x7f then 1
   else if p <= 0x7ff then 2
   else if p <= 0xffff then 3
   else if p <= 0x10ffff then 4
   else raise MalFormed
 
 let store b p =
-  (* Adapted from Netstring's netconversion.ml/write_utf8 *)
-  if p <= 127 then
+  if p <= 0x7f then
     Buffer.add_char b (Char.chr p)
   else if p <= 0x7ff then (
     Buffer.add_char b (Char.chr (0xc0 lor (p lsr 6)));
     Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
   )
   else if p <= 0xffff then (
-    (* Refuse writing surrogate pairs, and fffe, ffff *)
-    if (p >= 0xd800 & p < 0xe000) or (p >= 0xfffe) 
-    then raise MalFormed;
+    if (p >= 0xd800 & p < 0xe000) then raise MalFormed;
     Buffer.add_char b (Char.chr (0xe0 lor (p lsr 12)));
     Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6) land 0x3f)));
     Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))

@@ -1,4 +1,5 @@
 exception Error
+exception InvalidCodepoint of int
 
 let eof = -1
 
@@ -42,33 +43,42 @@ let create f = {
 
 let from_stream s =
   create (fun buf pos len ->
-	    let nb = ref 0 in
-	    (try
-	       while (!nb < len) do
-		 let c = Stream.next s in
-		 buf.(pos + !nb) <- c;
-		 incr nb;
-		 if c = 10 then raise Stream.Failure;
-		 (* Don't bufferize too much for toplevel like apps *)
-	       done;
-	     with Stream.Failure -> ());
-	    !nb)
+	    try buf.(pos) <- Stream.next s; 1
+	    with Stream.Failure -> 0)
 
 let from_latin1_stream s =
   create (fun buf pos len ->
-	    let nb = ref 0 in
-	    (try
-	       while (!nb < len) do
-		 let c = Char.code (Stream.next s) in
-		 buf.(pos + !nb) <- c;
-		 incr nb;
-		 if c = 10 then raise Stream.Failure;
-	       done;
-	     with Stream.Failure -> ());
-	    !nb)
+	    try buf.(pos) <- Char.code (Stream.next s); 1
+	    with Stream.Failure -> 0)
 
 let from_utf8_stream s =
-  from_stream (Utf8.stream_from_char_stream s)
+  create (fun buf pos len ->
+	    try buf.(pos) <- Utf8.from_stream s; 1
+	    with Stream.Failure -> 0)
+
+type enc = Ascii | Latin1 | Utf8
+
+exception MalFormed
+
+let from_var_enc_stream enc s =
+  create (fun buf pos len ->
+	    try 
+	      buf.(pos) <- (match !enc with
+			      | Ascii ->
+				  let c = Char.code (Stream.next s) in
+				  if c > 127 then raise (InvalidCodepoint c);
+				  c
+			      | Latin1 -> Char.code (Stream.next s)
+			      | Utf8 -> Utf8.from_stream s);
+	      1
+	    with Stream.Failure -> 0)
+
+
+let from_var_enc_string enc s =
+  from_var_enc_stream enc (Stream.of_string s)
+
+let from_var_enc_channel enc ic =
+  from_var_enc_stream enc (Stream.of_channel ic)
 
 let from_latin1_string s = 
   let len = String.length s in
@@ -164,8 +174,7 @@ let lexeme_char lexbuf pos =
 let to_latin1 c =
   if (c >= 0) && (c < 256) 
   then Char.chr c 
-  else failwith 
-    (Printf.sprintf "to_latin1: code point %i cannot be encoded in Latin1" c)
+  else raise (InvalidCodepoint c)
 
 let latin1_lexeme_char lexbuf pos = 
   to_latin1 (lexeme_char lexbuf pos)
@@ -183,3 +192,5 @@ let utf8_sub_lexeme lexbuf pos len =
 
 let utf8_lexeme lexbuf = 
   utf8_sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+
+

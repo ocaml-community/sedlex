@@ -7,4 +7,5 @@ val to_int_array: string -> int -> int -> int array
 val store: Buffer.t -> int -> unit
 val from_int_array: int array -> int -> int -> string
 
+val from_stream: char Stream.t -> int
 val stream_from_char_stream: char Stream.t -> int Stream.t

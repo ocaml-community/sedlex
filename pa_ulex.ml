@@ -9,13 +9,13 @@ let () =
   List.iter (fun (n,c) -> Hashtbl.add named_regexps n (Ulex.chars c))
     [
       "eof", Cset.eof;
-      "letter", Cset.letter;
-      "digit", Cset.digit;
-      "extender", Cset.extender;
-      "base_char", Cset.base_char;
-      "ideographic", Cset.ideographic;
-      "combining_char", Cset.combining_char;
-      "blank", Cset.blank
+      "xml_letter", Cset.letter;
+      "xml_digit", Cset.digit;
+      "xml_extender", Cset.extender;
+      "xml_base_char", Cset.base_char;
+      "xml_ideographic", Cset.ideographic;
+      "xml_combining_char", Cset.combining_char;
+      "xml_blank", Cset.blank
     ] 
 
 (* Decision tree for partitions *)
