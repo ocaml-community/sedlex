@@ -112,6 +112,14 @@ or from integer arrays or streams (which represent Unicode code points).
 See the interface of the module Ulexing.
 
 
+It is possible to work with a custom implementation for lex buffers.
+To do this, you just have to ensure that a module called
+Ulexing is in scope of your lexer specifications. See
+custom_ulexing.ml in the distribution for an example,
+and the interface of Ulexing for a specification of what the module
+should export.
+
+
 --------------------------------------------------------------------------
 Using ulex
 

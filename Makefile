@@ -22,7 +22,7 @@ pa_ulex.cma: $(ULEX)
 	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 $(ULEX)
 
 clean:
-	rm -f *.cm* *~ test *.o *.a *.html *.css
+	rm -f *.cm* *~ test custom_ulexing *.o *.a *.html *.css
 
 view_test: pa_ulex.cma
 	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
