@@ -1,30 +1,20 @@
 all: cset.cmo ulex.cmo ulexing.cmo pa_ulex.cmo
 
-cset.cmo: cset.ml
-	ocamlc -c cset.ml
+ulexing.cma: utf8.mli utf8.ml ulexing.mli ulexing.ml 
+	ocamlc -a -o ulexing.cma utf8.mli utf8.ml ulexing.mli ulexing.ml
 
-ulex.cmi: ulex.mli
-	ocamlc -c ulex.mli
-
-ulex.cmo: ulex.cmi ulex.ml
-	ocamlc -c ulex.ml
-
-
-ulexing.cmi: ulexing.mli
-	ocamlc -c ulexing.mli
-
-ulexing.cmo: ulexing.cmi ulexing.ml
-	ocamlc -c ulexing.ml
-
-pa_ulex.cmo: pa_ulex.ml
-	ocamlc -c -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 pa_ulex.ml
+pa_ulex.cma: cset.ml ulex.mli ulex.ml pa_ulex.ml
+	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 cset.ml ulex.mli ulex.ml pa_ulex.ml
 
 clean:
-	rm -f *.cm* *~
+	rm -f *.cm* *~ test *.o
 
-test: ulexing.cmo test.ml
-	camlp4o ./cset.cmo ./ulex.cmo ./pa_ulex.cmo pr_o.cmo -sep "\n" test.ml
-	ocamlc -o test -pp 'camlp4o ./cset.cmo ./ulex.cmo ./pa_ulex.cmo' ulexing.cmo test.ml
+view_test: ulexing.cmo utf8.cmo test.ml
+	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
+
+run_test:
+	ocamlc -o test -pp 'camlp4o ./pa_ulex.cma' ulexing.cma test.ml
+	./test
 
 doc:
 	ocamldoc -html ulexing.mli

@@ -23,6 +23,12 @@ let rep r succ =
   n.eps <- [r n; succ];
   n
 
+let plus r succ =
+  let n = new_node () in
+  let nr = r n in
+  n.eps <- [nr; succ];
+  nr
+
 let eps succ = succ
 
 let chars c succ =
@@ -114,8 +120,9 @@ let partitions () =
       (fun i c -> 
 	 List.iter (fun (a,b) -> seg := (a,b,i) :: !seg) c)
       part;
-    !seg in
+     List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg in
   let res = ref [] in
   Hashtbl.iter (fun part i -> res := (i, aux part) :: !res) part_tbl;
   Hashtbl.clear part_tbl;
   !res
+

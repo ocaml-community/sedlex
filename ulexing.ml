@@ -16,6 +16,8 @@ type lexbuf = {
 
   mutable marked_pos : int;
   mutable marked_val : int;
+
+  mutable finished: bool;
 }
 
 let chunk_size = 512
@@ -29,6 +31,7 @@ let empty_lexbuf = {
   start = 0;
   marked_pos = 0;
   marked_val = 0;
+  finished = false;
 }
 
 let create f = {
@@ -37,13 +40,27 @@ let create f = {
     buf = Array.create chunk_size 0;
 }
 
-let from_latin1 s = 
-  let len = String.length s + 1 in
+let from_latin1_string s = 
+  let len = String.length s in
   {
     empty_lexbuf with
-      buf = Array.init len (fun i -> if i < String.length s then Char.code s.[i] else eof);
-      len = len
+      buf = Array.init len (fun i -> Char.code s.[i]);
+      len = len;
+      finished = true;
   }
+
+let from_int_array a =
+  let len = Array.length a in
+  {
+    empty_lexbuf with
+      buf = Array.init len (fun i -> a.(i));
+      len = len;
+      finished = true;
+  }
+
+
+let from_utf8_string s =
+  from_int_array (Utf8.to_int_array s 0 (String.length s))
 
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf 
@@ -73,9 +90,13 @@ let refill lexbuf =
   else lexbuf.len <- lexbuf.len + n
 
 let next lexbuf =
-  if lexbuf.pos = lexbuf.len then refill lexbuf;
-  let i = lexbuf.buf.(lexbuf.pos) in
-  if i != eof then lexbuf.pos <- lexbuf.pos + 1;
+  let i = 
+    if lexbuf.pos = lexbuf.len then 
+      if lexbuf.finished then eof
+      else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
+    else lexbuf.buf.(lexbuf.pos)
+  in
+  if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
   i
 
 let start lexbuf =
@@ -109,4 +130,8 @@ let latin1_lexeme_sub lexbuf pos len =
   for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
   s
 let latin1_lexeme lexbuf = latin1_lexeme_sub lexbuf 0 (lexbuf.pos - lexbuf.start)
-    
+
+let utf8_lexeme_sub lexbuf pos len =
+  Utf8.from_int_array lexbuf.buf (lexbuf.start + pos) len
+
+let utf8_lexeme lexbuf = utf8_lexeme_sub lexbuf 0 (lexbuf.pos - lexbuf.start)
