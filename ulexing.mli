@@ -3,6 +3,19 @@
   the OCaml standard library, except that its lexbuffers handles
   Unicode code points (OCaml type: [int] in the range
   [0..0x10ffff]) instead of bytes (OCaml type: [char]).
+
+  It is possible to have ulex-generated lexers work on a custom
+  implementation for lex buffers. To do this, define a module [L] which
+  implements the [start], [next], [mark] and [backtrack] functions
+  (See the Internal Interface section below for a specification).
+  They need not work on a type named [lexbuf]: you can use the type
+  name you want. Then, just do in your ulex-processed source, before
+  the first lexer specification:
+
+  [module Ulexing = L]
+
+  Of course, you'll probably want to define functions like [lexeme]
+  to be used in the lexers semantic actions.
 *)
 
 type lexbuf
