@@ -1,25 +1,49 @@
-(* Unicode code point *)
-type uchar = int
+exception Error
+
 let eof = -1
 
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
 type lexbuf = {
-  refill: (uchar array -> int -> int -> int);
-  mutable buf: uchar array;
-  mutable len: int;    (* Number of meaningful uchar in buffer *)
-  mutable offset: apos; (* Position of the first uchar in buffer
+  refill: (int array -> int -> int -> int);
+  mutable buf: int array;
+  mutable len: int;    (* Number of meaningful char in buffer *)
+  mutable offset: apos; (* Position of the first char in buffer
 			    in the input stream *)
   mutable pos : int;
-  mutable start : int; (* First uchar we need to keep visible *)
+  mutable start : int; (* First char we need to keep visible *)
 
   mutable marked_pos : int;
   mutable marked_val : int;
 }
 
-
 let chunk_size = 512
+
+let empty_lexbuf = {
+  refill = (fun _ _ _ -> assert false);
+  buf = [| |];
+  len = 0;
+  offset = 0;
+  pos = 0;
+  start = 0;
+  marked_pos = 0;
+  marked_val = 0;
+}
+
+let create f = {
+  empty_lexbuf with
+    refill = f;
+    buf = Array.create chunk_size 0;
+}
+
+let from_latin1 s = 
+  let len = String.length s + 1 in
+  {
+    empty_lexbuf with
+      buf = Array.init len (fun i -> if i < String.length s then Char.code s.[i] else eof);
+      len = len
+  }
 
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf 
@@ -50,7 +74,14 @@ let refill lexbuf =
 
 let next lexbuf =
   if lexbuf.pos = lexbuf.len then refill lexbuf;
-  lexbuf.buf.(lexbuf.pos)
+  let i = lexbuf.buf.(lexbuf.pos) in
+  if i != eof then lexbuf.pos <- lexbuf.pos + 1;
+  i
+
+let start lexbuf =
+  lexbuf.start <- lexbuf.pos;
+  lexbuf.marked_pos <- lexbuf.pos;
+  lexbuf.marked_val <- (-1)
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
@@ -60,15 +91,22 @@ let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.marked_val
 
-let pos lexbuf : apos =
-  lexbuf.pos + lexbuf.offset
+let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
+let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 
-let rel_pos lexbuf (p : apos) : int =
-  let p = p - lexbuf.offset in
-  if (p < 0) || (p >= lexbuf.len) then failwith "Ulexing.backtrack";
-  p
+let lexeme_sub lexbuf pos len = Array.sub lexbuf.buf (lexbuf.start + pos) len
+let lexeme lexbuf = Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
+let lexeme_char lexbuf pos = lexbuf.buf.(lexbuf.start + pos)
 
-let subword lexbuf (i : apos) (j : apos) =
-  let i = rel_pos lexbuf i and j = rel_pos lexbuf j in
-  Array.sub lexbuf.buf i (j - i)
+let to_latin1 c =
+  if (c >= 0) && (c < 256) 
+  then Char.chr c 
+  else failwith (Printf.sprintf "to_latin1: code point %i cannot be encoded in Latin1" c)
 
+let latin1_lexeme_char lexbuf pos = to_latin1 (lexeme_char lexbuf pos)
+let latin1_lexeme_sub lexbuf pos len =
+  let s = String.create len in
+  for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
+  s
+let latin1_lexeme lexbuf = latin1_lexeme_sub lexbuf 0 (lexbuf.pos - lexbuf.start)
+    

@@ -30,6 +30,53 @@ let partition (i,p) =
   let l2 = <:str_item< declare $list:[]$ end >> in
   <:str_item< declare $list:[l1;l2]$ end >>, loc
 
+let best_final final =
+  let fin = ref None in
+  Array.iteri 
+    (fun i b -> if b && (!fin = None) then fin := Some i) final;
+  !fin
+
+let gen_state loc i (part,trans,final) = 
+  let f = Printf.sprintf "state_%i" i in
+  let p = Printf.sprintf "ulex_partition_%i" part in
+  let cases =
+    Array.mapi 
+      (fun i j ->
+	 let f = Printf.sprintf "state_%i" j in
+	 <:patt< $int:string_of_int i$ >>,
+	 None,
+	 <:expr< $lid:f$ lexbuf >>
+      ) trans in
+  let cases = Array.to_list cases in
+  let cases = cases @ [<:patt< _ >>, None, <:expr< Ulexing.backtrack lexbuf >>] in
+  let body = 
+    <:expr< match ($lid:p$ (Ulexing.next lexbuf)) 
+    with [ $list:cases$ ] >> in
+  let body = match best_final final with
+    | None -> body
+    | Some i -> 
+	if Array.length trans = 0 
+	then <:expr< $int:string_of_int i$ >>
+	else <:expr< do { Ulexing.mark lexbuf $int:string_of_int i$;  $body$ } >>
+  in
+  <:patt< $lid:f$ >>, <:expr< fun lexbuf -> $body$ >>
+
+let gen_definition loc pl l =
+  let brs = Array.of_list l in
+  let rs = Array.map fst brs in
+  let auto = Ulex.compile rs in
+
+  let cases = Array.mapi (fun i (_,e) -> <:patt< $int:string_of_int i$ >>, None, e) brs in
+  let cases = Array.to_list cases in
+  let cases = cases @ [<:patt< _ >>, None, <:expr< raise Ulexing.Error >>] in
+  let actions = <:expr< match state_0 lexbuf with [ $list:cases$ ] >> in
+  let states = Array.to_list (Array.mapi (gen_state loc) auto) in
+  let body = <:expr< let rec $list:states$ in do { Ulexing.start lexbuf; $actions$ } >> in
+
+  let abstr = 
+	 List.fold_right 
+	   (fun p e -> <:expr< fun $p$ -> $e$>>) pl body in
+       <:expr< fun lexbuf -> $abstr$ >>
 
 EXTEND
  GLOBAL: Pcaml.str_item let_regexp header lexer_def;
@@ -64,49 +111,8 @@ EXTEND
  definition: [
    [ pl = LIST0 Pcaml.patt LEVEL "simple"; "with";
      OPT "|"; l = LIST0 [ r=regexp; "->"; a=Pcaml.expr -> (r,a) ] SEP "|" ->
-       let brs = Array.of_list l in
-       let rs = Array.map fst brs in
-       let auto = Ulex.compile rs in
-       let gen_state i (part,trans,final) =
-	 let f = Printf.sprintf "state_%i" i in
-	 let p = Printf.sprintf "ulex_partition_%i" part in
-	 let cases =
-	   Array.mapi 
-	     (fun i j ->
-		let f = Printf.sprintf "state_%i" j in
-		<:patt< $int:string_of_int i$ >>,
-		None,
-		<:expr< $lid:f$ lexbuf >>
-	     ) trans in
-	 let cases = Array.to_list cases in
-	 let cases = cases @ [<:patt< _ >>, None, <:expr< Ulexing.backtrack lexbuf >>] in
-	 let body = 
-	   <:expr< match ($lid:p$ (Ulexing.next lexbuf)) 
-	           with [ $list:cases$ ] >> in
- 	 let fin = ref None in
-	 Array.iteri 
-	   (fun i b -> if b && (!fin = None) then fin := Some i) final;
-	 let body = match !fin with
-	   | None -> body
-	   | Some i -> 
-	       if Array.length trans = 0 then
-		 <:expr< $int:string_of_int i$ >>
-	       else
-		 <:expr< 
-                   do { Ulexing.mark lexbuf $int:string_of_int i$; 
-			$body$ } >> in
-	 <:patt< $lid:f$ >>, <:expr< fun lexbuf -> $body$ >>
-      in
-
-       let states = Array.to_list (Array.mapi gen_state auto) in
-       let states = <:expr< let rec $list:states$ in () >> in
-
-       let body = states in
-       let abstr = 
-	 List.fold_right 
-	   (fun p e -> <:expr< fun $p$ -> $e$>>) pl body in
-       <:expr< fun lexbuf -> $abstr$ >>
-   ]
+       gen_definition loc pl l
+    ]
  ];
 
  header:  [
