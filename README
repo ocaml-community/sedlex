@@ -70,22 +70,36 @@ of structure item:
 
   let regexp n = R
 
-where n is the regexp name to be defined. Note that this construction
-does not respect OCaml scoping rule of structure definitions.
-
-ulex provides a set of predefined regexps:
-- eof: the virtual end-of-file character
-- letter, digit, extender, base_char,ideographic,combining_char,blank:
-  as defined by the XML recommandation
+where n is the regexp name to be defined.
 
 Because ulex is implemented as a syntax extension, it can deal
 with both original and revised syntax (and possibly others).
-
 
 Note that lexer specifications need not be named. Here is
 an example:
 
   (lexer ("#!" [^ '\n']* "\n")? -> ()) lexbuf
+
+--------------------------------------------------------------------------
+Scoping rules for regular expressions declarations
+
+Regexp declarations look pretty-much like regular OCaml let-bindings.
+However, they can only be used as structure item (no local
+binding let regexp n = R in ...). Moreover, they don't respect
+OCaml scoping rule. Indeed, the lexical scope of a given
+"let regexp" is the whole source file following the declaration.
+Also the regexps names are not exported by a module, and you cannot
+use qualified names A.n (where n is a regexp defined in module A).
+
+
+--------------------------------------------------------------------------
+Predefined regexps
+
+ulex provides a set of predefined regexps:
+- eof: the virtual end-of-file character
+- letter, digit, extender, base_char,ideographic,combining_char,blank:
+  as defined by the XML recommandation
+- tr8876_ident_char: characters names in identifiers from ISO TR8876
 
 --------------------------------------------------------------------------
 Running a lexer

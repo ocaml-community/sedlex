@@ -1,4 +1,4 @@
-let loc = (-1,-1)
+let loc = (0,0)
 
 (* Named regexp *)
 
@@ -15,7 +15,9 @@ let () =
       "xml_base_char", Cset.base_char;
       "xml_ideographic", Cset.ideographic;
       "xml_combining_char", Cset.combining_char;
-      "xml_blank", Cset.blank
+      "xml_blank", Cset.blank;
+
+      "tr8876_ident_char", Cset.tr8876_ident_char;
     ] 
 
 (* Decision tree for partitions *)
@@ -180,7 +182,7 @@ let char s =
 
 let char_int s =
   let i = int_of_string s in
-  if (i >=0) && (i < Cset.max_code) then i
+  if (i >=0) && (i <= Cset.max_code) then i
   else failwith ("Invalid Unicode code point: " ^ s)
 
 let regexp_for_string s =
@@ -235,7 +237,7 @@ EXTEND
  ];
 
  ch_class: [
-   [ "^"; cc = ch_class -> Cset.complement cc]
+   [ "^"; cc = ch_class -> Cset.difference Cset.any cc]
  | [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
    | c = chr -> Cset.singleton c
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2

@@ -1,4 +1,4 @@
-version = "0.1"
+version = "0.3"
 requires = "camlp4"
 description = "Runtime support for ulex"
 archive(byte) = "ulexing.cma"
