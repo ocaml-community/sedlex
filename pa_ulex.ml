@@ -1,4 +1,4 @@
-let loc = (Lexing.dummy_pos,Lexing.dummy_pos)
+let _loc = (Lexing.dummy_pos,Lexing.dummy_pos)
 
 (* Named regexp *)
 
@@ -198,7 +198,7 @@ EXTEND
  Pcaml.expr: [
   [ "lexer";
      OPT "|"; l = LIST0 [ r=regexp; "->"; a=Pcaml.expr -> (r,a) ] SEP "|" ->
-       gen_definition loc l ]
+       gen_definition _loc l ]
  ];
 
  Pcaml.str_item: [
@@ -221,7 +221,7 @@ EXTEND
    | "("; r = regexp; ")" -> r
    | "_" -> Ulex.chars Cset.any
    | c = chr -> Ulex.chars (Cset.singleton c)
-   | s = STRING -> regexp_for_string (Token.eval_string loc s)
+   | s = STRING -> regexp_for_string (Token.eval_string _loc s)
    | "["; cc = ch_class; "]" ->  Ulex.chars cc
    | x = LIDENT ->
        try  Hashtbl.find named_regexps x
@@ -242,7 +242,7 @@ EXTEND
    | c = chr -> Cset.singleton c
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
    | s = STRING -> 
-       let s = Token.eval_string loc s in
+       let s = Token.eval_string _loc s in
        let c = ref Cset.empty in
        for i = 0 to String.length s - 1 do
 	 c := Cset.union !c (Cset.singleton (Char.code s.[i])) 
@@ -259,7 +259,7 @@ let () =
     let (items,d) = old_parse_implem s in
     let parts = List.map partition (Ulex.partitions ()) in
     let tables = List.map table (get_tables ()) in
-    (<:str_item< declare $list:tables@parts$ end >>, loc) :: items, d
+    (<:str_item< declare $list:tables@parts$ end >>, _loc) :: items, d
   in
   Pcaml.parse_implem := new_parse_implem
 
