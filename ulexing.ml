@@ -157,6 +157,9 @@ let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.marked_val
 
+let rollback lexbuf =
+  lexbuf.pos <- lexbuf.start
+
 let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 

@@ -141,6 +141,14 @@ val utf8_lexeme: lexbuf -> string
 val utf8_sub_lexeme: lexbuf -> int -> int -> string
 (** As [Ulexing.sub_lexeme] with a result encoded in UTF-8. *)
 
+
+val rollback: lexbuf -> unit
+(** [Ulexing.rollback lexbuf] puts [lexbuf] back in its configuration before
+  the last lexeme was matched. It is then possible to use another
+  lexer to parse the same characters again. The other functions
+  above in this section should not be used in the semantic action
+  after a call to [Ulexing.rollback]. *)
+
 (** {6 Internal interface} *)
 
 (** These functions are used internally by the lexers. They could be used

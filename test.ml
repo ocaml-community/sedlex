@@ -7,12 +7,16 @@ let rec token enc = lexer
   | number -> "number"
   | eof -> exit 0
   | [1234-1246] -> "bla"
+  | "(" -> 
+      Ulexing.rollback lexbuf; (* Puts the lexeme back into the buffer *)
+      (lexer "(" [^ '(']* ")" -> Ulexing.utf8_lexeme lexbuf) lexbuf
+      (* Note the use of an inline lexer *)
   | _ -> "???"
 
 
 let () =
   let enc = ref Ulexing.Ascii in
-  let lexbuf = Ulexing.from_var_enc_string enc "abc<latin1>é<utf8>Ã©" in
+  let lexbuf = Ulexing.from_var_enc_string enc "abc<latin1>é<utf8>Ã©(abc)(def)ghi" in
   try
     while true do
       let r = token enc lexbuf in
