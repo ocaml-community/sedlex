@@ -57,40 +57,34 @@ let width_code_point p =
   else if p <= 0x10ffff then 4
   else raise MalFormed
 
-(* Adapted from Netstring *)
-let store p s i =
-  if p <= 127 then (
-    s.[i] <- Char.chr p;
-    i + 1
-  )
+let store b p =
+  (* Adapted from Netstring's netconversion.ml/write_utf8 *)
+  if p <= 127 then
+    Buffer.add_char b (Char.chr p)
   else if p <= 0x7ff then (
-    s.[i] <- Char.chr (0xc0 lor (p lsr 6));
-    s.[i+1] <- Char.chr (0x80 lor (p land 0x3f));
-    i+2
+    Buffer.add_char b (Char.chr (0xc0 lor (p lsr 6)));
+    Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
   )
   else if p <= 0xffff then (
     (* Refuse writing surrogate pairs, and fffe, ffff *)
-    if (p >= 0xd800 & p < 0xe000) or (p >= 0xfffe) then raise MalFormed
-      failwith "Encodings.Utf8.store";
-    s.[i] <- Char.chr (0xe0 lor (p lsr 12));
-    s.[i+1] <- Char.chr (0x80 lor ((p lsr 6) land 0x3f));
-    s.[i+2] <- Char.chr (0x80 lor (p land 0x3f));
-    i+3
+    if (p >= 0xd800 & p < 0xe000) or (p >= 0xfffe) 
+    then raise MalFormed;
+    Buffer.add_char b (Char.chr (0xe0 lor (p lsr 12)));
+    Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6) land 0x3f)));
+    Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
   )
   else if p <= 0x10ffff then (
-    s.[i] <- Char.chr (0xf0 lor (p lsr 18));
-    s.[i+1] <- Char.chr (0x80 lor ((p lsr 12) land 0x3f));
-    s.[i+2] <- Char.chr (0x80 lor ((p lsr 6)  land 0x3f));
-    s.[i+3] <- Char.chr (0x80 lor (p land 0x3f));
-    i+4
+    Buffer.add_char b (Char.chr (0xf0 lor (p lsr 18)));
+    Buffer.add_char b (Char.chr (0x80 lor ((p lsr 12) land 0x3f)));
+    Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6)  land 0x3f)));
+    Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
   )
   else raise MalFormed
 
-let buf = ref (String.create 1024)
 
 let from_int_array a apos len =
-  if (String.length !buf < len * 4) then buf := String.create (len * 4);
-  let rec aux apos spos len =
-    if len > 0 then aux (succ apos) (store a.(apos) !buf spos) (pred len)
-    else String.sub !buf 0 spos in
-  aux apos 0 len
+  let b = Buffer.create (len * 4) in
+  let rec aux apos len =
+    if len > 0 then (store b a.(apos); aux (succ apos) (pred len))
+    else Buffer.contents b in
+  aux apos len

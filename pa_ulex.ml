@@ -9,7 +9,13 @@ let () =
   List.iter (fun (n,c) -> Hashtbl.add named_regexps n (Ulex.chars c))
     [
       "eof", Cset.eof;
-      "letter", Cset.letter
+      "letter", Cset.letter;
+      "digit", Cset.digit;
+      "extender", Cset.extender;
+      "base_char", Cset.base_char;
+      "ideographic", Cset.ideographic;
+      "combining_char", Cset.combining_char;
+      "blank", Cset.blank
     ] 
 
 (* Decision tree for partitions *)
@@ -36,7 +42,7 @@ let decision l =
   in
   aux l
 
-let limit = 8192
+let limit = 256
 
 let decision_table l =
   let rec aux m accu = function
@@ -152,7 +158,7 @@ let gen_state auto loc i (part,trans,final) =
 	  <:expr< do { Ulexing.mark lexbuf $int:string_of_int i$;  $body$ } >>
 
 
-let gen_definition loc pl l =
+let gen_definition loc l =
   let brs = Array.of_list l in
   let rs = Array.map fst brs in
   let auto = Ulex.compile rs in
@@ -164,11 +170,7 @@ let gen_definition loc pl l =
   let states = Array.mapi (gen_state auto loc) auto in
   let states = List.flatten (Array.to_list states) in
   let body = <:expr< let rec $list:states$ in do { Ulexing.start lexbuf; $actions$ } >> in
-
-  let abstr = 
-	 List.fold_right 
-	   (fun p e -> <:expr< fun $p$ -> $e$>>) pl body in
-       <:expr< fun lexbuf -> $abstr$ >>
+  <:expr< fun lexbuf -> $body$ >>
 
 
 (* Lexer specification parser *)
@@ -186,9 +188,9 @@ EXTEND
  GLOBAL: Pcaml.expr Pcaml.str_item;
 
  Pcaml.expr: [
-  [ "lexer";  pl = LIST0 Pcaml.patt LEVEL "simple"; "with";
+  [ "lexer"; "with";
      OPT "|"; l = LIST0 [ r=regexp; "->"; a=Pcaml.expr -> (r,a) ] SEP "|" ->
-       gen_definition loc pl l ]
+       gen_definition loc l ]
  ];
 
  Pcaml.str_item: [
@@ -226,6 +228,13 @@ EXTEND
  | [ c1 = CHAR; "-"; c2 = CHAR -> Cset.interval (char c1) (char c2)
    | c = CHAR -> Cset.singleton (char c)
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
+   | s = STRING -> 
+       let s = Token.eval_string s in
+       let c = ref Cset.empty in
+       for i = 0 to String.length s - 1 do
+	 c := Cset.union !c (Cset.singleton (Char.code s.[i])) 
+       done;
+       !c
    ]
  ];
 END

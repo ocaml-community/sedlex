@@ -10,10 +10,10 @@ let rec token = lexer with
   | _ -> "?"
       *)
 
-let token = lexer with
+let token c = lexer with
     ['a'-'z'] -> "lowercase"
   | eof -> exit 0
-  | _ -> "?"
+  | _ -> c
 
 let tok = lexer with
     ['a'-'z'] -> "low"
@@ -25,7 +25,7 @@ let () =
   let lexbuf = Ulexing.from_latin1_string "abcABC123@@xyzéÔ" in
   try
     while true do
-      let r = token lexbuf in
+      let r = token "???" lexbuf in
       Printf.printf "%s\n" r
     done
   with Ulexing.Error -> Printf.eprintf "Lexing error at offset %i\n" (Ulexing.lexeme_start lexbuf)

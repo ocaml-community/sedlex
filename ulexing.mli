@@ -21,6 +21,8 @@ val create: (int array -> int -> int -> int) -> lexbuf
 val from_latin1_string: string -> lexbuf
   (** Create a lexbuf from a latin1 encoded string. *)
 
+val from_latin1_file: string -> lexbuf
+
 val from_utf8_string: string -> lexbuf
   (** Create a lexbuf from a utf8 encoded string. *)
 
@@ -33,6 +35,9 @@ val from_int_array: int array -> lexbuf
 
 val lexeme_start: lexbuf -> int
 val lexeme_end: lexbuf -> int
+
+val lexeme_length: lexbuf -> int
+
 
 val lexeme_sub: lexbuf -> int -> int -> int array
 val lexeme: lexbuf -> int array

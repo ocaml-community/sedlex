@@ -49,6 +49,19 @@ let from_latin1_string s =
       finished = true;
   }
 
+let from_latin1_file s =
+  let ic = open_in s in
+  let rec refill nb buf pos len =
+    if len = 0 then nb else
+      match (try Some (input_char ic) with End_of_file -> None) with
+	| Some c ->
+	    buf.(pos) <- Char.code c;
+	    refill (succ nb) buf (succ pos) (pred len)
+	| None ->
+	    nb
+  in
+  create (refill 0)
+
 let from_int_array a =
   let len = Array.length a in
   {
@@ -115,7 +128,10 @@ let backtrack lexbuf =
 let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 
-let lexeme_sub lexbuf pos len = Array.sub lexbuf.buf (lexbuf.start + pos) len
+let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
+
+let lexeme_sub lexbuf pos len = 
+  Array.sub lexbuf.buf (lexbuf.start + pos) len
 let lexeme lexbuf = Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
 let lexeme_char lexbuf pos = lexbuf.buf.(lexbuf.start + pos)
 
