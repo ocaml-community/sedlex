@@ -10,6 +10,15 @@ let singleton i = [i,i]
 let is_empty = function [] -> true | _ -> false
 let interval i j = if i <= j then [i,j] else [j,i]
 let eof = singleton (-1)
+let any = interval 0 max_code
+
+let print ppf l =
+  Format.fprintf ppf "[ ";
+  List.iter (fun (i,j) -> Format.fprintf ppf "%i-%i " i j) l;
+  Format.fprintf ppf "]"
+
+let dump l =
+  print Format.std_formatter l
 
 let rec union c1 c2 =
   match c1,c2 with
@@ -19,7 +28,7 @@ let rec union c1 c2 =
 	if (i1 <= i2) then
 	  if j1 + 1 < i2 then s1::(union r1 c2)
 	  else if (j1 < j2) then union r1 ((i1,j2)::r2)
-	  else union c1 r1 
+	  else union c1 r2
 	else union c2 c1
 
 let complement c =
@@ -32,6 +41,7 @@ let complement c =
 
 let intersection c1 c2 = 
   complement (union (complement c1) (complement c2))
+
 
 let difference c1 c2 =
   complement (union (complement c1) c2)

@@ -30,6 +30,9 @@ let chars c succ =
   n.trans <- [c,succ];
   n
 
+let compile_re re =
+  let final = new_node () in
+  (re final, final)
 
 type state = node list
 
@@ -62,30 +65,57 @@ let transition state =
 
   (* Epsilon closure of targets *)
   let t = List.map (fun (c,ns) -> (c,add_nodes [] ns)) t in
-  t
+
+  (* Canonical ordering *)
+  let t = Array.of_list t in
+  Array.sort (fun (c1,ns1) (c2,ns2) -> compare c1 c2) t;
+  Array.map fst t, Array.map snd t
+
+let find_alloc tbl counter x =
+  try Hashtbl.find tbl x
+  with Not_found ->
+    let i = !counter in
+    incr counter;
+    Hashtbl.add tbl x i;
+    i
+ 
+let part_tbl = Hashtbl.create 31
+let part_id = ref 0
+let get_part (t : Cset.t array) = find_alloc part_tbl part_id t
 
 
-let c i j = chars (Cset.interval i j)
-let () =
-  let re = 
-    rep (
-      alt (seq (c 100 200) (c 100 200))
-      (seq (c 150 250) (c 200 300)))
+let compile rs =
+  let rs = Array.map compile_re rs in
+  let counter = ref 0 in
+  let states = Hashtbl.create 31 in
+  let states_def = ref [] in
+  let rec aux state =
+    try Hashtbl.find states state
+    with Not_found ->
+      let i = !counter in
+      incr counter;
+      Hashtbl.add states state i;
+      let (part,targets) = transition state in
+      let part = get_part part in
+      let targets = Array.map aux targets in
+      let finals = Array.map (fun (_,f) -> List.mem f state) rs in
+      states_def := (i, (part,targets,finals)) :: !states_def;
+      i
   in
-  let final = new_node () in
-  let entry = add_node [] (re final) in
-  let trans = transition entry in
-  List.iter 
-    (fun (c,ns) ->
-      List.iter (fun (i,j) ->
-	print_int i;
-	print_char '-';
-	print_int j;
-	print_char ' ') c;
-      print_char ':';
-      List.iter (fun n ->
-	print_int n.id;
-	print_char ' ') ns
-    ) trans;
-  print_endline ";";
-	
+  let init = ref [] in
+  Array.iter (fun (i,_) -> init := add_node !init i) rs;
+  ignore (aux !init);
+  Array.init !counter (fun id -> List.assoc id !states_def)
+  
+let partitions () =
+  let aux part =
+    let seg = ref [] in
+    Array.iteri
+      (fun i c -> 
+	 List.iter (fun (a,b) -> seg := (a,b,i) :: !seg) c)
+      part;
+    !seg in
+  let res = ref [] in
+  Hashtbl.iter (fun part i -> res := (i, aux part) :: !res) part_tbl;
+  Hashtbl.clear part_tbl;
+  !res

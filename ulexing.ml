@@ -13,6 +13,9 @@ type lexbuf = {
 			    in the input stream *)
   mutable pos : int;
   mutable start : int; (* First uchar we need to keep visible *)
+
+  mutable marked_pos : int;
+  mutable marked_val : int;
 }
 
 
@@ -34,6 +37,7 @@ let refill lexbuf =
     lexbuf.len <- ls;
     lexbuf.offset <- lexbuf.offset + s;
     lexbuf.pos <- lexbuf.pos - s;
+    lexbuf.marked_pos <- lexbuf.marked_pos - s;
     lexbuf.start <- 0
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
@@ -48,6 +52,14 @@ let next lexbuf =
   if lexbuf.pos = lexbuf.len then refill lexbuf;
   lexbuf.buf.(lexbuf.pos)
 
+let mark lexbuf i =
+  lexbuf.marked_pos <- lexbuf.pos;
+  lexbuf.marked_val <- i
+
+let backtrack lexbuf =
+  lexbuf.pos <- lexbuf.marked_pos;
+  lexbuf.marked_val
+
 let pos lexbuf : apos =
   lexbuf.pos + lexbuf.offset
 
@@ -55,9 +67,6 @@ let rel_pos lexbuf (p : apos) : int =
   let p = p - lexbuf.offset in
   if (p < 0) || (p >= lexbuf.len) then failwith "Ulexing.backtrack";
   p
-
-let backtrack lexbuf (p : apos) =
-  lexbuf.pos <- rel_pos lexbuf p
 
 let subword lexbuf (i : apos) (j : apos) =
   let i = rel_pos lexbuf i and j = rel_pos lexbuf j in
