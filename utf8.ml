@@ -5,7 +5,7 @@ let () =
   for i = 0 to 127 do width.(i) <- 1 done;
   for i = 192 to 223 do width.(i) <- 2 done;
   for i = 224 to 239 do width.(i) <- 3 done;
-  for i = 240 to 248 do width.(i) <- 4 done
+  for i = 240 to 247 do width.(i) <- 4 done
 
 let next s i =
   match s.[i] with
@@ -16,30 +16,13 @@ let next s i =
 	let n2 = Char.code s.[i+1] in
         if (n2 lsr 6 != 0b10) then raise MalFormed;
         ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
-    | '\224' ->
-	let n2 = Char.code s.[i+1] in
-	let n3 = Char.code s.[i+2] in
-	if (n2 lsr 5 != 0b101) || (n3 lsr 6 != 0b10) then raise MalFormed;
-        ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | ('\225'..'\236' | '\238'..'\239') as c ->
+    | '\224'..'\239' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
         if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
         ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | '\237' ->
-	let n2 = Char.code s.[i+1] in
-	let n3 = Char.code s.[i+2] in
-	if (n2 lsr 5 != 0b100) || (n3 lsr 6 != 0b10) then raise MalFormed;
-        0xd000 lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | '\240' ->
-	let n2 = Char.code s.[i+1] in
-	let n3 = Char.code s.[i+2] in
-	let n4 = Char.code s.[i+3] in
-	if (n2 lsr 4 != 0b1001) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	then raise MalFormed;
-        ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
-    | '\241'..'\243' as c ->
+    | '\240'..'\247' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
@@ -48,14 +31,6 @@ let next s i =
 	then raise MalFormed;
         ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
         ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
-    | '\244' ->
-	let n2 = Char.code s.[i+1] in
-	let n3 = Char.code s.[i+2] in
-	let n4 = Char.code s.[i+3] in
-        if (n2 lsr 4 != 0b1000) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	then raise MalFormed;
-        0x100000 lor ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor 
-	(n4 land 0x3f)
     | _ -> raise MalFormed
 
 
@@ -71,30 +46,13 @@ let from_stream s =
 	let n2 = Char.code (Stream.next s) in
         if (n2 lsr 6 != 0b10) then raise MalFormed;
         ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
-    | '\224' ->
-	let n2 = Char.code (Stream.next s) in
-	let n3 = Char.code (Stream.next s) in
-	if (n2 lsr 5 != 0b101) || (n3 lsr 6 != 0b10) then raise MalFormed;
-        ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | ('\225'..'\236' | '\238'..'\239') as c ->
+    | '\224'..'\239' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code (Stream.next s) in
 	let n3 = Char.code (Stream.next s) in
         if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
         ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | '\237' ->
-	let n2 = Char.code (Stream.next s) in
-	let n3 = Char.code (Stream.next s) in
-	if (n2 lsr 5 != 0b100) || (n3 lsr 6 != 0b10) then raise MalFormed;
-        0xd000 lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-    | '\240' ->
-	let n2 = Char.code (Stream.next s) in
-	let n3 = Char.code (Stream.next s) in
-	let n4 = Char.code (Stream.next s) in
-	if (n2 lsr 4 != 0b1001) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	then raise MalFormed;
-        ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
-    | '\241'..'\243' as c ->
+    | '\240'..'\247' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code (Stream.next s) in
 	let n3 = Char.code (Stream.next s) in
@@ -103,14 +61,6 @@ let from_stream s =
 	then raise MalFormed;
         ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
         ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
-    | '\244' ->
-	let n2 = Char.code (Stream.next s) in
-	let n3 = Char.code (Stream.next s) in
-	let n4 = Char.code (Stream.next s) in
-        if (n2 lsr 4 != 0b1000) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	then raise MalFormed;
-        0x100000 lor ((n2 land 0x3f) lsl 12) lor ((n3 land 0x3f) lsl 6) lor 
-	(n4 land 0x3f)
     | _ -> raise MalFormed
 
 
