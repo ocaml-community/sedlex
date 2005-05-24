@@ -1,3 +1,5 @@
+exception MalFormed
+
 val width: int array
 val next: string -> int -> int
 val compute_len: string -> int -> int -> int

@@ -21,7 +21,11 @@ let next s i =
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
         if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-        ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+	let p = 
+          ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+	in
+	if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
+	p
     | '\240'..'\247' as c ->
 	let n1 = Char.code c in
 	let n2 = Char.code s.[i+1] in
