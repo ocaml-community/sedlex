@@ -1,5 +1,7 @@
 exception MalFormed
 
+(* cf http://www.faqs.org/rfcs/rfc3629.html *)
+
 let width = Array.make 256 (-1)
 let () =
   for i = 0 to 127 do width.(i) <- 1 done;

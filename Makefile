@@ -1,4 +1,4 @@
-VERSION=0.6
+VERSION=0.7
 
 all: ulexing.cma pa_ulex.cma
 all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma
@@ -21,8 +21,11 @@ ulexing.cmxa: $(ULEXING)
 pa_ulex.cma: $(ULEX)
 	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 $(ULEX)
 
+pa_ulex.ml: pa_ulex.ml.src
+	ocaml mk_pa_ulex.ml
+
 clean:
-	rm -f *.cm* *~ test custom_ulexing *.o *.a *.html *.css
+	rm -f *.cm* *~ test custom_ulexing *.o *.a *.html *.css pa_ulex.ml
 
 view_test: pa_ulex.cma
 	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml

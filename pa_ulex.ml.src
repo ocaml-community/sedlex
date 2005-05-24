@@ -135,7 +135,7 @@ let call_state auto state =
       <:expr< $lid:f$ lexbuf >>
 	
 
-let gen_state auto loc i (part,trans,final) = 
+let gen_state auto _loc i (part,trans,final) = 
   let f = Printf.sprintf "__ulex_state_%i" i in
   let p = partition_name part in
   let cases =
@@ -160,7 +160,7 @@ let gen_state auto loc i (part,trans,final) =
 	  <:expr< do { Ulexing.mark lexbuf $int:string_of_int i$;  $body$ } >>
 
 
-let gen_definition loc l =
+let gen_definition _loc l =
   let brs = Array.of_list l in
   let rs = Array.map fst brs in
   let auto = Ulex.compile rs in
@@ -169,7 +169,7 @@ let gen_definition loc l =
   let cases = Array.to_list cases in
   let cases = cases @ [<:patt< _ >>, None, <:expr< raise Ulexing.Error >>] in
   let actions = <:expr< match __ulex_state_0 lexbuf with [ $list:cases$ ] >> in
-  let states = Array.mapi (gen_state auto loc) auto in
+  let states = Array.mapi (gen_state auto _loc) auto in
   let states = List.flatten (Array.to_list states) in
   let body = <:expr< let rec $list:states$ in do { Ulexing.start lexbuf; $actions$ } >> in
   <:expr< fun lexbuf -> $body$ >>

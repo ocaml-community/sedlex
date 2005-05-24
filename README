@@ -1,11 +1,11 @@
 Ulex: a OCaml lexer generator for Unicode
 
 License:
-  Copyright (C) 2003, 2004 Alain Frisch
-  distributed under the terms of the LGPL : see LICENSE
+  Copyright (C) 2003, 2004, 2005 Alain Frisch
+  distributed under the terms of an MIT-like license : see LICENSE
 
 Author:
-  email: Alain.Frisch@ens.fr
+  email: Alain.Frisch@inria.fr
   web: http://www.eleves.ens.fr/home/frisch, http://www.cduce.org
 
 --------------------------------------------------------------------------
@@ -97,8 +97,8 @@ Predefined regexps
 
 ulex provides a set of predefined regexps:
 - eof: the virtual end-of-file character
-- letter, digit, extender, base_char,ideographic,combining_char,blank:
-  as defined by the XML recommandation
+- xml_letter, xml_digit, xml_extender, xml_base_char, xml_ideographic,
+  xml_combining_char, xml_blank: as defined by the XML recommandation
 - tr8876_ident_char: characters names in identifiers from ISO TR8876
 
 --------------------------------------------------------------------------

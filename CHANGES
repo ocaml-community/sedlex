@@ -1,6 +1,7 @@
-After 0.5
-     * Bug fix
-     * Update to OCaml 3.09 (currently CVS)
+0.7 released May 24 2005
+     * Bug fixes
+     * Update to OCaml 3.09 (currently CVS). Still works with OCaml 3.08.
+     * MIT-like license (used to LGPL)
 
 0.5 release Jul. 8 2004
      * Document how to use a custom implementation for lex buffers
