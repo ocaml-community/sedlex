@@ -1,16 +1,16 @@
-VERSION=0.7
+VERSION=0.8
 
 all: ulexing.cma pa_ulex.cma
 all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma
 
 
 install: all
-	ocamlfind install ulex META $(wildcard *.cmi) $(wildcard *.a) $(wildcard *.cma) $(wildcard *.cmxa)
+	ocamlfind install ulex META $(wildcard *.mli) $(wildcard *.cmi) $(wildcard *.a) $(wildcard *.cma) $(wildcard *.cmxa)
 
 uninstall:
 	ocamlfind remove ulex
 
-ULEXING = utf8.mli utf8.ml ulexing.mli ulexing.ml
+ULEXING = utf8.mli utf8.ml ulexing.mli ulexing.ml utf16.mli utf16.ml
 ULEX = cset.ml ulex.mli ulex.ml pa_ulex.ml
 
 ulexing.cma: $(ULEXING)

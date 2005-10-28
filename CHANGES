@@ -1,3 +1,7 @@
+0.8
+     * Really make it work with OCaml 3.09.
+     * Support for Utf-16.
+
 0.7 released May 24 2005
      * Bug fixes
      * Update to OCaml 3.09 (currently CVS). Still works with OCaml 3.08.

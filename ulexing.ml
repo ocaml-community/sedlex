@@ -21,6 +21,10 @@ type lexbuf = {
   mutable finished: bool;
 }
 
+let get_buf lb = lb.buf
+let get_pos lb = lb.pos
+let get_start lb = lb.start
+
 let chunk_size = 512
 
 let empty_lexbuf = {

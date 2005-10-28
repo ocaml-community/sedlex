@@ -124,9 +124,18 @@ val lexeme: lexbuf -> int array
 (** [Ulexing.lexeme lexbuf] returns the string matched by
   the regular expression as an array of Unicode code point. *)
 
+val get_buf: lexbuf -> int array
+  (** Direct access to the internal buffer. *)
+val get_start: lexbuf -> int
+  (** Direct access to the starting position of the lexeme in the
+      internal buffer. *)
+val get_pos: lexbuf -> int
+  (** Direct access to the current position (end of lexeme) in the
+      internal buffer. *)
+
 val lexeme_char: lexbuf -> int -> int
-(** [Ulexing.lexeme_char lexbuf pos] returns code point number [pos] in
-   the matched string. *)
+  (** [Ulexing.lexeme_char lexbuf pos] returns code point number [pos] in
+      the matched string. *)
 
 val sub_lexeme: lexbuf -> int -> int -> int array
 (** [Ulexing.lexeme lexbuf pos len] returns a substring of the string

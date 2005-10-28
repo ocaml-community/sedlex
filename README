@@ -111,6 +111,8 @@ or from integer arrays or streams (which represent Unicode code points).
 
 See the interface of the module Ulexing.
 
+There is also some support for parsing Utf-16 encoded streams
+and manipulating utf16 strings. See the interface of the module Utf16.
 
 It is possible to work with a custom implementation for lex buffers.
 To do this, you just have to ensure that a module called
@@ -152,3 +154,8 @@ You can use ulex without findlib. To compile, you need to run the source
 file through the Camlp4 syntax extension pa_ulex.cma. Moreover, you need to 
 link the application with the runtime support library for ulex 
 (ulexing.cma / ulexing.cmxa).
+
+--------------------------------------------------------------------------
+Acknowledgments
+
+Thanks to Benus Becker for contributing an implementation of Utf16.
