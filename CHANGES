@@ -1,3 +1,6 @@
+0.9
+     * Update to the new Camlp4.
+
 0.8
      * Really make it work with OCaml 3.09.
      * Support for Utf-16.

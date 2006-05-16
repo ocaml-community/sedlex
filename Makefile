@@ -1,4 +1,4 @@
-VERSION=0.8
+VERSION=0.9
 
 all: ulexing.cma pa_ulex.cma
 all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma

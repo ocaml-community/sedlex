@@ -1,7 +1,7 @@
 Ulex: a OCaml lexer generator for Unicode
 
 License:
-  Copyright (C) 2003, 2004, 2005 Alain Frisch
+  Copyright (C) 2003, 2004, 2005, 2006 Alain Frisch
   distributed under the terms of an MIT-like license : see LICENSE
 
 Author:
