@@ -1,5 +1,6 @@
 0.9
-     * Update to the new Camlp4.
+     * Update to the new Camlp4 and to ocamlbuild (release for OCaml 3.10
+       only), by Nicolas Pouillard.
 
 0.8
      * Really make it work with OCaml 3.09.

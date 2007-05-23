@@ -1,4 +1,7 @@
-let _loc = (Lexing.dummy_pos,Lexing.dummy_pos)
+open Camlp4.PreCast
+open Syntax
+
+let _loc = Loc.ghost
 
 (* Named regexp *)
 
@@ -102,13 +105,13 @@ let partition_name i = Printf.sprintf "__ulex_partition_%i" i
 let partition (i,p) =
   let rec gen_tree = function 
     | Lte (i,yes,no) ->
-	<:expr< if (c <= $int: string_of_int i$) 
+	<:expr< if (c <= $`int:i$) 
 	then $gen_tree yes$ else $gen_tree no$ >>
     | Return i ->
-	<:expr< $int: string_of_int i$ >>
+	<:expr< $`int:i$ >>
     | Table (offset, t) ->
 	let c = if offset = 0 then <:expr< c >> 
-	else <:expr< (c - $int: string_of_int offset$) >> in
+	else <:expr< (c - $`int:offset$) >> in
 	<:expr< Char.code ($lid: table_name t$.[$c$]) - 1>>
   in
   let body = gen_tree (simplify (-1) (Cset.max_code) (decision_table p)) in
@@ -128,7 +131,7 @@ let call_state auto state =
   match auto.(state) with (_,trans,final) ->
     if Array.length trans = 0 
     then match best_final final with
-      | Some i -> <:expr< $int:string_of_int i$ >>
+      | Some i -> <:expr< $`int:i$ >>
       | None -> assert false
     else
       let f = Printf.sprintf "__ulex_state_%i" state in
@@ -140,24 +143,22 @@ let gen_state auto _loc i (part,trans,final) =
   let p = partition_name part in
   let cases =
     Array.mapi 
-      (fun i j ->
-	 <:patt< $int:string_of_int i$ >>,
-	 None,
-	 call_state auto j
-      ) trans in
+      (fun i j -> <:match_case< $`int:i$ -> $call_state auto j$ >>) 
+      trans in
   let cases = Array.to_list cases in
-  let cases = cases @ [<:patt< _ >>, None, <:expr< Ulexing.backtrack lexbuf >>] in
   let body = 
-    <:expr< match ($lid:p$ (Ulexing.next lexbuf)) 
-    with [ $list:cases$ ] >> in
+    <:expr<
+      match ($lid:p$ (Ulexing.next lexbuf)) with
+      [ $list:cases$
+      | _ -> Ulexing.backtrack lexbuf ] >> in
   let ret body =
-    [<:patt< $lid:f$ >>, <:expr< fun lexbuf -> $body$ >>] in
+    <:binding< $lid:f$ = fun lexbuf -> $body$ >> in
   match best_final final with
     | None -> ret body
     | Some i -> 
-	if Array.length trans = 0 then [] else
+	if Array.length trans = 0 then <:binding<>> else
 	  ret
-	  <:expr< do { Ulexing.mark lexbuf $int:string_of_int i$;  $body$ } >>
+	  <:expr< do { Ulexing.mark lexbuf $`int:i$;  $body$ } >>
 
 
 let gen_definition _loc l =
@@ -165,20 +166,16 @@ let gen_definition _loc l =
   let rs = Array.map fst brs in
   let auto = Ulex.compile rs in
 
-  let cases = Array.mapi (fun i (_,e) -> <:patt< $int:string_of_int i$ >>, None, e) brs in
-  let cases = Array.to_list cases in
-  let cases = cases @ [<:patt< _ >>, None, <:expr< raise Ulexing.Error >>] in
-  let actions = <:expr< match __ulex_state_0 lexbuf with [ $list:cases$ ] >> in
+  let cases = Array.mapi (fun i (_,e) -> <:match_case< $`int:i$ -> $e$ >>) brs in
   let states = Array.mapi (gen_state auto _loc) auto in
-  let states = List.flatten (Array.to_list states) in
-  let body = <:expr< let rec $list:states$ in do { Ulexing.start lexbuf; $actions$ } >> in
-  <:expr< fun lexbuf -> $body$ >>
+  <:expr< fun lexbuf ->
+    let rec $list:Array.to_list states$ in
+    do { Ulexing.start lexbuf;
+         match __ulex_state_0 lexbuf with
+         [ $list:Array.to_list cases$ | _ -> raise Ulexing.Error ] } >>
 
 
 (* Lexer specification parser *)
-
-let char s = 
-  Char.code (Token.eval_char s)
 
 let char_int s =
   let i = int_of_string s in
@@ -192,23 +189,24 @@ let regexp_for_string s =
       Ulex.seq (Ulex.chars (Cset.singleton (Char.code s.[n]))) (aux (succ n))
   in aux 0
 
-EXTEND
- GLOBAL: Pcaml.expr Pcaml.str_item;
 
- Pcaml.expr: [
+EXTEND Gram
+ GLOBAL: expr str_item;
+
+ expr: [
   [ "lexer";
-     OPT "|"; l = LIST0 [ r=regexp; "->"; a=Pcaml.expr -> (r,a) ] SEP "|" ->
+     OPT "|"; l = LIST0 [ r=regexp; "->"; a=expr -> (r,a) ] SEP "|" ->
        gen_definition _loc l ]
  ];
 
- Pcaml.str_item: [
+ str_item: [
    [ "let"; LIDENT "regexp"; x = LIDENT; "="; r = regexp ->
        if Hashtbl.mem named_regexps x then
          Printf.eprintf 
            "pa_ulex (warning): multiple definition of named regexp '%s'\n"
            x;
      Hashtbl.add named_regexps x r;
-       <:str_item< declare $list: []$ end >>
+       <:str_item<>>
    ]
  ];
  
@@ -221,8 +219,9 @@ EXTEND
    | "("; r = regexp; ")" -> r
    | "_" -> Ulex.chars Cset.any
    | c = chr -> Ulex.chars (Cset.singleton c)
-   | s = STRING -> regexp_for_string (Token.eval_string _loc s)
-   | "["; cc = ch_class; "]" ->  Ulex.chars cc
+   | `STRING (s,_) -> regexp_for_string s
+   | "["; cc = ch_class; "]" -> Ulex.chars cc
+   | "[^"; cc = ch_class; "]" -> Ulex.chars (Cset.difference Cset.any cc)
    | x = LIDENT ->
        try  Hashtbl.find named_regexps x
        with Not_found ->
@@ -232,17 +231,15 @@ EXTEND
  ];
 
  chr: [ 
-   [ c = CHAR -> char c
+   [ `CHAR (c,_) -> Char.code c
    | i = INT -> char_int i ]
  ];
 
  ch_class: [
-   [ "^"; cc = ch_class -> Cset.difference Cset.any cc]
- | [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
+   [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
    | c = chr -> Cset.singleton c
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
-   | s = STRING -> 
-       let s = Token.eval_string _loc s in
+   | `STRING (s,_) -> 
        let c = ref Cset.empty in
        for i = 0 to String.length s - 1 do
 	 c := Cset.union !c (Cset.singleton (Char.code s.[i])) 
@@ -253,13 +250,13 @@ EXTEND
 END
 
 
-let () =
-  let old_parse_implem = !Pcaml.parse_implem in
-  let new_parse_implem s =
-    let (items,d) = old_parse_implem s in
-    let parts = List.map partition (Ulex.partitions ()) in
-    let tables = List.map table (get_tables ()) in
-    (<:str_item< declare $list:tables@parts$ end >>, _loc) :: items, d
-  in
-  Pcaml.parse_implem := new_parse_implem
 
+let () =
+  let first = ref true in
+  AstFilters.register_str_item_filter 
+    (fun s ->
+       assert(!first); first := false;
+       let parts = List.map partition (Ulex.partitions ()) in
+       let tables = List.map table (get_tables ()) in
+       <:str_item< $list:tables$; $list:parts$; $s$ >>
+    )

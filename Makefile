@@ -1,48 +1,43 @@
-VERSION=0.9
+VERSION=1.0
 
-all: ulexing.cma pa_ulex.cma
-all.opt: ulexing.cma ulexing.cmxa pa_ulex.cma
+ALL=pa_ulex.cma ulexing.cma
+OCAMLBUILD=ocamlbuild -byte-plugin
 
+all::
+	$(OCAMLBUILD) $(ALL)
+all.opt::
+	$(OCAMLBUILD) $(ALL) $(ALL:.cma=.cmxa)
+
+MODS=ulexing utf16 utf8
 
 install: all
-	ocamlfind install ulex META $(wildcard *.mli) $(wildcard *.cmi) $(wildcard *.a) $(wildcard *.cma) $(wildcard *.cmxa)
+	cd _build && $(MAKE) -f ../Makefile realinstall
+
+realinstall:
+	ocamlfind install ulex ../META $(wildcard $(MODS:=.mli) $(MODS:=.cmi) $(MODS:=.cmx) pa_ulex.cma ulexing.a ulexing.cma ulexing.cmxa)
 
 uninstall:
 	ocamlfind remove ulex
 
-ULEXING = utf8.mli utf8.ml ulexing.mli ulexing.ml utf16.mli utf16.ml
-ULEX = cset.ml ulex.mli ulex.ml pa_ulex.ml
-
-ulexing.cma: $(ULEXING)
-	ocamlc -a -o ulexing.cma $(ULEXING)
-ulexing.cmxa: $(ULEXING)
-	ocamlopt -a -o ulexing.cmxa $(ULEXING)
-
-pa_ulex.cma: $(ULEX)
-	ocamlc -a -o pa_ulex.cma -pp 'camlp4o pa_extend.cmo q_MLast.cmo' -I +camlp4 $(ULEX)
-
-pa_ulex.ml: pa_ulex.ml.src
-	ocaml mk_pa_ulex.ml
-
 clean:
-	rm -f *.cm* *~ test custom_ulexing *.o *.a *.html *.css pa_ulex.ml
+	$(OCAMLBUILD) -clean
+	rm -f *~ *.html *.css *.tar.gz
 
-view_test: pa_ulex.cma
-	camlp4o ./pa_ulex.cma pr_o.cmo -sep "\n" test.ml
+view_test: all
+	camlp4o -printer ocaml ./_build/pa_ulex.cma test.ml
 
-run_test: ulexing.cma pa_ulex.cma
-	ocamlc -o test -pp 'camlp4o ./pa_ulex.cma' ulexing.cma test.ml
-	./test
+run_test:
+	ocamlbuild test.byte
+	./test.byte
 
-custom_ulexing: ulexing.cma pa_ulex.cma
-	ocamlc -o custom_ulexing -pp 'camlp4o ./pa_ulex.cma' ulexing.cma custom_ulexing.ml
-
+custom_ulexing.byte:
+	$(OCAMLBUILD) custom_ulexing.byte
 
 doc:
 	ocamldoc -html ulexing.mli
 
 PACKAGE = ulex-$(VERSION)
-DISTRIB = CHANGES LICENSE META README Makefile *.ml *.mli *.ml.src
+DISTRIB = CHANGES LICENSE META README Makefile *.ml *.mli
 .PHONY: package
 package: clean
 	rm -Rf $(PACKAGE)
@@ -50,3 +45,9 @@ package: clean
 	cp -R $(DISTRIB) $(PACKAGE)/
 	tar czf $(PACKAGE).tar.gz $(PACKAGE)
 	rm -Rf $(PACKAGE)
+
+upload: 
+	$(MAKE) package
+	rsync -avz $(PACKAGE).tar.gz cduce@di.ens.fr:public_html/download
+	$(MAKE) doc
+	rsync -avz *.html *.css cduce@di.ens.fr:public_html/ulex
