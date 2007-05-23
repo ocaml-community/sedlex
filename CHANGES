@@ -1,4 +1,4 @@
-0.9
+1.0
      * Update to the new Camlp4 and to ocamlbuild (release for OCaml 3.10
        only), by Nicolas Pouillard.
 
