@@ -37,7 +37,7 @@ doc:
 	ocamldoc -html ulexing.mli
 
 PACKAGE = ulex-$(VERSION)
-DISTRIB = CHANGES LICENSE META README Makefile *.ml *.mli
+DISTRIB = CHANGES LICENSE META README Makefile _tags *.ml *.mli
 .PHONY: package
 package: clean
 	rm -Rf $(PACKAGE)
