@@ -49,6 +49,7 @@ package: clean
 
 upload: 
 	$(MAKE) package
-	rsync -avz $(PACKAGE).tar.gz cduce@di.ens.fr:public_html/download
+	rsync -avz $(PACKAGE).tar.gz brome.pps.jussieu.fr:/home/web/wwwcduce/public_html/download
 	$(MAKE) doc
-	rsync -avz *.html *.css cduce@di.ens.fr:public_html/ulex
+#	rsync -avz *.html *.css cduce@di.ens.fr:public_html/ulex
+	rsync -avz CHANGES *.html *.css brome.pps.jussieu.fr:/home/web/wwwcduce/public_html/ulex
