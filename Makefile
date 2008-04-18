@@ -1,4 +1,4 @@
-VERSION=1.0
+VERSION=1.1
 # Don't forget to change META file as well
 
 ALL=pa_ulex.cma ulexing.cma

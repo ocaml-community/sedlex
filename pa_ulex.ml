@@ -251,6 +251,13 @@ END
 
 
 
+let change_ids suffix = object
+  inherit Ast.map as super
+  method ident = function
+    | Ast.IdLid (loc, s) when String.length s > 6 && String.sub s 0 6 = "__ulex" -> Ast.IdLid (loc, s ^ suffix)
+    | i -> i
+end
+
 let () =
   let first = ref true in
   AstFilters.register_str_item_filter 
@@ -258,5 +265,6 @@ let () =
        assert(!first); first := false;
        let parts = List.map partition (Ulex.partitions ()) in
        let tables = List.map table (get_tables ()) in
-       <:str_item< $list:tables$; $list:parts$; $s$ >>
+       let suffix = "__" ^ Digest.to_hex (Digest.string (Marshal.to_string (parts, tables) [])) in
+       (change_ids suffix) # str_item <:str_item< $list:tables$; $list:parts$; $s$ >>
     )
