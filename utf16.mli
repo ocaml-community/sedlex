@@ -77,7 +77,7 @@ val from_utf16_stream: char Stream.t -> byte_order option -> Ulexing.lexbuf
   (** [from_utf16_stream s opt_bo] creates a lexbuf from an UTF-16
       encoded stream. If [opt_bo] matches with [None] the function
       expects a BOM (Byte Order Mark), and takes the byte order as
-      [Utf16.Big_endian] if it cannot find one. When [opt_bo] matches 
+      [Utf16.Big_endian] if it cannot find one. When [opt_bo] matches
       with [Some bo], [bo] is taken as byte order. In this case a
       leading BOM is kept in the stream - the lexer has to ignore it
       and a `wrong' BOM ([0xfffe]) will raise Utf16.InvalidCodepoint.
@@ -85,16 +85,16 @@ val from_utf16_stream: char Stream.t -> byte_order option -> Ulexing.lexbuf
 
 val from_utf16_channel: in_channel -> byte_order option-> Ulexing.lexbuf
   (** Works as [from_utf16_stream] with an [in_channel]. *)
-                                                                  
-val from_utf16_string: string -> byte_order option -> Ulexing.lexbuf 
+
+val from_utf16_string: string -> byte_order option -> Ulexing.lexbuf
   (** Works as [from_utf16_stream] with a [string]. *)
-                                                              
+
 val utf16_lexeme: Ulexing.lexbuf -> byte_order -> bool -> string
   (** [utf16_lexeme lb bo bom] as [Ulexing.lexeme] with a result encoded in
       UTF-16 in byte_order [bo] and starting with a BOM if [bom = true].
   *)
-                                                  
+
 val utf16_sub_lexeme: Ulexing.lexbuf -> int -> int -> byte_order -> bool -> string
-  (** [utf16_sub_lexeme lb pos len bo bom] as [Ulexing.sub_lexeme] with a 
+  (** [utf16_sub_lexeme lb pos len bo bom] as [Ulexing.sub_lexeme] with a
       result encoded in UTF-16 with byte order [bo] and starting with a BOM
       if [bom=true]  *)

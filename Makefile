@@ -1,43 +1,25 @@
-VERSION=1.1
+VERSION=1.99
 # Don't forget to change META file as well
 
-ALL=pa_ulex.cma ulexing.cma
-OCAMLBUILD=ocamlbuild -byte-plugin
+MODS=utf8.cmo ulexing.cmo utf16.cmo
 
-all::
-	$(OCAMLBUILD) $(ALL)
-all.opt::
-	$(OCAMLBUILD) $(ALL) $(ALL:.cma=.cmxa)
+all: ulexing.cma
 
-MODS=ulexing utf16 utf8
+ulexing.cma:
+	ocamlc -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
+	ocamlc -a -o ulexing.cma $(MODS)
 
-install: all
-	cd _build && $(MAKE) -f ../Makefile realinstall
+ulexing.cmxa:
+	ocamlopt -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
+	ocamlopt -a -o ulexing.cmxa $(MODS:.cmo=.cmx)
 
-realinstall:
-	ocamlfind install ulex ../META $(wildcard $(MODS:=.mli) $(MODS:=.cmi) $(MODS:=.cmx) pa_ulex.cma ulexing.a ulexing.cma ulexing.cmxa)
-
-uninstall:
-	ocamlfind remove ulex
 
 clean:
-	$(OCAMLBUILD) -clean
-	rm -f *~ *.html *.css *.tar.gz
-
-view_test: all
-	camlp4o -printer ocaml ./_build/pa_ulex.cma test.ml
-
-run_test:
-	ocamlbuild test.byte
-	./test.byte
-
-custom_ulexing.byte:
-	$(OCAMLBUILD) custom_ulexing.byte
-
+	rm -f *~ *.cm* *.a *.lib *.exe
 doc:
 	ocamldoc -html ulexing.mli
 
-PACKAGE = ulex-$(VERSION)
+PACKAGE = sedlex-$(VERSION)
 DISTRIB = CHANGES LICENSE META README Makefile _tags *.ml *.mli
 .PHONY: package
 package: clean
@@ -46,10 +28,3 @@ package: clean
 	cp -R $(DISTRIB) $(PACKAGE)/
 	tar czf $(PACKAGE).tar.gz $(PACKAGE)
 	rm -Rf $(PACKAGE)
-
-upload: 
-	$(MAKE) package
-	rsync -avz $(PACKAGE).tar.gz brome.pps.jussieu.fr:/home/web/wwwcduce/public_html/download
-	$(MAKE) doc
-#	rsync -avz *.html *.css cduce@di.ens.fr:public_html/ulex
-	rsync -avz CHANGES *.html *.css brome.pps.jussieu.fr:/home/web/wwwcduce/public_html/ulex

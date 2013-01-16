@@ -36,7 +36,7 @@ let next_code bo s pos bytes =
     and lower10 = w2 land 0x3ff in
     (0x10000 + upper10 + lower10, pos + 4)
   else raise MalFormed
-    
+
 let next_in_stream bo s =
   let c1 = Stream.next s in
   let c2 = Stream.next s in
@@ -71,13 +71,13 @@ let stream_from_char_stream opt_bo s =
                o in
          Some (from_stream o s (number_of_char_pair o c1 c2))
        with Stream.Failure -> None)
-    
+
 
 let compute_len opt_bo str pos bytes =
   let s = stream_from_char_stream opt_bo
     (Stream.from (fun i -> if i + pos >= bytes then None
                   else Some (str.[i + pos])))
-  in 
+  in
   let l = ref 0 in
   Stream.iter (fun _ -> incr l) s ;
   !l
@@ -89,13 +89,13 @@ let rec blit_to_int opt_bo s spos a apos bytes =
   let p = ref apos in
   try while true do a.(!p) <- Stream.next s ; incr p done; assert false
   with Stream.Failure -> ()
-    
+
 let to_int_array opt_bo s pos bytes =
   let len = compute_len opt_bo s pos bytes in
   let a = Array.create len 0 in
   blit_to_int opt_bo s pos a 0 bytes ;
   a
-    
+
 let store bo buf code =
   if code < 0x10000
   then (
@@ -134,11 +134,11 @@ let from_utf16_stream s opt_bo =
 
 let from_utf16_channel ic opt_bo =
   from_utf16_stream ((Stream.of_channel ic)) opt_bo
-    
+
 let from_utf16_string s opt_bo =
   let a = to_int_array opt_bo s 0 (String.length s) in
   Ulexing.from_int_array a
-       
+
 let utf16_sub_lexeme lb pos len bo bom  =
   from_int_array bo (Ulexing.get_buf lb) (Ulexing.get_start lb + pos) len bom
 

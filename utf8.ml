@@ -23,7 +23,7 @@ let next s i =
 	let n2 = Char.code s.[i+1] in
 	let n3 = Char.code s.[i+2] in
         if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-	let p = 
+	let p =
           ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
 	in
 	if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
@@ -74,9 +74,9 @@ let from_stream s =
 let compute_len s pos bytes =
   let rec aux n i =
     if i >= pos + bytes then if i = pos + bytes then n else raise MalFormed
-    else 
+    else
       let w = width.(Char.code s.[i]) in
-      if w > 0 then aux (succ n) (i + w) 
+      if w > 0 then aux (succ n) (i + w)
       else raise MalFormed
   in
   aux 0 pos
@@ -132,8 +132,8 @@ let from_int_array a apos len =
   aux apos len
 
 let stream_from_char_stream s =
-  Stream.from 
+  Stream.from
     (fun _ ->
        try Some (from_stream s)
        with Stream.Failure -> None)
-    
+
