@@ -1,19 +1,6 @@
 VERSION=1.99
 # Don't forget to change META file as well
 
-MODS=utf8.cmo sedlexing.cmo utf16.cmo
-
-all: ulexing.cma
-
-ulexing.cma:
-	ocamlc -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlc -a -o ulexing.cma $(MODS)
-
-ulexing.cmxa:
-	ocamlopt -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlopt -a -o ulexing.cmxa $(MODS:.cmo=.cmx)
-
-
 clean:
 	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj
 doc:

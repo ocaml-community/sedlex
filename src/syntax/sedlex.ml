@@ -1,8 +1,8 @@
 (* NFA *)
 
-type node = { 
-  id : int; 
-  mutable eps : node list; 
+type node = {
+  id : int;
+  mutable eps : node list;
   mutable trans : (Cset.t * node) list;
 }
 
@@ -48,7 +48,7 @@ let compile_re re =
 
 type state = node list
 
-let rec add_node state node = 
+let rec add_node state node =
   if List.memq node state then state else add_nodes (node::state) node.eps
 and add_nodes state nodes =
   List.fold_left add_node state nodes
@@ -65,8 +65,8 @@ let transition state =
   let t = norm (List.sort (fun (c1,n1) (c2,n2) -> n1.id - n2.id) t) in
 
   (* Split char sets so as to make them disjoint *)
-  let rec split (all,t) ((c0 : Cset.t),n0) = 
-    let t = 
+  let rec split (all,t) ((c0 : Cset.t),n0) =
+    let t =
       [(Cset.difference c0 all, [n0])] @
       List.map (fun (c,ns) -> (Cset.intersection c c0, n0::ns)) t @
       List.map (fun (c,ns) -> (Cset.difference c c0, ns)) t in
@@ -90,7 +90,7 @@ let find_alloc tbl counter x =
     incr counter;
     Hashtbl.add tbl x i;
     i
- 
+
 let part_tbl = Hashtbl.create 31
 let part_id = ref 0
 let get_part (t : Cset.t array) = find_alloc part_tbl part_id t
@@ -118,12 +118,12 @@ let compile rs =
   Array.iter (fun (i,_) -> init := add_node !init i) rs;
   ignore (aux !init);
   Array.init !counter (fun id -> List.assoc id !states_def)
-  
+
 let partitions () =
   let aux part =
     let seg = ref [] in
     Array.iteri
-      (fun i c -> 
+      (fun i c ->
 	 List.iter (fun (a,b) -> seg := (a,b,i) :: !seg) c)
       part;
      List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg in

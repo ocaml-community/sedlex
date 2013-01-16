@@ -1,3 +1,4 @@
+(*
 open Camlp4.PreCast
 open Syntax
 
@@ -21,7 +22,7 @@ let () =
       "xml_blank", Cset.blank;
 
       "tr8876_ident_char", Cset.tr8876_ident_char;
-    ] 
+    ]
 
 (* Decision tree for partitions *)
 
@@ -51,7 +52,7 @@ let limit = 8192
 
 let decision_table l =
   let rec aux m accu = function
-    | ((a,b,i) as x)::rem when (b < limit && i < 255)-> 
+    | ((a,b,i) as x)::rem when (b < limit && i < 255)->
 	aux (min a m) (x::accu) rem
     | rem -> m,accu,rem in
   match (aux max_int [] l : int * 'a list * 'b list) with
@@ -63,15 +64,15 @@ let decision_table l =
 
 let rec simplify min max = function
   | Lte (i,yes,no) ->
-      if i >= max then simplify min max yes 
+      if i >= max then simplify min max yes
       else if i < min then simplify min max no
       else Lte (i, simplify min i yes, simplify (i+1) max no)
   | x -> x
-		   
+
 
 let tables = Hashtbl.create 31
 let tables_counter = ref 0
-let get_tables () = 
+let get_tables () =
   let t = Hashtbl.fold (fun key x accu -> (x,key)::accu) tables [] in
   Hashtbl.clear tables;
   t
@@ -103,14 +104,14 @@ let table (n,t) = <:str_item< value $lid:n$ = $output_byte_array t$ >>
 let partition_name i = Printf.sprintf "__ulex_partition_%i" i
 
 let partition (i,p) =
-  let rec gen_tree = function 
+  let rec gen_tree = function
     | Lte (i,yes,no) ->
-	<:expr< if (c <= $`int:i$) 
+	<:expr< if (c <= $`int:i$)
 	then $gen_tree yes$ else $gen_tree no$ >>
     | Return i ->
 	<:expr< $`int:i$ >>
     | Table (offset, t) ->
-	let c = if offset = 0 then <:expr< c >> 
+	let c = if offset = 0 then <:expr< c >>
 	else <:expr< (c - $`int:offset$) >> in
 	<:expr< Char.code ($lid: table_name t$.[$c$]) - 1>>
   in
@@ -123,30 +124,30 @@ let partition (i,p) =
 
 let best_final final =
   let fin = ref None in
-  Array.iteri 
+  Array.iteri
     (fun i b -> if b && (!fin = None) then fin := Some i) final;
   !fin
 
 let call_state auto state =
   match auto.(state) with (_,trans,final) ->
-    if Array.length trans = 0 
+    if Array.length trans = 0
     then match best_final final with
       | Some i -> <:expr< $`int:i$ >>
       | None -> assert false
     else
       let f = Printf.sprintf "__ulex_state_%i" state in
       <:expr< $lid:f$ lexbuf >>
-	
 
-let gen_state auto _loc i (part,trans,final) = 
+
+let gen_state auto _loc i (part,trans,final) =
   let f = Printf.sprintf "__ulex_state_%i" i in
   let p = partition_name part in
   let cases =
-    Array.mapi 
-      (fun i j -> <:match_case< $`int:i$ -> $call_state auto j$ >>) 
+    Array.mapi
+      (fun i j -> <:match_case< $`int:i$ -> $call_state auto j$ >>)
       trans in
   let cases = Array.to_list cases in
-  let body = 
+  let body =
     <:expr<
       match ($lid:p$ (Ulexing.next lexbuf)) with
       [ $list:cases$
@@ -155,7 +156,7 @@ let gen_state auto _loc i (part,trans,final) =
     <:binding< $lid:f$ = fun lexbuf -> $body$ >> in
   match best_final final with
     | None -> ret body
-    | Some i -> 
+    | Some i ->
 	if Array.length trans = 0 then <:binding<>> else
 	  ret
 	  <:expr< do { Ulexing.mark lexbuf $`int:i$;  $body$ } >>
@@ -185,7 +186,7 @@ let char_int s =
 let regexp_for_string s =
   let rec aux n =
     if n = String.length s then Ulex.eps
-    else 
+    else
       Ulex.seq (Ulex.chars (Cset.singleton (Char.code s.[n]))) (aux (succ n))
   in aux 0
 
@@ -202,14 +203,14 @@ EXTEND Gram
  str_item: [
    [ "let"; LIDENT "regexp"; x = LIDENT; "="; r = regexp ->
        if Hashtbl.mem named_regexps x then
-         Printf.eprintf 
+         Printf.eprintf
            "pa_ulex (warning): multiple definition of named regexp '%s'\n"
            x;
      Hashtbl.add named_regexps x r;
        <:str_item<>>
    ]
  ];
- 
+
  regexp: [
    [ r1 = regexp; "|"; r2 = regexp -> Ulex.alt r1 r2 ]
  | [ r1 = regexp; r2 = regexp -> Ulex.seq r1 r2 ]
@@ -225,12 +226,12 @@ EXTEND Gram
    | x = LIDENT ->
        try  Hashtbl.find named_regexps x
        with Not_found ->
-         failwith 
+         failwith
            ("pa_ulex (error): reference to unbound regexp name `"^x^"'")
    ]
  ];
 
- chr: [ 
+ chr: [
    [ `CHAR (c,_) -> Char.code c
    | i = INT -> char_int i ]
  ];
@@ -239,10 +240,10 @@ EXTEND Gram
    [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
    | c = chr -> Cset.singleton c
    | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
-   | `STRING (s,_) -> 
+   | `STRING (s,_) ->
        let c = ref Cset.empty in
        for i = 0 to String.length s - 1 do
-	 c := Cset.union !c (Cset.singleton (Char.code s.[i])) 
+	 c := Cset.union !c (Cset.singleton (Char.code s.[i]))
        done;
        !c
    ]
@@ -260,7 +261,7 @@ end
 
 let () =
   let first = ref true in
-  AstFilters.register_str_item_filter 
+  AstFilters.register_str_item_filter
     (fun s ->
        assert(!first); first := false;
        let parts = List.map partition (Ulex.partitions ()) in
@@ -268,3 +269,4 @@ let () =
        let suffix = "__" ^ Digest.to_hex (Digest.string (Marshal.to_string (parts, tables) [])) in
        (change_ids suffix) # str_item <:str_item< $list:tables$; $list:parts$; $s$ >>
     )
+*)
