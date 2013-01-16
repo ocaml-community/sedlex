@@ -1,16 +1,15 @@
-(*
-open Camlp4.PreCast
-open Syntax
+open Location
+open Asttypes
+open Ast_mapper
 
-let _loc = Loc.ghost
+(* Named regexps *)
 
-(* Named regexp *)
+let named_regexps : (string, Sedlex.regexp) Hashtbl.t = Hashtbl.create 13
 
-let named_regexps =
-  (Hashtbl.create 13 : (string, Ulex.regexp) Hashtbl.t)
+(* Predefined regexps *)
 
 let () =
-  List.iter (fun (n,c) -> Hashtbl.add named_regexps n (Ulex.chars c))
+  List.iter (fun (n,c) -> Hashtbl.add named_regexps n (Sedlex.chars c))
     [
       "eof", Cset.eof;
       "xml_letter", Cset.letter;
@@ -32,19 +31,20 @@ type decision_tree =
   | Return of int
 
 let decision l =
-  let l = List.map (fun (a,b,i) -> (a,b,Return i)) l in
+  let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
-    | (a1,b1,d1) :: (a2,b2,d2) :: rest ->
+    | (a1, b1, d1) :: (a2, b2, d2) :: rest ->
 	let x =
 	  if b1 + 1 = a2 then d2
-	  else Lte (a2 - 1,Return (-1), d2)
+	  else Lte (a2 - 1, Return (-1), d2)
 	in
-	(a1,b2, Lte (b1,d1, x)) :: (merge2 rest)
-    | rest -> rest in
+	(a1, b2, Lte (b1, d1, x)) :: merge2 rest
+    | rest -> rest
+  in
   let rec aux = function
-    | _::_::_ as l -> aux (merge2 l)
-    | [(a,b,d)] -> Lte (a - 1, Return (-1), Lte (b, d, Return (-1)))
-    | _ -> Return (-1)
+    | [(a, b, d)] -> Lte (a - 1, Return (-1), Lte (b, d, Return (-1)))
+    | [] -> Return (-1)
+    | l -> aux (merge2 l)
   in
   aux l
 
@@ -52,15 +52,18 @@ let limit = 8192
 
 let decision_table l =
   let rec aux m accu = function
-    | ((a,b,i) as x)::rem when (b < limit && i < 255)->
-	aux (min a m) (x::accu) rem
-    | rem -> m,accu,rem in
-  match (aux max_int [] l : int * 'a list * 'b list) with
-    | _,[], _ -> decision l
-    | min,((_,max,_)::_ as l1), l2 ->
-	let arr = Array.create (max-min+1) 0 in
-	List.iter (fun (a,b,i) -> for j = a to b do arr.(j-min) <- i + 1 done) l1;
-	Lte (min-1, Return (-1), Lte (max, Table (min,arr), decision l2))
+    | ((a, b, i) as x)::rem when b < limit && i < 255->
+	aux (min a m) (x :: accu) rem
+    | rem -> m, accu, rem
+  in
+  let (min, table, rest) = aux max_int [] l in
+  match table with
+  | [] -> decision l
+  | (_, max, _) :: _ ->
+      let arr = Array.create (max - min + 1) 0 in
+      let set (a, b, i) = for j = a to b do arr.(j - min) <- i + 1 done in
+      List.iter set table;
+      Lte (min - 1, Return (-1), Lte (max, Table (min, arr), decision rest))
 
 let rec simplify min max = function
   | Lte (i,yes,no) ->
@@ -69,18 +72,21 @@ let rec simplify min max = function
       else Lte (i, simplify min i yes, simplify (i+1) max no)
   | x -> x
 
+let decision_table p =
+  simplify (-1) (Cset.max_code) (decision_table p)
 
-let tables = Hashtbl.create 31
+let tables : (int array, string) Hashtbl.t = Hashtbl.create 31
 let tables_counter = ref 0
 let get_tables () =
-  let t = Hashtbl.fold (fun key x accu -> (x,key)::accu) tables [] in
+  let t = Hashtbl.fold (fun key x accu -> (x, key) :: accu) tables [] in
   Hashtbl.clear tables;
   t
+
 let table_name t =
   try Hashtbl.find tables t
   with Not_found ->
     incr tables_counter;
-    let n = Printf.sprintf "__ulex_table_%i" !tables_counter in
+    let n = Printf.sprintf "__sedlex_table_%i" !tables_counter in
     Hashtbl.add tables t n;
     n
 
@@ -96,29 +102,44 @@ let output_byte_array v =
     output_byte b (v.(i) land 0xFF);
     if i land 15 = 15 then Buffer.add_string b "\\\n    "
   done;
-  let s = Buffer.contents b in
-  <:expr< $str:s$ >>
+  E.constant (Const_string (Buffer.contents b))
 
-let table (n,t) = <:str_item< value $lid:n$ = $output_byte_array t$ >>
+let glb_value name def =
+  M.value Nonrecursive [P.var (Location.mknoloc name), def]
 
-let partition_name i = Printf.sprintf "__ulex_partition_%i" i
+let table (n, t) =
+  glb_value n (output_byte_array t)
 
-let partition (i,p) =
+let partition_name i = Printf.sprintf "__sedlex_partition_%i" i
+
+let eid s = E.ident (mknoloc (Longident.parse s))
+let appfun s l = E.apply_nolabs (eid s) l
+let int i = E.constant (Const_int i)
+
+let partition (i, p) =
   let rec gen_tree = function
-    | Lte (i,yes,no) ->
-	<:expr< if (c <= $`int:i$)
-	then $gen_tree yes$ else $gen_tree no$ >>
-    | Return i ->
-	<:expr< $`int:i$ >>
+    | Lte (i, yes, no) ->
+        E.ifthenelse
+            (appfun "<=" [eid "c"; int i])
+            (gen_tree yes)
+            (Some (gen_tree no))
+    | Return i -> int i
     | Table (offset, t) ->
-	let c = if offset = 0 then <:expr< c >>
-	else <:expr< (c - $`int:offset$) >> in
-	<:expr< Char.code ($lid: table_name t$.[$c$]) - 1>>
+	let c =
+          if offset = 0 then eid "c"
+	  else appfun "-" [eid "c"; int offset]
+        in
+        appfun "-"
+          [
+           appfun "Char.code" [appfun "String.get" [eid (table_name t); c]];
+           int 1;
+          ]
   in
-  let body = gen_tree (simplify (-1) (Cset.max_code) (decision_table p)) in
-  let f = partition_name i in
-  <:str_item< value $lid:f$ = fun c -> $body$ >>
+  let body = gen_tree (decision_table p) in
+  glb_value (partition_name i)
+    (E.function_ "" None [P.var (mknoloc "c"), body])
 
+(*
 
 (* Code generation for the automata *)
 
@@ -135,12 +156,12 @@ let call_state auto state =
       | Some i -> <:expr< $`int:i$ >>
       | None -> assert false
     else
-      let f = Printf.sprintf "__ulex_state_%i" state in
+      let f = Printf.sprintf "__sedlex_state_%i" state in
       <:expr< $lid:f$ lexbuf >>
 
 
 let gen_state auto _loc i (part,trans,final) =
-  let f = Printf.sprintf "__ulex_state_%i" i in
+  let f = Printf.sprintf "__sedlex_state_%i" i in
   let p = partition_name part in
   let cases =
     Array.mapi
@@ -149,9 +170,9 @@ let gen_state auto _loc i (part,trans,final) =
   let cases = Array.to_list cases in
   let body =
     <:expr<
-      match ($lid:p$ (Ulexing.next lexbuf)) with
+      match ($lid:p$ (Sedlexing.next lexbuf)) with
       [ $list:cases$
-      | _ -> Ulexing.backtrack lexbuf ] >> in
+      | _ -> Sedlexing.backtrack lexbuf ] >> in
   let ret body =
     <:binding< $lid:f$ = fun lexbuf -> $body$ >> in
   match best_final final with
@@ -159,21 +180,21 @@ let gen_state auto _loc i (part,trans,final) =
     | Some i ->
 	if Array.length trans = 0 then <:binding<>> else
 	  ret
-	  <:expr< do { Ulexing.mark lexbuf $`int:i$;  $body$ } >>
+	  <:expr< do { Sedlexing.mark lexbuf $`int:i$;  $body$ } >>
 
 
 let gen_definition _loc l =
   let brs = Array.of_list l in
   let rs = Array.map fst brs in
-  let auto = Ulex.compile rs in
+  let auto = Sedlex.compile rs in
 
   let cases = Array.mapi (fun i (_,e) -> <:match_case< $`int:i$ -> $e$ >>) brs in
   let states = Array.mapi (gen_state auto _loc) auto in
   <:expr< fun lexbuf ->
     let rec $list:Array.to_list states$ in
-    do { Ulexing.start lexbuf;
-         match __ulex_state_0 lexbuf with
-         [ $list:Array.to_list cases$ | _ -> raise Ulexing.Error ] } >>
+    do { Sedlexing.start lexbuf;
+         match __sedlex_state_0 lexbuf with
+         [ $list:Array.to_list cases$ | _ -> raise Sedlexing.Error ] } >>
 
 
 (* Lexer specification parser *)
@@ -185,9 +206,9 @@ let char_int s =
 
 let regexp_for_string s =
   let rec aux n =
-    if n = String.length s then Ulex.eps
+    if n = String.length s then Sedlex.eps
     else
-      Ulex.seq (Ulex.chars (Cset.singleton (Char.code s.[n]))) (aux (succ n))
+      Sedlex.seq (Sedlex.chars (Cset.singleton (Char.code s.[n]))) (aux (succ n))
   in aux 0
 
 
@@ -204,7 +225,7 @@ EXTEND Gram
    [ "let"; LIDENT "regexp"; x = LIDENT; "="; r = regexp ->
        if Hashtbl.mem named_regexps x then
          Printf.eprintf
-           "pa_ulex (warning): multiple definition of named regexp '%s'\n"
+           "pa_sedlex (warning): multiple definition of named regexp '%s'\n"
            x;
      Hashtbl.add named_regexps x r;
        <:str_item<>>
@@ -212,22 +233,22 @@ EXTEND Gram
  ];
 
  regexp: [
-   [ r1 = regexp; "|"; r2 = regexp -> Ulex.alt r1 r2 ]
- | [ r1 = regexp; r2 = regexp -> Ulex.seq r1 r2 ]
- | [ r = regexp; "*" -> Ulex.rep r
-   | r = regexp; "+" -> Ulex.plus r
-   | r = regexp; "?" -> Ulex.alt Ulex.eps r
+   [ r1 = regexp; "|"; r2 = regexp -> Sedlex.alt r1 r2 ]
+ | [ r1 = regexp; r2 = regexp -> Sedlex.seq r1 r2 ]
+ | [ r = regexp; "*" -> Sedlex.rep r
+   | r = regexp; "+" -> Sedlex.plus r
+   | r = regexp; "?" -> Sedlex.alt Sedlex.eps r
    | "("; r = regexp; ")" -> r
-   | "_" -> Ulex.chars Cset.any
-   | c = chr -> Ulex.chars (Cset.singleton c)
+   | "_" -> Sedlex.chars Cset.any
+   | c = chr -> Sedlex.chars (Cset.singleton c)
    | `STRING (s,_) -> regexp_for_string s
-   | "["; cc = ch_class; "]" -> Ulex.chars cc
-   | "[^"; cc = ch_class; "]" -> Ulex.chars (Cset.difference Cset.any cc)
+   | "["; cc = ch_class; "]" -> Sedlex.chars cc
+   | "[^"; cc = ch_class; "]" -> Sedlex.chars (Cset.difference Cset.any cc)
    | x = LIDENT ->
        try  Hashtbl.find named_regexps x
        with Not_found ->
          failwith
-           ("pa_ulex (error): reference to unbound regexp name `"^x^"'")
+           ("pa_sedlex (error): reference to unbound regexp name `"^x^"'")
    ]
  ];
 
@@ -255,7 +276,7 @@ END
 let change_ids suffix = object
   inherit Ast.map as super
   method ident = function
-    | Ast.IdLid (loc, s) when String.length s > 6 && String.sub s 0 6 = "__ulex" -> Ast.IdLid (loc, s ^ suffix)
+    | Ast.IdLid (loc, s) when String.length s > 6 && String.sub s 0 6 = "__sedlex" -> Ast.IdLid (loc, s ^ suffix)
     | i -> i
 end
 
@@ -264,7 +285,7 @@ let () =
   AstFilters.register_str_item_filter
     (fun s ->
        assert(!first); first := false;
-       let parts = List.map partition (Ulex.partitions ()) in
+       let parts = List.map partition (Sedlex.partitions ()) in
        let tables = List.map table (get_tables ()) in
        let suffix = "__" ^ Digest.to_hex (Digest.string (Marshal.to_string (parts, tables) [])) in
        (change_ids suffix) # str_item <:str_item< $list:tables$; $list:parts$; $s$ >>
