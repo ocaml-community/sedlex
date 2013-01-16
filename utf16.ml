@@ -130,17 +130,17 @@ let from_stream bo s =
 
 
 let from_utf16_stream s opt_bo =
-  Ulexing.from_stream (stream_from_char_stream opt_bo s)
+  Sedlexing.from_stream (stream_from_char_stream opt_bo s)
 
 let from_utf16_channel ic opt_bo =
   from_utf16_stream ((Stream.of_channel ic)) opt_bo
 
 let from_utf16_string s opt_bo =
   let a = to_int_array opt_bo s 0 (String.length s) in
-  Ulexing.from_int_array a
+  Sedlexing.from_int_array a
 
 let utf16_sub_lexeme lb pos len bo bom  =
-  from_int_array bo (Ulexing.get_buf lb) (Ulexing.get_start lb + pos) len bom
+  from_int_array bo (Sedlexing.get_buf lb) (Sedlexing.get_start lb + pos) len bom
 
 let utf16_lexeme lb bo bom =
-  utf16_sub_lexeme lb 0 (Ulexing.get_pos lb - Ulexing.get_start lb) bo bom
+  utf16_sub_lexeme lb 0 (Sedlexing.get_pos lb - Sedlexing.get_start lb) bo bom

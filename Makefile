@@ -1,7 +1,7 @@
 VERSION=1.99
 # Don't forget to change META file as well
 
-MODS=utf8.cmo ulexing.cmo utf16.cmo
+MODS=utf8.cmo sedlexing.cmo utf16.cmo
 
 all: ulexing.cma
 
@@ -15,7 +15,7 @@ ulexing.cmxa:
 
 
 clean:
-	rm -f *~ *.cm* *.a *.lib *.exe
+	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj
 doc:
 	ocamldoc -html ulexing.mli
 

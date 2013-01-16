@@ -73,7 +73,7 @@ val store: byte_order -> Buffer.t -> int -> unit
 
 
 
-val from_utf16_stream: char Stream.t -> byte_order option -> Ulexing.lexbuf
+val from_utf16_stream: char Stream.t -> byte_order option -> Sedlexing.lexbuf
   (** [from_utf16_stream s opt_bo] creates a lexbuf from an UTF-16
       encoded stream. If [opt_bo] matches with [None] the function
       expects a BOM (Byte Order Mark), and takes the byte order as
@@ -83,18 +83,18 @@ val from_utf16_stream: char Stream.t -> byte_order option -> Ulexing.lexbuf
       and a `wrong' BOM ([0xfffe]) will raise Utf16.InvalidCodepoint.
     *)
 
-val from_utf16_channel: in_channel -> byte_order option-> Ulexing.lexbuf
+val from_utf16_channel: in_channel -> byte_order option-> Sedlexing.lexbuf
   (** Works as [from_utf16_stream] with an [in_channel]. *)
 
-val from_utf16_string: string -> byte_order option -> Ulexing.lexbuf
+val from_utf16_string: string -> byte_order option -> Sedlexing.lexbuf
   (** Works as [from_utf16_stream] with a [string]. *)
 
-val utf16_lexeme: Ulexing.lexbuf -> byte_order -> bool -> string
-  (** [utf16_lexeme lb bo bom] as [Ulexing.lexeme] with a result encoded in
+val utf16_lexeme: Sedlexing.lexbuf -> byte_order -> bool -> string
+  (** [utf16_lexeme lb bo bom] as [Sedlexing.lexeme] with a result encoded in
       UTF-16 in byte_order [bo] and starting with a BOM if [bom = true].
   *)
 
-val utf16_sub_lexeme: Ulexing.lexbuf -> int -> int -> byte_order -> bool -> string
-  (** [utf16_sub_lexeme lb pos len bo bom] as [Ulexing.sub_lexeme] with a
+val utf16_sub_lexeme: Sedlexing.lexbuf -> int -> int -> byte_order -> bool -> string
+  (** [utf16_sub_lexeme lb pos len bo bom] as [Sedlexing.sub_lexeme] with a
       result encoded in UTF-16 with byte order [bo] and starting with a BOM
       if [bom=true]  *)
