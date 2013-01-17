@@ -1,4 +1,10 @@
+(* The package sedlex is released under the terms of an MIT-like license. *)
+(* See the attached LICENSE file.                                         *)
+(* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
+
 exception InvalidCodepoint of int
+exception MalFormed
+
 
 let eof = -1
 
@@ -11,18 +17,14 @@ type lexbuf = {
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
 			    in the input stream *)
-  mutable pos : int;
-  mutable start : int; (* First char we need to keep visible *)
+  mutable pos: int;
+  mutable start: int; (* First char we need to keep visible *)
 
-  mutable marked_pos : int;
-  mutable marked_val : int;
+  mutable marked_pos: int;
+  mutable marked_val: int;
 
   mutable finished: bool;
 }
-
-let get_buf lb = lb.buf
-let get_pos lb = lb.pos
-let get_start lb = lb.start
 
 let chunk_size = 512
 
@@ -121,8 +123,10 @@ let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
 
 let sub_lexeme lexbuf pos len =
   Array.sub lexbuf.buf (lexbuf.start + pos) len
+
 let lexeme lexbuf =
   Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
+
 let lexeme_char lexbuf pos =
   lexbuf.buf.(lexbuf.start + pos)
 
@@ -163,8 +167,6 @@ module Latin1 = struct
     sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
 end
 
-
-exception MalFormed
 
 module Utf8 = struct
   module Helper = struct
@@ -431,8 +433,8 @@ module Utf16 = struct
     from_int_array a
 
   let sub_lexeme lb pos len bo bom  =
-    Helper.from_int_array bo (get_buf lb) (get_start lb + pos) len bom
+    Helper.from_int_array bo lb.buf (lb.start + pos) len bom
 
   let lexeme lb bo bom =
-    sub_lexeme lb 0 (get_pos lb - get_start lb) bo bom
+    sub_lexeme lb 0 (lb.pos - lb.start) bo bom
 end

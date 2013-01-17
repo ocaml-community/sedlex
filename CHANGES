@@ -1,3 +1,7 @@
+1.99
+     * First version of sedlex.  The history below refers to ulex, the ancestor
+       or sedlex implemented with Camlp4.
+
 1.1
      * Generate (more) globally unique identifiers to avoid conflicts when open'ing another module
        processed by ulex (issue reported by Gerd Stolpmann)

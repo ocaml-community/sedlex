@@ -1,7 +1,7 @@
-Ulex: a OCaml lexer generator for Unicode
+sedlex: a OCaml lexer generator for Unicode
 
 License:
-  Copyright (C) 2003, 2004, 2005, 2006 Alain Frisch
+  Copyright (C) 2003, 2004, 2005, 2006, 2013 Alain Frisch and LexiFi
   distributed under the terms of an MIT-like license : see LICENSE
 
 Author:
@@ -11,91 +11,87 @@ Author:
 --------------------------------------------------------------------------
 Overview
 
-- ulex is a lexer generator.
+- sedlex is a lexer generator for OCaml.
 
-- it is implemented as an OCaml syntax extension:
-  lexer specifications are embedded in regular OCaml code.
+- It is implemented as an OCaml syntax tree rewriter (-ppx).  Lexer
+  specifications are embedded in regular OCaml code and use the
+  standard OCaml syntax (interpreted in a specific way).
 
-- the lexers work with a new kind of "lexbuf" that supports Unicode;
-  a single lexer can work with arbitrary encodings of the input stream.
+- The lexers work with a new kind of "lexbuf" that supports Unicode.
+  A single lexer can work with arbitrary encodings of the input
+  stream.
+
+- sedlex is the successor of the ulex project, which was implemented
+  as a Camlp4 syntax extension.
 
 --------------------------------------------------------------------------
 Lexer specifications
 
-ulex adds a new kind of expression to OCaml: lexer definitions.
+sedlex adds a new kind of expression to OCaml: lexer definitions.
 The syntax for the new construction is:
 
-  lexer
-    R1 -> e1
-  | R2 -> e2
+  match SEDLEX lexbuf with
+  | R1 -> e1
   ...
   | Rn -> en
+  | _  -> def
 
-where the Ri are regular expressions and the ei are OCaml expressions
-(called actions).  The keyword lexer can optionally be followed by a
-vertical var.  The type of this expression if Ulexing.lexbuf -> t
-where t is the common type of all the actions.
+(The first vertical bar is optional.)
 
-Unlike ocamllex, lexers work on stream of Unicode code points,
-not bytes.
+where:
+ - lexbuf is an arbitrary lowercase identifier, which must refer to
+   an existing value of type [Sedlexing.lexbuf].
+ - the Ri are regular expressions (see below);
+ - the ei and def are OCaml expressions (called actions) of the same type
+   (the type for the whole lexer definitioon).
 
-The actions have access to a variable "lexbuf", of type
-Ulexing.lexbuf. They can call function from the Ulexing module to
-extract (parts of) the matched lexeme, in the desired encoding.
+Unlike ocamllex, lexers work on stream of Unicode codepoints, not
+bytes.
 
-It is legal to define mutually recursive lexers
-with additional arguments:
+The actions can call functions from the Sedlexing module to extract
+(parts of) the matched lexeme, in the desired encoding.
 
- let rec lex1 x y = lexer 'a' -> lex2 0 1 lexbuf | _ -> ...
- and lex2 a b = lexer ...
+Regular expressions are syntactically OCaml patterns:
+
+ - "...." (string constant): recognize the specified string
+ - '....' (character constant) : recognize the specified character
+ - i (integer constant) : recognize the specified codepoint
+ - R1 | R2 : alternation
+ - R1, R2, ..., Rn : concatenation
+ - Star R : Kleene star (0 or more repetition)
+ - Plus R : equivalent to R, R*
+ - Opt R : equivalent to ("" | R)
+ - Chars "..." : recognize any character in the string
+ - Range (i, j) : recognize any codepoint between i and j
+ - lid (lowercase identifier) : reference a named regexp (see below)
+
+Note:
+ - The OCaml source is assumed to be encoded in Latin1 (for string
+   and character literals).
 
 
-The syntax of regular expressions is derived from ocamllex.
-Additional features:
+It is possible to define named regular expressions with the following
+construction, that can appear in place of of structure item:
 
- - integer literals, where character literal are expected.
-   They represent a Unicode code point.
-   E.g.:
+  let R as lid = SEDLEX.regexp
 
-      [ 'a'-'z' 1000-1500 ]   65
+where lid is the regexp name to be defined and R its definition.  The
+right-hand side must be exactly "SEDLEX.regexp".  The scope of the
+"lid" regular expression is the rest of the structure, after the
+definition.
 
- - inside square brackets, a string represents the union of all its
-   characters
+The same syntax can be used for local binding:
 
-Note: OCaml source files are supposed to be encoded in Latin1.
+  let R as lid = SEDLEX.regexp in
+  body
 
-It is possible to define named regular expressions with
-the following construction, that can appear in place of
-of structure item:
-
-  let regexp n = R
-
-where n is the regexp name to be defined.
-
-Because ulex is implemented as a syntax extension, it can deal
-with both original and revised syntax (and possibly others).
-
-Note that lexer specifications need not be named. Here is
-an example:
-
-  (lexer ("#!" [^ '\n']* "\n")? -> ()) lexbuf
-
---------------------------------------------------------------------------
-Scoping rules for regular expressions declarations
-
-Regexp declarations look pretty-much like regular OCaml let-bindings.
-However, they can only be used as structure item (no local
-binding let regexp n = R in ...). Moreover, they don't respect
-OCaml scoping rule. Indeed, the lexical scope of a given
-"let regexp" is the whole source file following the declaration.
-Also the regexps names are not exported by a module, and you cannot
-use qualified names A.n (where n is a regexp defined in module A).
-
+The scope of "lid" is the body expression.
 
 --------------------------------------------------------------------------
 Predefined regexps
 
-ulex provides a set of predefined regexps:
+sedlex provides a set of predefined regexps:
+- any: any character
 - eof: the virtual end-of-file character
 - xml_letter, xml_digit, xml_extender, xml_base_char, xml_ideographic,
   xml_combining_char, xml_blank: as defined by the XML recommandation
@@ -104,37 +100,31 @@ ulex provides a set of predefined regexps:
 --------------------------------------------------------------------------
 Running a lexer
 
-To run a lexer, you must call it on a Ulexing.lexbuf.
-Such an object represents a Unicode buffer. It can be created
-from Latin1-encoded or utf8-encoded strings, stream, or channels,
-or from integer arrays or streams (which represent Unicode code points).
-
-See the interface of the module Ulexing.
-
-There is also some support for parsing Utf-16 encoded streams
-and manipulating utf16 strings. See the interface of the module Utf16.
+See the interface of the Sedlexing module for a description of how to
+create lexbuf values (from strings, stream or channels encoded in
+Latin1, utf8 or utf16, or from integer arrays or streams representing
+Unicode code points).
 
 It is possible to work with a custom implementation for lex buffers.
-To do this, you just have to ensure that a module called
-Ulexing is in scope of your lexer specifications. See
-custom_ulexing.ml in the distribution for an example,
-and the interface of Ulexing for a specification of what the module
-should export.
+To do this, you just have to ensure that a module called Sedlexing is
+in scope of your lexer specifications, and that it defines at least
+the following functions: start, next, mark, backtrack.  See the interface
+of the Sedlexing module for more information.
 
 
 --------------------------------------------------------------------------
-Using ulex
+Using sedlex
 
-The first thing to do is to compile and install ulex.
-You need recent versions of OCaml.
+The first thing to do is to compile and install sedlex.  You need a
+recent version of OCaml.
 
   make all
-  make all.opt (* optional *)
+  make opt (* optional *)
 
 1. With findlib
 
-If you have findlib, you can use it to install and use ulex.
-The name of the findlib package is "ulex".
+If you have findlib, you can use it to install and use sedlex.
+The name of the findlib package is "sedlex".
 
 Installation:
 
@@ -142,18 +132,18 @@ Installation:
 
 Compilation of OCaml files with lexer specifications:
 
-  ocamlfind ocamlc -c -package ulex -syntax camlp4o my_file.ml
+  ocamlfind ocamlc -c -package sedlex -ppx "...." my_file.ml
 
-When linking, you must also include the ulex package:
-  ocamlfind ocamlc -o my_prog -linkpkg -package ulex my_file.cmo
+When linking, you must also include the sedlex package:
+  ocamlfind ocamlc -o my_prog -linkpkg -package sedlex my_file.cmo
 
 
 2. Without findlib
 
-You can use ulex without findlib. To compile, you need to run the source
-file through the Camlp4 syntax extension pa_ulex.cma. Moreover, you need to 
-link the application with the runtime support library for ulex 
-(ulexing.cma / ulexing.cmxa).
+You can use sedlex without findlib. To compile, you need to run the
+source file through -ppx rewriter sedlex.exe. Moreover, you need to
+link the application with the runtime support library for sedlex
+(sedlexing.cma / sedlexing.cmxa).
 
 --------------------------------------------------------------------------
 Acknowledgments
