@@ -3,6 +3,16 @@ VERSION=1.99
 
 clean:
 	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj
+	(cd src/lib && make clean)
+	(cd src/syntax && make clean)
+
+all:
+	(cd src/lib && make all)
+	(cd src/syntax && make all)
+
+test: clean all
+	cd examples && make clean tokenizer.exe && ./tokenizer.exe
+
 doc:
 	ocamldoc -html ulexing.mli
 

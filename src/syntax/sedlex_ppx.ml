@@ -4,14 +4,25 @@ open Location
 open Asttypes
 open Ast_mapper
 
+let eid s = E.ident (mknoloc (Longident.parse s))
+let appfun s l = E.apply_nolabs (eid s) l
+let int i = E.constant (Const_int i)
+let pint i = P.constant (Const_int i)
+let pvar name = P.var (Location.mknoloc name)
+let glb_value name def = M.value Nonrecursive [pvar name, def]
+let fun_ arg body = E.function_ "" None [pvar arg, body]
+
+
 (* Named regexps *)
 
-let named_regexps : (string, Sedlex.regexp) Hashtbl.t = Hashtbl.create 13
+module StringMap = Map.Make(struct
+  type t = string
+  let compare = compare
+end)
 
-(* Predefined regexps *)
-
-let () =
-  List.iter (fun (n,c) -> Hashtbl.add named_regexps n (Sedlex.chars c))
+let builtin_regexps =
+  List.fold_left (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
+    StringMap.empty
     [
       "eof", Cset.eof;
       "xml_letter", Cset.letter;
@@ -92,25 +103,11 @@ let table_name t =
     Hashtbl.add tables t n;
     n
 
-let output_byte buf b =
-  Buffer.add_char buf '\\';
-  Buffer.add_char buf (Char.chr(48 + b / 100));
-  Buffer.add_char buf (Char.chr(48 + (b / 10) mod 10));
-  Buffer.add_char buf (Char.chr(48 + b mod 10))
-
 let output_byte_array v =
   let n = Array.length v in
   let s = String.create n in
   for i = 0 to n - 1 do s.[i] <- Char.chr v.(i) done;
   E.constant (Const_string s)
-
-let eid s = E.ident (mknoloc (Longident.parse s))
-let appfun s l = E.apply_nolabs (eid s) l
-let int i = E.constant (Const_int i)
-let pint i = P.constant (Const_int i)
-let pvar name = P.var (Location.mknoloc name)
-let glb_value name def = M.value Nonrecursive [pvar name, def]
-let fun_ arg body = E.function_ "" None [pvar arg, body]
 
 let table (n, t) =
   glb_value n (output_byte_array t)
@@ -205,61 +202,65 @@ let regexp_for_string s =
       Sedlex.seq (regexp_for_char s.[n]) (aux (succ n))
   in aux 0
 
-let rec regexp_of_pattern p =
-  match p.ppat_desc with
-  | Ppat_or (p1, p2) -> Sedlex.alt (regexp_of_pattern p1) (regexp_of_pattern p2)
-  | Ppat_tuple (p :: pl) ->
-      List.fold_left (fun r p -> Sedlex.seq r (regexp_of_pattern p))
-        (regexp_of_pattern p)
-        pl
-  | Ppat_construct ({txt = Lident "Star"}, Some p, _) ->
-      Sedlex.rep (regexp_of_pattern p)
-  | Ppat_construct ({txt = Lident "Plus"}, Some p, _) ->
-      Sedlex.plus (regexp_of_pattern p)
-  | Ppat_construct ({txt = Lident "Opt"}, Some p, _) ->
-      Sedlex.alt Sedlex.eps (regexp_of_pattern p)
-  | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string s)}, _) ->
-       let c = ref Cset.empty in
-       for i = 0 to String.length s - 1 do
-	 c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-       done;
-       Sedlex.chars !c
-  | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}, _) ->
-      Sedlex.chars (Cset.interval i j)
-  | Ppat_any -> Sedlex.chars Cset.any
-  | Ppat_constant (Const_string s) -> regexp_for_string s
-  | Ppat_constant (Const_char c) -> regexp_for_char c
-  | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
-  | Ppat_var {txt=x} ->
-      begin try Hashtbl.find named_regexps x
-      with Not_found ->
-        Format.eprintf "%aSedlex: unbound regexp %s.@."
-          Location.print p.ppat_loc
-          x;
+let regexp_of_pattern env =
+  let rec aux p =
+    match p.ppat_desc with
+    | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
+    | Ppat_tuple (p :: pl) ->
+        List.fold_left (fun r p -> Sedlex.seq r (aux p))
+          (aux p)
+          pl
+    | Ppat_construct ({txt = Lident "Star"}, Some p, _) ->
+        Sedlex.rep (aux p)
+    | Ppat_construct ({txt = Lident "Plus"}, Some p, _) ->
+        Sedlex.plus (aux p)
+    | Ppat_construct ({txt = Lident "Opt"}, Some p, _) ->
+        Sedlex.alt Sedlex.eps (aux p)
+    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string s)}, _) ->
+        let c = ref Cset.empty in
+        for i = 0 to String.length s - 1 do
+	  c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+        done;
+        Sedlex.chars !c
+    | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}, _) ->
+        Sedlex.chars (Cset.interval i j)
+    | Ppat_any -> Sedlex.chars Cset.any
+    | Ppat_constant (Const_string s) -> regexp_for_string s
+    | Ppat_constant (Const_char c) -> regexp_for_char c
+    | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
+    | Ppat_var {txt=x} ->
+        begin try StringMap.find x env
+        with Not_found ->
+          Format.eprintf "%aSedlex: unbound regexp %s.@."
+            Location.print p.ppat_loc
+            x;
+          exit 2
+        end
+    | _ ->
+        Format.eprintf "%aSedlex: this pattern is not a valid regexp.@."
+          Location.print p.ppat_loc;
         exit 2
-      end
-  | _ ->
-      Format.eprintf "%aSedlex: this pattern is not a valid regexp.@."
-        Location.print p.ppat_loc;
-      exit 2
-
-
-
-(* TODO: classes, named regexps *)
-
-
+  in
+  aux
 
 
 let mapper =
-  object
+  object(this)
     inherit Ast_mapper.mapper as super
+
+    val env = builtin_regexps
+
+    method define_regexp name p =
+      {< env = StringMap.add name (regexp_of_pattern env p) env >}
 
     method! expr e =
       match e.pexp_desc with
       | Pexp_match
           ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}}, _)}, cases) ->
-            let cases = List.map (fun (p, e) -> regexp_of_pattern p, super # expr e) cases in
+            let cases = List.map (fun (p, e) -> regexp_of_pattern env p, super # expr e) cases in
             gen_definition lexbuf cases
+      | Pexp_let (_, [{ppat_desc = Ppat_alias (p, {txt=name})}, {pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}], body) ->
+          (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
     method! implementation file str =
@@ -268,88 +269,17 @@ let mapper =
       let tables = List.map table (get_tables ()) in
       file, tables @ parts @ str
 
+    method! structure l =
+      let mapper = ref this in
+      List.concat
+        (List.map
+           (function
+             | {pstr_desc = Pstr_value (_, [{ppat_desc = Ppat_alias (p, {txt=name})}, {pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}])} ->
+                 mapper := !mapper # define_regexp name p;
+                 []
+             | i ->
+                 !mapper # structure_item i
+           ) l)
   end
 
 let () = Ast_mapper.main mapper
-
-(*
-
-EXTEND Gram
- GLOBAL: expr str_item;
-
- expr: [
-  [ "lexer";
-     OPT "|"; l = LIST0 [ r=regexp; "->"; a=expr -> (r,a) ] SEP "|" ->
-       gen_definition _loc l ]
- ];
-
- str_item: [
-   [ "let"; LIDENT "regexp"; x = LIDENT; "="; r = regexp ->
-       if Hashtbl.mem named_regexps x then
-         Printf.eprintf
-           "pa_sedlex (warning): multiple definition of named regexp '%s'\n"
-           x;
-     Hashtbl.add named_regexps x r;
-       <:str_item<>>
-   ]
- ];
-
- regexp: [
-   [ r1 = regexp; "|"; r2 = regexp -> Sedlex.alt r1 r2 ]
- | [ r1 = regexp; r2 = regexp -> Sedlex.seq r1 r2 ]
- | [ r = regexp; "*" -> Sedlex.rep r
-   | r = regexp; "+" -> Sedlex.plus r
-   | r = regexp; "?" -> Sedlex.alt Sedlex.eps r
-   | "("; r = regexp; ")" -> r
-   | "_" -> Sedlex.chars Cset.any
-   | c = chr -> Sedlex.chars (Cset.singleton c)
-   | `STRING (s,_) -> regexp_for_string s
-   | "["; cc = ch_class; "]" -> Sedlex.chars cc
-   | "[^"; cc = ch_class; "]" -> Sedlex.chars (Cset.difference Cset.any cc)
-   | x = LIDENT ->
-       try  Hashtbl.find named_regexps x
-       with Not_found ->
-         failwith
-           ("pa_sedlex (error): reference to unbound regexp name `"^x^"'")
-   ]
- ];
-
- chr: [
-   [ `CHAR (c,_) -> Char.code c
-   | i = INT -> codepoint i ]
- ];
-
- ch_class: [
-   [ c1 = chr; "-"; c2 = chr -> Cset.interval c1 c2
-   | c = chr -> Cset.singleton c
-   | cc1 = ch_class; cc2 = ch_class -> Cset.union cc1 cc2
-   | `STRING (s,_) ->
-       let c = ref Cset.empty in
-       for i = 0 to String.length s - 1 do
-	 c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-       done;
-       !c
-   ]
- ];
-END
-
-
-
-let change_ids suffix = object
-  inherit Ast.map as super
-  method ident = function
-    | Ast.IdLid (loc, s) when String.length s > 6 && String.sub s 0 6 = "__sedlex" -> Ast.IdLid (loc, s ^ suffix)
-    | i -> i
-end
-
-let () =
-  let first = ref true in
-  AstFilters.register_str_item_filter
-    (fun s ->
-       assert(!first); first := false;
-       let parts = List.map partition (Sedlex.partitions ()) in
-       let tables = List.map table (get_tables ()) in
-       let suffix = "__" ^ Digest.to_hex (Digest.string (Marshal.to_string (parts, tables) [])) in
-       (change_ids suffix) # str_item <:str_item< $list:tables$; $list:parts$; $s$ >>
-    )
-*)
