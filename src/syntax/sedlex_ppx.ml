@@ -218,6 +218,14 @@ let rec regexp_of_pattern p =
       Sedlex.plus (regexp_of_pattern p)
   | Ppat_construct ({txt = Lident "Opt"}, Some p, _) ->
       Sedlex.alt Sedlex.eps (regexp_of_pattern p)
+  | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string s)}, _) ->
+       let c = ref Cset.empty in
+       for i = 0 to String.length s - 1 do
+	 c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+       done;
+       Sedlex.chars !c
+  | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}, _) ->
+      Sedlex.chars (Cset.interval i j)
   | Ppat_any -> Sedlex.chars Cset.any
   | Ppat_constant (Const_string s) -> regexp_for_string s
   | Ppat_constant (Const_char c) -> regexp_for_char c
@@ -234,6 +242,9 @@ let rec regexp_of_pattern p =
       Format.eprintf "%aSedlex: this pattern is not a valid regexp.@."
         Location.print p.ppat_loc;
       exit 2
+
+
+
 (* TODO: classes, named regexps *)
 
 
