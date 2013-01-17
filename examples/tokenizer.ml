@@ -1,8 +1,8 @@
 let '0'..'9' as digit = SEDLEX.regexp
 let (Plus digit) as number = SEDLEX.regexp
-let ('a'..'z'|'A'..'Z') as letter = SEDLEX.regexp
 
 let rec token buf =
+  let ('a'..'z'|'A'..'Z') as letter = SEDLEX.regexp in
   match SEDLEX buf with
   | number -> Printf.printf "Number %s\n" (Sedlexing.Latin1.lexeme buf); token buf
   | letter, Star ('A'..'Z' | 'a'..'z' | digit) -> Printf.printf "Ident %s\n" (Sedlexing.Latin1.lexeme buf); token buf
@@ -13,5 +13,5 @@ let rec token buf =
   | _ -> failwith "Unexpected character"
 
 let () =
-  let lexbuf = Sedlexing.Latin1.from_string "foobar A123Bfoo\011  ++123Xbar/foo" in
+  let lexbuf = Sedlexing.Latin1.from_string "foobar A123Bfoo  ++123Xbar/foo" in
   token lexbuf

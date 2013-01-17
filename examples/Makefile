@@ -5,5 +5,10 @@
 tokenizer.exe: tokenizer.ml
 	ocamlc -ppx "../src/syntax/sedlex.exe" -I ../src/lib -o tokenizer.exe sedlexing.cma tokenizer.ml
 
+.PHONY: with_findlib
+with_findlib: tokenizer.ml
+	ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/sedlex.exe" tokenizer.ml
+	ocamlfind ocamlc -o tokenizer.exe -linkpkg -package sedlex tokenizer.cmo
+
 clean:
 	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj

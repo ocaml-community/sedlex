@@ -5,8 +5,8 @@ License:
   distributed under the terms of an MIT-like license : see LICENSE
 
 Author:
-  email: Alain.Frisch@inria.fr
-  web: http://www.eleves.ens.fr/home/frisch, http://www.cduce.org
+  email: alain@frisch.fr
+  web: http://alain.frisch.fr
 
 --------------------------------------------------------------------------
 Overview
@@ -132,7 +132,7 @@ Installation:
 
 Compilation of OCaml files with lexer specifications:
 
-  ocamlfind ocamlc -c -package sedlex -ppx "...." my_file.ml
+  ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/sedlex.exe" my_file.ml
 
 When linking, you must also include the sedlex package:
   ocamlfind ocamlc -o my_prog -linkpkg -package sedlex my_file.cmo
