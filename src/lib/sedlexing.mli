@@ -12,8 +12,6 @@ module type LEXBUF =
 *)
     type lexbuf
 
-    val error: lexbuf -> 'a
-
     val start: lexbuf -> unit
 (** [start t] informs the lexer buffer that any
     code points until the current position can be discarded.
@@ -47,8 +45,7 @@ module type LEXBUF =
   It is possible to have sedlex-generated lexers work on a custom
   implementation for lex buffers. To do this, define a module [L] which
   implements the [start], [next], [mark] and [backtrack] functions
-  (See the Internal Interface section below for a specification),
-  and the [Error] exception.
+  (See the Internal Interface section below for a specification).
   They need not work on a type named [lexbuf]: you can use the type
   name you want. Then, just do in your sedlex-processed source, before
   the first lexer specification:
@@ -66,12 +63,6 @@ include LEXBUF
     scanners, including the code points of the token currently scanned,
     its position from the beginning of the input stream,
     and the current position of the lexer. *)
-
-exception Error
-  (** Raised by a lexer when it cannot parse a token from the lexbuf.
-    The functions [Sedlexing.lexeme_start] (resp. [Sedlexing.lexeme_end]) can be
-    used to find to positions of the first code point of the current
-    matched substring (resp. the first code point that yield the error). *)
 
 exception InvalidCodepoint of int
   (** Raised by some functions to signal that some code point is not

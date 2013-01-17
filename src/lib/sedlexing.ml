@@ -1,14 +1,12 @@
 module type LEXBUF =
   sig
     type lexbuf
-    val error: lexbuf -> 'a
     val start: lexbuf -> unit
     val next: lexbuf -> int
     val mark: lexbuf -> int -> unit
     val backtrack: lexbuf -> int
   end
 
-exception Error
 exception InvalidCodepoint of int
 
 let eof = -1
@@ -30,8 +28,6 @@ type lexbuf = {
 
   mutable finished: bool;
 }
-
-let error _ = raise Error
 
 let get_buf lb = lb.buf
 let get_pos lb = lb.pos

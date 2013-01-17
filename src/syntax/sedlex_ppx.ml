@@ -1,40 +1,11 @@
+(* The package sedlex is released under the terms of an MIT-like license. *)
+(* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
+
 open Longident
 open Parsetree
 open Location
 open Asttypes
 open Ast_mapper
-
-let eid s = E.ident (mknoloc (Longident.parse s))
-let appfun s l = E.apply_nolabs (eid s) l
-let int i = E.constant (Const_int i)
-let pint i = P.constant (Const_int i)
-let pvar name = P.var (Location.mknoloc name)
-let glb_value name def = M.value Nonrecursive [pvar name, def]
-let fun_ arg body = E.function_ "" None [pvar arg, body]
-
-
-(* Named regexps *)
-
-module StringMap = Map.Make(struct
-  type t = string
-  let compare = compare
-end)
-
-let builtin_regexps =
-  List.fold_left (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
-    StringMap.empty
-    [
-      "eof", Cset.eof;
-      "xml_letter", Cset.letter;
-      "xml_digit", Cset.digit;
-      "xml_extender", Cset.extender;
-      "xml_base_char", Cset.base_char;
-      "xml_ideographic", Cset.ideographic;
-      "xml_combining_char", Cset.combining_char;
-      "xml_blank", Cset.blank;
-
-      "tr8876_ident_char", Cset.tr8876_ident_char;
-    ]
 
 (* Decision tree for partitions *)
 
@@ -72,6 +43,8 @@ let decision_table l =
   let (min, table, rest) = aux max_int [] l in
   match table with
   | [] -> decision l
+  | [(min, max, i)] ->
+      Lte (min - 1, Return (-1), (Lte (max, Return i, decision rest)))
   | (_, max, _) :: _ ->
       let arr = Array.create (max - min + 1) 0 in
       let set (a, b, i) = for j = a to b do arr.(j - min) <- i + 1 done in
@@ -85,36 +58,88 @@ let rec simplify min max = function
       else Lte (i, simplify min i yes, simplify (i+1) max no)
   | x -> x
 
+let segments_of_partition p =
+  let seg = ref [] in
+  Array.iteri
+    (fun i c -> List.iter (fun (a, b) -> seg := (a, b, i) :: !seg) c)
+    p;
+  List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg
+
 let decision_table p =
-  simplify (-1) (Cset.max_code) (decision_table p)
+  simplify (-1) (Cset.max_code) (decision_table (segments_of_partition p))
 
-let tables : (int array, string) Hashtbl.t = Hashtbl.create 31
-let tables_counter = ref 0
-let get_tables () =
-  let t = Hashtbl.fold (fun key x accu -> (x, key) :: accu) tables [] in
-  Hashtbl.clear tables;
-  t
 
-let table_name t =
-  try Hashtbl.find tables t
+(* Helpers to build AST *)
+
+
+let eid s = E.ident (mknoloc (Longident.parse s))
+let appfun s l = E.apply_nolabs (eid s) l
+let int i = E.constant (Const_int i)
+let pint i = P.constant (Const_int i)
+let pvar name = P.var (Location.mknoloc name)
+let glb_value name def = M.value Nonrecursive [pvar name, def]
+let fun_ arg body = E.function_ "" None [pvar arg, body]
+
+
+(* Named regexps *)
+
+module StringMap = Map.Make(struct
+  type t = string
+  let compare = compare
+end)
+
+let builtin_regexps =
+  List.fold_left (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
+    StringMap.empty
+    [
+     "any", Cset.any;
+     "eof", Cset.eof;
+     "xml_letter", Cset.letter;
+     "xml_digit", Cset.digit;
+     "xml_extender", Cset.extender;
+     "xml_base_char", Cset.base_char;
+     "xml_ideographic", Cset.ideographic;
+     "xml_combining_char", Cset.combining_char;
+     "xml_blank", Cset.blank;
+     "tr8876_ident_char", Cset.tr8876_ident_char;
+    ]
+
+(* Tables (indexed mapping: codepoint -> next state) *)
+
+let tables = Hashtbl.create 31
+let table_counter = ref 0
+let get_tables () = Hashtbl.fold (fun key x accu -> (x, key) :: accu) tables []
+
+let table_name x =
+  try Hashtbl.find tables x
   with Not_found ->
-    incr tables_counter;
-    let n = Printf.sprintf "__sedlex_table_%i" !tables_counter in
-    Hashtbl.add tables t n;
-    n
+    incr table_counter;
+    let s = Printf.sprintf "__sedlex_table_%i" !table_counter in
+    Hashtbl.add tables x s;
+    s
 
-let output_byte_array v =
+let table (name, v) =
   let n = Array.length v in
   let s = String.create n in
   for i = 0 to n - 1 do s.[i] <- Char.chr v.(i) done;
-  E.constant (Const_string s)
+  glb_value name (E.constant (Const_string s))
 
-let table (n, t) =
-  glb_value n (output_byte_array t)
 
-let partition_name i = Printf.sprintf "__sedlex_partition_%i" i
+(* Partition (function: codepoint -> next state) *)
 
-let partition (i, p) =
+let partitions = Hashtbl.create 31
+let partition_counter = ref 0
+let get_partitions () = Hashtbl.fold (fun key x accu -> (x, key) :: accu) partitions []
+
+let partition_name x =
+  try Hashtbl.find partitions x
+  with Not_found ->
+    incr partition_counter;
+    let s = Printf.sprintf "__sedlex_partition_%i" !partition_counter in
+    Hashtbl.add partitions x s;
+    s
+
+let partition (name, p) =
   let rec gen_tree = function
     | Lte (i, yes, no) ->
         E.ifthenelse
@@ -134,7 +159,7 @@ let partition (i, p) =
           ]
   in
   let body = gen_tree (decision_table p) in
-  glb_value (partition_name i) (fun_ "c" body)
+  glb_value name (fun_ "c" body)
 
 (* Code generation for the automata *)
 
@@ -148,40 +173,39 @@ let best_final final =
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
 let call_state lexbuf auto state =
-  let (_, trans, final) = auto.(state) in
+  let (trans, final) = auto.(state) in
   if Array.length trans = 0
   then match best_final final with
   | Some i -> int i
   | None -> assert false
   else appfun (state_fun state) [eid lexbuf]
 
-let gen_state lexbuf auto i (part, trans, final) =
-  let cases = Array.mapi (fun i j -> (pint i, call_state lexbuf auto j)) trans in
+let gen_state lexbuf auto i (trans, final) =
+  let partition = Array.map fst trans in
+  let cases = Array.mapi (fun i (_, j) -> (pint i, call_state lexbuf auto j)) trans in
   let cases = Array.to_list cases in
-  let body =
+  let body () =
     E.match_
-      (appfun (partition_name part) [appfun "Sedlexing.next" [eid lexbuf]])
+      (appfun (partition_name partition) [appfun "Sedlexing.next" [eid lexbuf]])
       (cases @ [P.any (), appfun "Sedlexing.backtrack" [eid lexbuf]])
   in
   let ret body = [ pvar (state_fun i), (fun_ lexbuf body) ] in
   match best_final final with
-    | None -> ret body
+    | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid lexbuf; int i]) body)
+    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid lexbuf; int i]) (body ()))
 
-let gen_definition lexbuf l =
+let gen_definition lexbuf l error =
   let brs = Array.of_list l in
-  let rs = Array.map fst brs in
-  let auto = Sedlex.compile rs in
-
-  let cases = Array.to_list (Array.mapi (fun i (_,e) -> (pint i, e)) brs) in
+  let auto = Sedlex.compile (Array.map fst brs) in
+  let cases = Array.to_list (Array.mapi (fun i (_, e) -> (pint i, e)) brs) in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
   E.let_ Recursive states
     (E.sequence
        (appfun "Sedlexing.start" [eid lexbuf])
        (E.match_ (appfun (state_fun 0) [eid lexbuf])
-          (cases @ [P.any (), appfun "Sedlexing.error" [eid lexbuf]])
+          (cases @ [P.any (), error])
        )
     )
 
@@ -224,7 +248,6 @@ let regexp_of_pattern env =
         Sedlex.chars !c
     | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}, _) ->
         Sedlex.chars (Cset.interval i j)
-    | Ppat_any -> Sedlex.chars Cset.any
     | Ppat_constant (Const_string s) -> regexp_for_string s
     | Ppat_constant (Const_char c) -> regexp_for_char c
     | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
@@ -257,15 +280,26 @@ let mapper =
       match e.pexp_desc with
       | Pexp_match
           ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}}, _)}, cases) ->
+            let cases = List.rev cases in
+            let error =
+              match List.hd cases with
+              | {ppat_desc = Ppat_any}, e -> e
+              | p, _ ->
+                  Format.eprintf "%aSedlex: the last branch must a catch-all error case.@."
+                    Location.print p.ppat_loc;
+                  exit 2
+
+super # expr (List.hd cases) in
+            let cases = List.rev (List.tl cases) in
             let cases = List.map (fun (p, e) -> regexp_of_pattern env p, super # expr e) cases in
-            gen_definition lexbuf cases
+            gen_definition lexbuf cases error
       | Pexp_let (_, [{ppat_desc = Ppat_alias (p, {txt=name})}, {pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}], body) ->
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
     method! implementation file str =
       let file, str = super # implementation file str in
-      let parts = List.map partition (Sedlex.partitions ()) in
+      let parts = List.map partition (get_partitions ()) in
       let tables = List.map table (get_tables ()) in
       file, tables @ parts @ str
 

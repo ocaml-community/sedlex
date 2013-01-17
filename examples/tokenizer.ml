@@ -10,7 +10,8 @@ let rec token buf =
   | Plus (Chars "+*-/") -> Printf.printf "Op %s\n" (Sedlexing.latin1_lexeme buf); token buf
   | Range(128,255) -> print_endline "Non ASCII"
   | eof -> print_endline "EOF"
+  | _ -> failwith "Unexpected character"
 
 let () =
-  let lexbuf = Sedlexing.from_latin1_string "foobar A123Bfoo  ++123Xbar/foo" in
+  let lexbuf = Sedlexing.from_latin1_string "foobar A123Bfoo\011  ++123Xbar/foo" in
   token lexbuf

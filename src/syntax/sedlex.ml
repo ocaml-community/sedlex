@@ -1,3 +1,6 @@
+(* The package sedlex is released under the terms of an MIT-like license. *)
+(* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
+
 (* NFA *)
 
 type node = {
@@ -47,6 +50,7 @@ let compile_re re =
 (* Determinization *)
 
 type state = node list
+      (* A state of the DFA corresponds to a set of nodes in the NFA. *)
 
 let rec add_node state node =
   if List.memq node state then state else add_nodes (node::state) node.eps
@@ -54,82 +58,56 @@ and add_nodes state nodes =
   List.fold_left add_node state nodes
 
 
-let transition state =
+let transition (state : state) =
   (* Merge transition with the same target *)
   let rec norm = function
-    | (c1,n1)::((c2,n2)::q as l) ->
-	if n1 == n2 then norm ((Cset.union c1 c2,n1)::q)
-	else (c1,n1)::(norm l)
+    | (c1, n1)::((c2, n2)::q as l) ->
+	if n1 == n2 then norm ((Cset.union c1 c2, n1)::q)
+	else (c1, n1)::(norm l)
     | l -> l in
   let t = List.concat (List.map (fun n -> n.trans) state) in
-  let t = norm (List.sort (fun (c1,n1) (c2,n2) -> n1.id - n2.id) t) in
+  let t = norm (List.sort (fun (_, n1) (_, n2) -> n1.id - n2.id) t) in
 
   (* Split char sets so as to make them disjoint *)
-  let rec split (all,t) ((c0 : Cset.t),n0) =
+  let split (all, t) (c0, n0) =
     let t =
-      [(Cset.difference c0 all, [n0])] @
-      List.map (fun (c,ns) -> (Cset.intersection c c0, n0::ns)) t @
-      List.map (fun (c,ns) -> (Cset.difference c c0, ns)) t in
-    (Cset.union all c0,
-    List.filter (fun (c,ns) -> not (Cset.is_empty c)) t) in
+      (Cset.difference c0 all, [n0]) ::
+      List.map (fun (c, ns) -> (Cset.intersection c c0, n0::ns)) t @
+      List.map (fun (c, ns) -> (Cset.difference c c0, ns)) t
+    in
+    Cset.union all c0,
+    List.filter (fun (c, _) -> not (Cset.is_empty c)) t
+  in
 
   let (_,t) = List.fold_left split (Cset.empty,[]) t in
 
   (* Epsilon closure of targets *)
-  let t = List.map (fun (c,ns) -> (c,add_nodes [] ns)) t in
+  let t = List.map (fun (c, ns) -> (c, add_nodes [] ns)) t in
 
   (* Canonical ordering *)
   let t = Array.of_list t in
-  Array.sort (fun (c1,ns1) (c2,ns2) -> compare c1 c2) t;
-  Array.map fst t, Array.map snd t
-
-let find_alloc tbl counter x =
-  try Hashtbl.find tbl x
-  with Not_found ->
-    let i = !counter in
-    incr counter;
-    Hashtbl.add tbl x i;
-    i
-
-let part_tbl = Hashtbl.create 31
-let part_id = ref 0
-let get_part (t : Cset.t array) = find_alloc part_tbl part_id t
-
+  Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
+  t
 
 let compile rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
   let states = Hashtbl.create 31 in
-  let states_def = ref [] in
+  let states_def = Hashtbl.create 31 in
   let rec aux state =
     try Hashtbl.find states state
     with Not_found ->
       let i = !counter in
       incr counter;
       Hashtbl.add states state i;
-      let (part,targets) = transition state in
-      let part = get_part part in
-      let targets = Array.map aux targets in
-      let finals = Array.map (fun (_,f) -> List.mem f state) rs in
-      states_def := (i, (part,targets,finals)) :: !states_def;
+      let trans = transition state in
+      let trans = Array.map (fun (p, t) -> (p, aux t)) trans in
+      let finals = Array.map (fun (_, f) -> List.memq f state) rs in
+      Hashtbl.add states_def i (trans, finals);
       i
   in
   let init = ref [] in
   Array.iter (fun (i,_) -> init := add_node !init i) rs;
-  ignore (aux !init);
-  Array.init !counter (fun id -> List.assoc id !states_def)
-
-let partitions () =
-  let aux part =
-    let seg = ref [] in
-    Array.iteri
-      (fun i c ->
-	 List.iter (fun (a,b) -> seg := (a,b,i) :: !seg) c)
-      part;
-     List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg
-  in
-  let res = ref [] in
-  Hashtbl.iter (fun part i -> res := (i, aux part) :: !res) part_tbl;
-  Hashtbl.clear part_tbl;
-  !res
-
+  let i = aux !init in
+  assert(i = 0);
+  Array.init !counter (Hashtbl.find states_def)
