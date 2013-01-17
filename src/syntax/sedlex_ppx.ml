@@ -1,3 +1,5 @@
+open Longident
+open Parsetree
 open Location
 open Asttypes
 open Ast_mapper
@@ -97,12 +99,10 @@ let output_byte buf b =
   Buffer.add_char buf (Char.chr(48 + b mod 10))
 
 let output_byte_array v =
-  let b = Buffer.create (Array.length v * 5) in
-  for i = 0 to Array.length v - 1 do
-    output_byte b (v.(i) land 0xFF);
-    if i land 15 = 15 then Buffer.add_string b "\\\n    "
-  done;
-  E.constant (Const_string (Buffer.contents b))
+  let n = Array.length v in
+  let s = String.create n in
+  for i = 0 to n - 1 do s.[i] <- Char.chr v.(i) done;
+  E.constant (Const_string s)
 
 let eid s = E.ident (mknoloc (Longident.parse s))
 let appfun s l = E.apply_nolabs (eid s) l
@@ -150,61 +150,118 @@ let best_final final =
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
-let call_state auto state =
+let call_state lexbuf auto state =
   let (_, trans, final) = auto.(state) in
   if Array.length trans = 0
   then match best_final final with
   | Some i -> int i
   | None -> assert false
-  else appfun (state_fun state) [eid "lexbuf"]
+  else appfun (state_fun state) [eid lexbuf]
 
-let gen_state auto i (part, trans, final) =
-  let cases = Array.mapi (fun i j -> (pint i, call_state auto j)) trans in
+let gen_state lexbuf auto i (part, trans, final) =
+  let cases = Array.mapi (fun i j -> (pint i, call_state lexbuf auto j)) trans in
   let cases = Array.to_list cases in
   let body =
     E.match_
-      (appfun (partition_name part) [appfun "Sedlexing.next" [eid "lexbuf"]])
-      (cases @ [P.any (), appfun "Sedlexing.backtrack" [eid "lexbuf"]])
+      (appfun (partition_name part) [appfun "Sedlexing.next" [eid lexbuf]])
+      (cases @ [P.any (), appfun "Sedlexing.backtrack" [eid lexbuf]])
   in
-  let ret body = [ pvar (state_fun i), (fun_ "lexbuf" body) ] in
+  let ret body = [ pvar (state_fun i), (fun_ lexbuf body) ] in
   match best_final final with
     | None -> ret body
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid "lexbuf"; int i]) body)
+    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid lexbuf; int i]) body)
 
-let gen_definition l =
+let gen_definition lexbuf l =
   let brs = Array.of_list l in
   let rs = Array.map fst brs in
   let auto = Sedlex.compile rs in
 
   let cases = Array.to_list (Array.mapi (fun i (_,e) -> (pint i, e)) brs) in
-  let states = Array.mapi (gen_state auto) auto in
+  let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  fun_ "lexbuf"
-    (E.let_ Recursive states
-       (E.sequence
-          (appfun "Sedlexing.start" [eid "lexbuf"])
-          (E.match_ (appfun (state_fun 0) [eid "lexbuf"])
-             (cases @ [P.any (), appfun "raise" [eid "Sedlexing.Error"]])
-          )
+  E.let_ Recursive states
+    (E.sequence
+       (appfun "Sedlexing.start" [eid lexbuf])
+       (E.match_ (appfun (state_fun 0) [eid lexbuf])
+          (cases @ [P.any (), appfun "Sedlexing.error" [eid lexbuf]])
        )
     )
 
-(*
 (* Lexer specification parser *)
 
-let char_int s =
-  let i = int_of_string s in
-  if (i >=0) && (i <= Cset.max_code) then i
-  else failwith ("Invalid Unicode code point: " ^ s)
+let codepoint i =
+  if i < 0 || i > Cset.max_code then
+    failwith (Printf.sprintf "Invalid Unicode code point: %i" i);
+  i
+
+let regexp_for_char c =
+  Sedlex.chars (Cset.singleton (Char.code c))
 
 let regexp_for_string s =
   let rec aux n =
     if n = String.length s then Sedlex.eps
     else
-      Sedlex.seq (Sedlex.chars (Cset.singleton (Char.code s.[n]))) (aux (succ n))
+      Sedlex.seq (regexp_for_char s.[n]) (aux (succ n))
   in aux 0
 
+let rec regexp_of_pattern p =
+  match p.ppat_desc with
+  | Ppat_or (p1, p2) -> Sedlex.alt (regexp_of_pattern p1) (regexp_of_pattern p2)
+  | Ppat_tuple (p :: pl) ->
+      List.fold_left (fun r p -> Sedlex.seq r (regexp_of_pattern p))
+        (regexp_of_pattern p)
+        pl
+  | Ppat_construct ({txt = Lident "Star"}, Some p, _) ->
+      Sedlex.rep (regexp_of_pattern p)
+  | Ppat_construct ({txt = Lident "Plus"}, Some p, _) ->
+      Sedlex.plus (regexp_of_pattern p)
+  | Ppat_construct ({txt = Lident "Opt"}, Some p, _) ->
+      Sedlex.alt Sedlex.eps (regexp_of_pattern p)
+  | Ppat_any -> Sedlex.chars Cset.any
+  | Ppat_constant (Const_string s) -> regexp_for_string s
+  | Ppat_constant (Const_char c) -> regexp_for_char c
+  | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
+  | Ppat_var {txt=x} ->
+      begin try Hashtbl.find named_regexps x
+      with Not_found ->
+        Format.eprintf "%aSedlex: unbound regexp %s.@."
+          Location.print p.ppat_loc
+          x;
+        exit 2
+      end
+  | _ ->
+      Format.eprintf "%aSedlex: this pattern is not a valid regexp.@."
+        Location.print p.ppat_loc;
+      exit 2
+(* TODO: classes, named regexps *)
+
+
+
+
+let mapper =
+  object
+    inherit Ast_mapper.mapper as super
+
+    method! expr e =
+      match e.pexp_desc with
+      | Pexp_match
+          ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}}, _)}, cases) ->
+            let cases = List.map (fun (p, e) -> regexp_of_pattern p, super # expr e) cases in
+            gen_definition lexbuf cases
+      | _ -> super # expr e
+
+    method! implementation file str =
+      let file, str = super # implementation file str in
+      let parts = List.map partition (Sedlex.partitions ()) in
+      let tables = List.map table (get_tables ()) in
+      file, tables @ parts @ str
+
+  end
+
+let () = Ast_mapper.main mapper
+
+(*
 
 EXTEND Gram
  GLOBAL: expr str_item;
@@ -248,7 +305,7 @@ EXTEND Gram
 
  chr: [
    [ `CHAR (c,_) -> Char.code c
-   | i = INT -> char_int i ]
+   | i = INT -> codepoint i ]
  ];
 
  ch_class: [
