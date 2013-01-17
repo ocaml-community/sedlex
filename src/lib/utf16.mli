@@ -1,5 +1,4 @@
-
-(** UTF-16 support for Ulex.
+(** UTF-16 support for sedlex.
    Implementation as described in "http://www.ietf.org/rfc/rfc2781.txt".
  *)
 

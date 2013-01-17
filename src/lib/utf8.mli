@@ -1,3 +1,5 @@
+(** UTF-8 support for sedlex. *)
+
 exception MalFormed
 
 val width: int array

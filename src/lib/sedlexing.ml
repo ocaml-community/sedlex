@@ -58,53 +58,9 @@ let from_stream s =
 	    try buf.(pos) <- Stream.next s; 1
 	    with Stream.Failure -> 0)
 
-let from_latin1_stream s =
-  create (fun buf pos len ->
-	    try buf.(pos) <- Char.code (Stream.next s); 1
-	    with Stream.Failure -> 0)
-
-let from_utf8_stream s =
-  create (fun buf pos len ->
-	    try buf.(pos) <- Utf8.from_stream s; 1
-	    with Stream.Failure -> 0)
-
 type enc = Ascii | Latin1 | Utf8
 
 exception MalFormed
-
-let from_var_enc_stream enc s =
-  create (fun buf pos len ->
-	    try
-	      buf.(pos) <- (match !enc with
-			      | Ascii ->
-				  let c = Char.code (Stream.next s) in
-				  if c > 127 then raise (InvalidCodepoint c);
-				  c
-			      | Latin1 -> Char.code (Stream.next s)
-			      | Utf8 -> Utf8.from_stream s);
-	      1
-	    with Stream.Failure -> 0)
-
-
-let from_var_enc_string enc s =
-  from_var_enc_stream enc (Stream.of_string s)
-
-let from_var_enc_channel enc ic =
-  from_var_enc_stream enc (Stream.of_channel ic)
-
-let from_latin1_string s =
-  let len = String.length s in
-  {
-    empty_lexbuf with
-      buf = Array.init len (fun i -> Char.code s.[i]);
-      len = len;
-      finished = true;
-  }
-
-let from_latin1_channel ic =
-  from_latin1_stream (Stream.of_channel ic)
-let from_utf8_channel ic =
-  from_stream (Utf8.stream_from_char_stream (Stream.of_channel ic))
 
 let from_int_array a =
   let len = Array.length a in
@@ -115,9 +71,6 @@ let from_int_array a =
       finished = true;
   }
 
-
-let from_utf8_string s =
-  from_int_array (Utf8.to_int_array s 0 (String.length s))
 
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf
@@ -186,26 +139,59 @@ let lexeme lexbuf =
 let lexeme_char lexbuf pos =
   lexbuf.buf.(lexbuf.start + pos)
 
-let to_latin1 c =
-  if (c >= 0) && (c < 256)
-  then Char.chr c
-  else raise (InvalidCodepoint c)
 
-let latin1_lexeme_char lexbuf pos =
-  to_latin1 (lexeme_char lexbuf pos)
-
-let latin1_sub_lexeme lexbuf pos len =
-  let s = String.create len in
-  for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
-  s
-
-let latin1_lexeme lexbuf =
-  latin1_sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
-
-let utf8_sub_lexeme lexbuf pos len =
-  Utf8.from_int_array lexbuf.buf (lexbuf.start + pos) len
-
-let utf8_lexeme lexbuf =
-  utf8_sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+module Latin1 = struct
+  let from_stream s =
+    create (fun buf pos len ->
+      try buf.(pos) <- Char.code (Stream.next s); 1
+      with Stream.Failure -> 0)
 
 
+  let from_string s =
+    let len = String.length s in
+    {
+     empty_lexbuf with
+     buf = Array.init len (fun i -> Char.code s.[i]);
+     len = len;
+     finished = true;
+    }
+
+  let from_channel ic =
+    from_stream (Stream.of_channel ic)
+
+  let to_latin1 c =
+    if (c >= 0) && (c < 256)
+    then Char.chr c
+    else raise (InvalidCodepoint c)
+
+  let lexeme_char lexbuf pos =
+    to_latin1 (lexeme_char lexbuf pos)
+
+  let sub_lexeme lexbuf pos len =
+    let s = String.create len in
+    for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
+    s
+
+  let lexeme lexbuf =
+    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+end
+
+
+module Utf8 = struct
+  let from_channel ic =
+    from_stream (Utf8.stream_from_char_stream (Stream.of_channel ic))
+
+  let from_stream s =
+    create (fun buf pos len ->
+      try buf.(pos) <- Utf8.from_stream s; 1
+      with Stream.Failure -> 0)
+
+  let from_string s =
+    from_int_array (Utf8.to_int_array s 0 (String.length s))
+
+  let sub_lexeme lexbuf pos len =
+    Utf8.from_int_array lexbuf.buf (lexbuf.start + pos) len
+
+  let lexeme lexbuf =
+    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+end

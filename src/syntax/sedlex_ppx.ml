@@ -283,13 +283,12 @@ let mapper =
             let cases = List.rev cases in
             let error =
               match List.hd cases with
-              | {ppat_desc = Ppat_any}, e -> e
+              | {ppat_desc = Ppat_any}, e -> super # expr e
               | p, _ ->
                   Format.eprintf "%aSedlex: the last branch must a catch-all error case.@."
                     Location.print p.ppat_loc;
                   exit 2
-
-super # expr (List.hd cases) in
+            in
             let cases = List.rev (List.tl cases) in
             let cases = List.map (fun (p, e) -> regexp_of_pattern env p, super # expr e) cases in
             gen_definition lexbuf cases error
