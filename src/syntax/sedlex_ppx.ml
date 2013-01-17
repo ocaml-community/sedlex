@@ -104,17 +104,18 @@ let output_byte_array v =
   done;
   E.constant (Const_string (Buffer.contents b))
 
-let glb_value name def =
-  M.value Nonrecursive [P.var (Location.mknoloc name), def]
+let eid s = E.ident (mknoloc (Longident.parse s))
+let appfun s l = E.apply_nolabs (eid s) l
+let int i = E.constant (Const_int i)
+let pint i = P.constant (Const_int i)
+let pvar name = P.var (Location.mknoloc name)
+let glb_value name def = M.value Nonrecursive [pvar name, def]
+let fun_ arg body = E.function_ "" None [pvar arg, body]
 
 let table (n, t) =
   glb_value n (output_byte_array t)
 
 let partition_name i = Printf.sprintf "__sedlex_partition_%i" i
-
-let eid s = E.ident (mknoloc (Longident.parse s))
-let appfun s l = E.apply_nolabs (eid s) l
-let int i = E.constant (Const_int i)
 
 let partition (i, p) =
   let rec gen_tree = function
@@ -136,67 +137,60 @@ let partition (i, p) =
           ]
   in
   let body = gen_tree (decision_table p) in
-  glb_value (partition_name i)
-    (E.function_ "" None [P.var (mknoloc "c"), body])
-
-(*
+  glb_value (partition_name i) (fun_ "c" body)
 
 (* Code generation for the automata *)
 
 let best_final final =
   let fin = ref None in
-  Array.iteri
-    (fun i b -> if b && (!fin = None) then fin := Some i) final;
+  for i = Array.length final - 1 downto 0 do
+    if final.(i) then fin := Some i
+  done;
   !fin
 
+let state_fun state = Printf.sprintf "__sedlex_state_%i" state
+
 let call_state auto state =
-  match auto.(state) with (_,trans,final) ->
-    if Array.length trans = 0
-    then match best_final final with
-      | Some i -> <:expr< $`int:i$ >>
-      | None -> assert false
-    else
-      let f = Printf.sprintf "__sedlex_state_%i" state in
-      <:expr< $lid:f$ lexbuf >>
+  let (_, trans, final) = auto.(state) in
+  if Array.length trans = 0
+  then match best_final final with
+  | Some i -> int i
+  | None -> assert false
+  else appfun (state_fun state) [eid "lexbuf"]
 
-
-let gen_state auto _loc i (part,trans,final) =
-  let f = Printf.sprintf "__sedlex_state_%i" i in
-  let p = partition_name part in
-  let cases =
-    Array.mapi
-      (fun i j -> <:match_case< $`int:i$ -> $call_state auto j$ >>)
-      trans in
+let gen_state auto i (part, trans, final) =
+  let cases = Array.mapi (fun i j -> (pint i, call_state auto j)) trans in
   let cases = Array.to_list cases in
   let body =
-    <:expr<
-      match ($lid:p$ (Sedlexing.next lexbuf)) with
-      [ $list:cases$
-      | _ -> Sedlexing.backtrack lexbuf ] >> in
-  let ret body =
-    <:binding< $lid:f$ = fun lexbuf -> $body$ >> in
+    E.match_
+      (appfun (partition_name part) [appfun "Sedlexing.next" [eid "lexbuf"]])
+      (cases @ [P.any (), appfun "Sedlexing.backtrack" [eid "lexbuf"]])
+  in
+  let ret body = [ pvar (state_fun i), (fun_ "lexbuf" body) ] in
   match best_final final with
     | None -> ret body
-    | Some i ->
-	if Array.length trans = 0 then <:binding<>> else
-	  ret
-	  <:expr< do { Sedlexing.mark lexbuf $`int:i$;  $body$ } >>
+    | Some _ when Array.length trans = 0 -> []
+    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid "lexbuf"; int i]) body)
 
-
-let gen_definition _loc l =
+let gen_definition l =
   let brs = Array.of_list l in
   let rs = Array.map fst brs in
   let auto = Sedlex.compile rs in
 
-  let cases = Array.mapi (fun i (_,e) -> <:match_case< $`int:i$ -> $e$ >>) brs in
-  let states = Array.mapi (gen_state auto _loc) auto in
-  <:expr< fun lexbuf ->
-    let rec $list:Array.to_list states$ in
-    do { Sedlexing.start lexbuf;
-         match __sedlex_state_0 lexbuf with
-         [ $list:Array.to_list cases$ | _ -> raise Sedlexing.Error ] } >>
+  let cases = Array.to_list (Array.mapi (fun i (_,e) -> (pint i, e)) brs) in
+  let states = Array.mapi (gen_state auto) auto in
+  let states = List.flatten (Array.to_list states) in
+  fun_ "lexbuf"
+    (E.let_ Recursive states
+       (E.sequence
+          (appfun "Sedlexing.start" [eid "lexbuf"])
+          (E.match_ (appfun (state_fun 0) [eid "lexbuf"])
+             (cases @ [P.any (), appfun "raise" [eid "Sedlexing.Error"]])
+          )
+       )
+    )
 
-
+(*
 (* Lexer specification parser *)
 
 let char_int s =

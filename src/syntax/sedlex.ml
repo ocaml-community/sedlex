@@ -126,7 +126,8 @@ let partitions () =
       (fun i c ->
 	 List.iter (fun (a,b) -> seg := (a,b,i) :: !seg) c)
       part;
-     List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg in
+     List.sort (fun (a1,_,_) (a2,_,_) -> compare a1 a2) !seg
+  in
   let res = ref [] in
   Hashtbl.iter (fun part i -> res := (i, aux part) :: !res) part_tbl;
   Hashtbl.clear part_tbl;
