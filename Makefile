@@ -2,6 +2,8 @@
 # See the attached LICENSE file.
 # Copyright 2005, 2013 by Alain Frisch and LexiFi.
 
+include $(shell ocamlc -where)/Makefile.config
+
 VERSION=1.99
 # Don't forget to change META file as well
 
@@ -23,8 +25,18 @@ clean:
 test: clean all opt
 	cd examples && make clean tokenizer.exe && ./tokenizer.exe
 
+INSTALL=META src/syntax/sedlex.exe src/lib/sedlexing.cma src/lib/sedlexing.cmi
+
+INSTALL_OPT=src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+
 install:
-	ocamlfind install sedlex META src/syntax/sedlex.exe src/lib/sedlexing.cma src/lib/sedlexing.cmi src/lib/sedlexing.cmx src/lib/sedlexing.cmxa
+	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
+
+install_byteonly:
+	ocamlfind install sedlex $(INSTALL)
+
+uninstall:
+	ocamlfind remove sedlex
 
 PACKAGE = sedlex-$(VERSION)
 DISTRIB = \

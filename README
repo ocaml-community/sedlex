@@ -4,9 +4,8 @@ License:
   Copyright (C) 2003, 2004, 2005, 2006, 2013 Alain Frisch and LexiFi
   distributed under the terms of an MIT-like license : see LICENSE
 
-Author:
-  email: alain@frisch.fr
-  web: http://alain.frisch.fr
+Homepage: http://www.lexifi.com/sedlex
+Contact: alain.frisch@lexifi.com
 
 --------------------------------------------------------------------------
 Overview
@@ -126,7 +125,7 @@ recent version of OCaml.
 If you have findlib, you can use it to install and use sedlex.
 The name of the findlib package is "sedlex".
 
-Installation:
+Installation (after "make all" and "make opt"):
 
   make install
 
@@ -135,6 +134,7 @@ Compilation of OCaml files with lexer specifications:
   ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/sedlex.exe" my_file.ml
 
 When linking, you must also include the sedlex package:
+
   ocamlfind ocamlc -o my_prog -linkpkg -package sedlex my_file.cmo
 
 
