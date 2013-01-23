@@ -14,6 +14,7 @@ all:
 	(cd src/syntax && make all)
 
 opt:
+	(cd src/syntax && make opt)
 	(cd src/lib && make opt)
 
 clean:
@@ -25,9 +26,9 @@ clean:
 test: clean all opt
 	cd examples && make clean tokenizer.exe && ./tokenizer.exe
 
-INSTALL=META src/syntax/sedlex.exe src/lib/sedlexing.cma src/lib/sedlexing.cmi
+INSTALL=META src/syntax/sedlex.cma src/syntax/sedlex.exe src/lib/sedlexing.cma src/lib/sedlexing.cmi
 
-INSTALL_OPT=src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+INSTALL_OPT=src/syntax/sedlex.cmxs src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
 
 install:
 	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
