@@ -1,4 +1,4 @@
-version = "1.9"
+version = "1.99.1"
 description = "Runtime support for sedlex"
 archive(byte) = "sedlexing.cma"
 archive(native) = "sedlexing.cmxa"

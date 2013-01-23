@@ -5,6 +5,10 @@
 tokenizer.exe: tokenizer.ml
 	ocamlc -ppx "../src/syntax/sedlex.exe" -I ../src/lib -o tokenizer.exe sedlexing.cma tokenizer.ml
 
+.PHONY: with_driver
+with_driver: tokenizer.ml
+	ocamlc -ppx "ppx_driver ../src/syntax/sedlex.cma" -I ../src/lib -o tokenizer.exe sedlexing.cma tokenizer.ml
+
 .PHONY: with_findlib
 with_findlib: tokenizer.ml
 	ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/sedlex.exe" tokenizer.ml

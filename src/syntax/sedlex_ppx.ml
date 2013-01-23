@@ -268,7 +268,7 @@ let regexp_of_pattern env =
   aux
 
 
-let mapper =
+let mapper _args =
   object(this)
     inherit Ast_mapper.mapper as super
 
@@ -316,4 +316,4 @@ let mapper =
            ) l)
   end
 
-let () = Ast_mapper.main mapper
+let () = Ast_mapper.register "sedlex" mapper
