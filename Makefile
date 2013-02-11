@@ -28,7 +28,7 @@ test: clean all opt
 
 INSTALL=META src/syntax/sedlex.cma src/syntax/sedlex.exe src/lib/sedlexing.cma src/lib/sedlexing.cmi
 
-INSTALL_OPT=src/syntax/sedlex.cmxs src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+INSTALL_OPT=src/syntax/sedlex.cmxs src/syntax/sedlex$(EXT_LIB) src/syntax/sedlex.cmxa src/syntax/sedlex.opt.exe src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
 
 install:
 	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
@@ -63,3 +63,9 @@ package: clean
 	cd $(PACKAGE) && tar xzf ../sedlex.tar.gz
 	tar czf $(PACKAGE).tar.gz $(PACKAGE)
 	rm -Rf $(PACKAGE) sedlex.tar.gz
+
+
+TARGET=foo:bar/sedlex_dara
+upload:
+	scp $(PACKAGE).tar.gz README CHANGES $(TARGET)/
+	rsync -avz libdoc $(TARGET)
