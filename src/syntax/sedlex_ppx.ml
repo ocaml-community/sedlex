@@ -246,8 +246,6 @@ let regexp_of_pattern env =
     | Ppat_interval (Const_int i1, Const_int i2) ->
         Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
 
-    | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}) ->
-        Sedlex.chars (Cset.interval i j)
     | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
     | Ppat_constant (Const_char c) -> regexp_for_char c
     | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))

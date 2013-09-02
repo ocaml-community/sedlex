@@ -55,13 +55,14 @@ Regular expressions are syntactically OCaml patterns:
  - "...." (string constant): recognize the specified string
  - '....' (character constant) : recognize the specified character
  - i (integer constant) : recognize the specified codepoint
+ - '...' .. '...': character range
+ - i1 .. i2: range between two codepoints
  - R1 | R2 : alternation
  - R1, R2, ..., Rn : concatenation
  - Star R : Kleene star (0 or more repetition)
  - Plus R : equivalent to R, R*
  - Opt R : equivalent to ("" | R)
  - Chars "..." : recognize any character in the string
- - Range (i, j) : recognize any codepoint between i and j
  - lid (lowercase identifier) : reference a named regexp (see below)
 
 Note:

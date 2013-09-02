@@ -8,7 +8,7 @@ let rec token buf =
   | letter, Star ('A'..'Z' | 'a'..'z' | digit) -> Printf.printf "Ident %s\n" (Sedlexing.Latin1.lexeme buf); token buf
   | Plus xml_blank -> token buf
   | Plus (Chars "+*-/") -> Printf.printf "Op %s\n" (Sedlexing.Latin1.lexeme buf); token buf
-  | Range(128,255) -> print_endline "Non ASCII"
+  | 128 .. 255 -> print_endline "Non ASCII"
   | eof -> print_endline "EOF"
   | _ -> failwith "Unexpected character"
 
