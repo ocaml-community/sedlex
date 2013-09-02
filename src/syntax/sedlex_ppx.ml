@@ -298,7 +298,7 @@ let mapper _args =
                 ) cases
             in
             gen_definition lexbuf cases error
-      | Pexp_let (_, [{pvb_pat={ppat_desc = Ppat_alias (p, {txt=name})}; pvb_expr={pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}}], body) ->
+      | Pexp_let (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}], body) ->
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
@@ -313,8 +313,7 @@ let mapper _args =
       List.concat
         (List.map
            (function
-             | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc = Ppat_alias (p, {txt=name})};
-                                                        pvb_expr={pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}}])} ->
+             | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}])} ->
                  mapper := !mapper # define_regexp name p;
                  []
              | i ->

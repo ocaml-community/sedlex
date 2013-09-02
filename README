@@ -81,18 +81,17 @@ Note:
 
 
 It is possible to define named regular expressions with the following
-construction, that can appear in place of of structure item:
+construction, that can appear in place of a structure item:
 
-  let R as lid = SEDLEX.regexp
+  let lid = [%sedlex.regexp? R]
 
 where lid is the regexp name to be defined and R its definition.  The
-right-hand side must be exactly "SEDLEX.regexp".  The scope of the
-"lid" regular expression is the rest of the structure, after the
-definition.
+scope of the "lid" regular expression is the rest of the structure,
+after the definition.
 
 The same syntax can be used for local binding:
 
-  let R as lid = SEDLEX.regexp in
+  let lid = [%sedlex.regexp? R] in
   body
 
 The scope of "lid" is the body expression.
