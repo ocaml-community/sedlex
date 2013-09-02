@@ -4,9 +4,9 @@
 
 open Longident
 open Parsetree
-open Location
 open Asttypes
-open Ast_mapper
+open Ast_helper
+open Ast_helper.Convenience
 
 (* Decision tree for partitions *)
 
@@ -73,14 +73,9 @@ let decision_table p =
 (* Helpers to build AST *)
 
 
-let eid s = E.ident (mknoloc (Longident.parse s))
-let appfun s l = E.apply_nolabs (eid s) l
-let int i = E.constant (Const_int i)
-let pint i = P.constant (Const_int i)
-let pvar name = P.var (Location.mknoloc name)
-let glb_value name def = M.value Nonrecursive [pvar name, def]
-let fun_ arg body = E.function_ "" None [pvar arg, body]
-
+let appfun s l = app (evar s) l
+let pint i = Pat.constant (Const_int i)
+let glb_value name def = Str.value Nonrecursive [Vb.mk (pvar name) def]
 
 (* Named regexps *)
 
@@ -123,8 +118,7 @@ let table (name, v) =
   let n = Array.length v in
   let s = String.create n in
   for i = 0 to n - 1 do s.[i] <- Char.chr v.(i) done;
-  glb_value name (E.constant (Const_string s))
-
+  glb_value name (str s)
 
 (* Partition (function: codepoint -> next state) *)
 
@@ -143,24 +137,24 @@ let partition_name x =
 let partition (name, p) =
   let rec gen_tree = function
     | Lte (i, yes, no) ->
-        E.ifthenelse
-            (appfun "<=" [eid "c"; int i])
+        Exp.ifthenelse
+            (appfun "<=" [evar "c"; int i])
             (gen_tree yes)
             (Some (gen_tree no))
     | Return i -> int i
     | Table (offset, t) ->
 	let c =
-          if offset = 0 then eid "c"
-	  else appfun "-" [eid "c"; int offset]
+          if offset = 0 then evar "c"
+	  else appfun "-" [evar "c"; int offset]
         in
         appfun "-"
           [
-           appfun "Char.code" [appfun "String.get" [eid (table_name t); c]];
+           appfun "Char.code" [appfun "String.get" [evar (table_name t); c]];
            int 1;
           ]
   in
   let body = gen_tree (decision_table p) in
-  glb_value name (fun_ "c" body)
+  glb_value name (func [pvar "c", body])
 
 (* Code generation for the automata *)
 
@@ -179,34 +173,34 @@ let call_state lexbuf auto state =
   then match best_final final with
   | Some i -> int i
   | None -> assert false
-  else appfun (state_fun state) [eid lexbuf]
+  else appfun (state_fun state) [evar lexbuf]
 
 let gen_state lexbuf auto i (trans, final) =
   let partition = Array.map fst trans in
-  let cases = Array.mapi (fun i (_, j) -> (pint i, call_state lexbuf auto j)) trans in
+  let cases = Array.mapi (fun i (_, j) -> Exp.case(pint i) (call_state lexbuf auto j)) trans in
   let cases = Array.to_list cases in
   let body () =
-    E.match_
-      (appfun (partition_name partition) [appfun "Sedlexing.next" [eid lexbuf]])
-      (cases @ [P.any (), appfun "Sedlexing.backtrack" [eid lexbuf]])
+    Exp.match_
+      (appfun (partition_name partition) [appfun "Sedlexing.next" [evar lexbuf]])
+      (cases @ [Exp.case (Pat.any ()) (appfun "Sedlexing.backtrack" [evar lexbuf])])
   in
-  let ret body = [ pvar (state_fun i), (fun_ lexbuf body) ] in
+  let ret body = [ Vb.mk (pvar (state_fun i)) (func [pvar lexbuf, body]) ] in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret (E.sequence (appfun "Sedlexing.mark" [eid lexbuf; int i]) (body ()))
+    | Some i -> ret (Exp.sequence (appfun "Sedlexing.mark" [evar lexbuf; int i]) (body ()))
 
 let gen_definition lexbuf l error =
   let brs = Array.of_list l in
   let auto = Sedlex.compile (Array.map fst brs) in
-  let cases = Array.to_list (Array.mapi (fun i (_, e) -> (pint i, e)) brs) in
+  let cases = Array.to_list (Array.mapi (fun i (_, e) -> Exp.case (pint i) e) brs) in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  E.let_ Recursive states
-    (E.sequence
-       (appfun "Sedlexing.start" [eid lexbuf])
-       (E.match_ (appfun (state_fun 0) [eid lexbuf])
-          (cases @ [P.any (), error])
+  Exp.let_ Recursive states
+    (Exp.sequence
+       (appfun "Sedlexing.start" [evar lexbuf])
+       (Exp.match_ (appfun (state_fun 0) [evar lexbuf])
+          (cases @ [Exp.case (Pat.any ()) error])
        )
     )
 
@@ -235,21 +229,26 @@ let regexp_of_pattern env =
         List.fold_left (fun r p -> Sedlex.seq r (aux p))
           (aux p)
           pl
-    | Ppat_construct ({txt = Lident "Star"}, Some p, _) ->
+    | Ppat_construct ({txt = Lident "Star"}, Some p) ->
         Sedlex.rep (aux p)
-    | Ppat_construct ({txt = Lident "Plus"}, Some p, _) ->
+    | Ppat_construct ({txt = Lident "Plus"}, Some p) ->
         Sedlex.plus (aux p)
-    | Ppat_construct ({txt = Lident "Opt"}, Some p, _) ->
+    | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
-    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string s)}, _) ->
+    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
         let c = ref Cset.empty in
         for i = 0 to String.length s - 1 do
 	  c := Cset.union !c (Cset.singleton (Char.code s.[i]))
         done;
         Sedlex.chars !c
-    | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}, _) ->
+    | Ppat_interval (Const_char c1, Const_char c2) ->
+        Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
+    | Ppat_interval (Const_int i1, Const_int i2) ->
+        Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
+
+    | Ppat_construct ({txt = Lident "Range"}, Some {ppat_desc=Ppat_tuple [{ppat_desc=Ppat_constant (Const_int i)}; {ppat_desc=Ppat_constant (Const_int j)}]}) ->
         Sedlex.chars (Cset.interval i j)
-    | Ppat_constant (Const_string s) -> regexp_for_string s
+    | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
     | Ppat_constant (Const_char c) -> regexp_for_char c
     | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
     | Ppat_var {txt=x} ->
@@ -280,20 +279,29 @@ let mapper _args =
     method! expr e =
       match e.pexp_desc with
       | Pexp_match
-          ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}}, _)}, cases) ->
+          ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}})}, cases) ->
             let cases = List.rev cases in
             let error =
               match List.hd cases with
-              | {ppat_desc = Ppat_any}, e -> super # expr e
-              | p, _ ->
+              | {pc_lhs = {ppat_desc = Ppat_any}; pc_rhs = e; pc_guard = None} -> super # expr e
+              | {pc_lhs = p} ->
                   Format.eprintf "%aSedlex: the last branch must a catch-all error case.@."
                     Location.print p.ppat_loc;
                   exit 2
             in
             let cases = List.rev (List.tl cases) in
-            let cases = List.map (fun (p, e) -> regexp_of_pattern env p, super # expr e) cases in
+            let cases =
+              List.map
+                (function
+                  | {pc_lhs = p; pc_rhs = e; pc_guard = None} -> regexp_of_pattern env p, super # expr e
+                  | {pc_lhs = p; pc_guard = Some _} ->
+                    Format.eprintf "%aSedlex: 'when' guards are not supported.@."
+                      Location.print p.ppat_loc;
+                    exit 2
+                ) cases
+            in
             gen_definition lexbuf cases error
-      | Pexp_let (_, [{ppat_desc = Ppat_alias (p, {txt=name})}, {pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}], body) ->
+      | Pexp_let (_, [{pvb_pat={ppat_desc = Ppat_alias (p, {txt=name})}; pvb_expr={pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}}], body) ->
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
@@ -308,11 +316,12 @@ let mapper _args =
       List.concat
         (List.map
            (function
-             | {pstr_desc = Pstr_value (_, [{ppat_desc = Ppat_alias (p, {txt=name})}, {pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}])} ->
+             | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc = Ppat_alias (p, {txt=name})};
+                                                        pvb_expr={pexp_desc = Pexp_ident {txt=Ldot(Lident "SEDLEX", "regexp")}}}])} ->
                  mapper := !mapper # define_regexp name p;
                  []
              | i ->
-                 !mapper # structure_item i
+                 [ !mapper # structure_item i ]
            ) l)
   end
 
