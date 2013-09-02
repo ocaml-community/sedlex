@@ -276,8 +276,7 @@ let mapper _args =
 
     method! expr e =
       match e.pexp_desc with
-      | Pexp_match
-          ({pexp_desc=Pexp_construct ({txt=Lident "SEDLEX"}, Some {pexp_desc=Pexp_ident{txt=Lident lexbuf}})}, cases) ->
+      | Pexp_extension({txt="sedlex"}, PStr[{pstr_desc=Pstr_eval({pexp_desc=Pexp_match ({pexp_desc=Pexp_ident{txt=Lident lexbuf}}, cases)}, _)}]) ->
             let cases = List.rev cases in
             let error =
               match List.hd cases with

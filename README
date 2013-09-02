@@ -29,13 +29,23 @@ Lexer specifications
 sedlex adds a new kind of expression to OCaml: lexer definitions.
 The syntax for the new construction is:
 
-  match SEDLEX lexbuf with
+  match%sedlex lexbuf with
   | R1 -> e1
   ...
   | Rn -> en
   | _  -> def
 
-(The first vertical bar is optional.)
+or:
+
+  [%sedlex match lexbuf with 
+  | R1 -> e1
+  ...
+  | Rn -> en
+  | _  -> def
+  ]
+
+(The first vertical bar is optional as in any OCaml pattern matching.
+Guard expressions are not allowed.)
 
 where:
  - lexbuf is an arbitrary lowercase identifier, which must refer to

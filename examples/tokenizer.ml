@@ -3,7 +3,7 @@ let (Plus digit) as number = SEDLEX.regexp
 
 let rec token buf =
   let ('a'..'z'|'A'..'Z') as letter = SEDLEX.regexp in
-  match SEDLEX buf with
+  match%sedlex buf with
   | number -> Printf.printf "Number %s\n" (Sedlexing.Latin1.lexeme buf); token buf
   | letter, Star ('A'..'Z' | 'a'..'z' | digit) -> Printf.printf "Ident %s\n" (Sedlexing.Latin1.lexeme buf); token buf
   | Plus xml_blank -> token buf
