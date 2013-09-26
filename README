@@ -124,8 +124,13 @@ of the Sedlexing module for more information.
 --------------------------------------------------------------------------
 Using sedlex
 
-The first thing to do is to compile and install sedlex.  You need a
-recent version of OCaml.
+The quick way:
+
+   opam install sedlex
+
+
+Otherwise, the first thing to do is to compile and install sedlex.
+You need a recent version of OCaml.
 
   make all
   make opt (* optional *)

@@ -1,5 +1,6 @@
 1.99.1
-     * Support for new Ast_mapper registration API.
+     * Support for new Ast_mapper registration API, follow OCaml trunk after
+       the inclusion of the extension_point branch
 
 1.99
      * First version of sedlex.  The history below refers to ulex, the ancestor
