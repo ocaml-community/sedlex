@@ -265,9 +265,9 @@ let regexp_of_pattern env =
   aux
 
 
-let mapper _args =
+let mapper =
   object(this)
-    inherit Ast_mapper.mapper as super
+    inherit Ast_mapper_class.mapper as super
 
     val env = builtin_regexps
 
@@ -302,23 +302,28 @@ let mapper _args =
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
-    method! implementation file str =
-      let file, str = super # implementation file str in
-      let parts = List.map partition (get_partitions ()) in
-      let tables = List.map table (get_tables ()) in
-      file, tables @ parts @ str
+
+    val toplevel = true
 
     method! structure l =
-      let mapper = ref this in
-      List.concat
-        (List.map
-           (function
-             | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}])} ->
+      if toplevel then
+        let l = {< toplevel = false >} # structure l in
+        let parts = List.map partition (get_partitions ()) in
+        let tables = List.map table (get_tables ()) in
+        tables @ parts @ l
+      else
+        let mapper = ref this in
+        List.concat
+          (List.map
+             (function
+               | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}])} ->
                  mapper := !mapper # define_regexp name p;
                  []
-             | i ->
+               | i ->
                  [ !mapper # structure_item i ]
-           ) l)
+             ) l)
   end
 
-let () = Ast_mapper.register "sedlex" mapper
+
+let () =
+  Ast_mapper.register "sedlex" (fun _ -> Ast_mapper_class.to_mapper mapper)

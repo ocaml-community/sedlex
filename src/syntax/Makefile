@@ -3,24 +3,26 @@
 # Copyright 2005, 2013 by Alain Frisch and LexiFi.
 
 SRCS=cset.mli cset.ml sedlex.mli sedlex.ml sedlex_ppx.ml
+OCAMLC=ocamlfind ocamlc -package ppx_tools -w +A-4-9 -annot
+OCAMLOPT=ocamlfind ocamlopt -package ppx_tools -w +A-4-9 -annot
 
 all: sedlex.exe sedlex.cma
 opt: sedlex.opt.exe sedlex.cmxa sedlex.cmxs
 
 sedlex.cma: $(SRCS)
-	ocamlc -w +A-4-9 -annot -a -o sedlex.cma -I +compiler-libs $(SRCS)
+	$(OCAMLC) -a -o sedlex.cma $(SRCS)
 
 sedlex.cmxa: $(SRCS)
-	ocamlopt -w +A-4-9 -annot -a -o sedlex.cmxa -I +compiler-libs $(SRCS)
+	$(OCAMLOPT) -a -o sedlex.cmxa $(SRCS)
 
 sedlex.cmxs: $(SRCS)
-	ocamlopt -w +A-4-9 -annot -shared -o sedlex.cmxs -I +compiler-libs $(SRCS)
+	$(OCAMLOPT) -shared -o sedlex.cmxs $(SRCS)
 
 sedlex.exe: sedlex.cma
-	ocamlc -w +A-4-9 -annot -o sedlex.exe -linkall -I +compiler-libs ocamlcommon.cma sedlex.cma
+	$(OCAMLC) -o sedlex.exe -linkpkg -linkall sedlex.cma
 
 sedlex.opt.exe: sedlex.cmxa
-	ocamlopt -w +A-4-9 -annot -o sedlex.opt.exe -linkall -I +compiler-libs ocamlcommon.cmxa sedlex.cmxa
+	$(OCAMLOPT) -o sedlex.opt.exe -linkpkg -linkall sedlex.cmxa
 
 clean:
 	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj
