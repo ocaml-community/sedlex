@@ -25,4 +25,4 @@ sedlex.opt.exe: sedlex.cmxa
 	$(OCAMLOPT) -o sedlex.opt.exe -linkpkg -linkall sedlex.cmxa
 
 clean:
-	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj
+	rm -f *~ *.cm* *.a *.lib *.exe *.o *.obj *.annot

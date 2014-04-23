@@ -6,7 +6,7 @@ open Longident
 open Parsetree
 open Asttypes
 open Ast_helper
-open Ast_helper.Convenience
+open Ast_convenience
 
 (* Decision tree for partitions *)
 
