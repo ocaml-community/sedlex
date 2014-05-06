@@ -116,9 +116,9 @@ let table_name x =
 
 let table (name, v) =
   let n = Array.length v in
-  let s = String.create n in
-  for i = 0 to n - 1 do s.[i] <- Char.chr v.(i) done;
-  glb_value name (str s)
+  let s = Bytes.create n in
+  for i = 0 to n - 1 do Bytes.set s i (Char.chr v.(i)) done;
+  glb_value name (str (Bytes.to_string s))
 
 (* Partition (function: codepoint -> next state) *)
 
