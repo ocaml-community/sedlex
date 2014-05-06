@@ -2,3 +2,11 @@ version = "1.99.1"
 description = "Runtime support for sedlex"
 archive(byte) = "sedlexing.cma"
 archive(native) = "sedlexing.cmxa"
+
+package "ppx" (
+  version = "1.99.1"
+  description = "ppx implementation of sedlex"
+  requires = "ppx_tools"
+  archive(byte) = "sedlex.cma"
+  archive(native) = "sedlex.cmxa"
+)
