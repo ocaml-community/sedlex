@@ -159,9 +159,9 @@ module Latin1 = struct
     to_latin1 (lexeme_char lexbuf pos)
 
   let sub_lexeme lexbuf pos len =
-    let s = String.create len in
-    for i = 0 to len - 1 do s.[i] <- to_latin1 lexbuf.buf.(lexbuf.start + pos + i) done;
-    s
+    let s = Bytes.create len in
+    for i = 0 to len - 1 do Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start + pos + i)) done;
+    Bytes.to_string s
 
   let lexeme lexbuf =
     sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
