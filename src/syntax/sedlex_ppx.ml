@@ -221,6 +221,9 @@ let regexp_for_string s =
       Sedlex.seq (regexp_for_char s.[n]) (aux (succ n))
   in aux 0
 
+let err loc s =
+  raise (Location.Error (Location.error ~loc ("Sedlex: " ^ s)))
+
 let regexp_of_pattern env =
   let rec aux p =
     match p.ppat_desc with
@@ -252,15 +255,10 @@ let regexp_of_pattern env =
     | Ppat_var {txt=x} ->
         begin try StringMap.find x env
         with Not_found ->
-          Format.eprintf "%aSedlex: unbound regexp %s.@."
-            Location.print p.ppat_loc
-            x;
-          exit 2
+          err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
     | _ ->
-        Format.eprintf "%aSedlex: this pattern is not a valid regexp.@."
-          Location.print p.ppat_loc;
-        exit 2
+      err p.ppat_loc "this pattern is not a valid regexp"
   in
   aux
 
@@ -282,19 +280,15 @@ let mapper =
               match List.hd cases with
               | {pc_lhs = {ppat_desc = Ppat_any}; pc_rhs = e; pc_guard = None} -> super # expr e
               | {pc_lhs = p} ->
-                  Format.eprintf "%aSedlex: the last branch must a catch-all error case.@."
-                    Location.print p.ppat_loc;
-                  exit 2
+                err p.ppat_loc "the last branch must a catch-all error case"
             in
             let cases = List.rev (List.tl cases) in
             let cases =
               List.map
                 (function
                   | {pc_lhs = p; pc_rhs = e; pc_guard = None} -> regexp_of_pattern env p, super # expr e
-                  | {pc_lhs = p; pc_guard = Some _} ->
-                    Format.eprintf "%aSedlex: 'when' guards are not supported.@."
-                      Location.print p.ppat_loc;
-                    exit 2
+                  | {pc_guard = Some e} ->
+                    err e.pexp_loc "'when' guards are not supported"
                 ) cases
             in
             gen_definition lexbuf cases error
