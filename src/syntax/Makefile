@@ -8,8 +8,8 @@ SRCS=cset.mli cset.ml sedlex.mli sedlex.ml sedlex_ppx.ml
 OCAMLC=ocamlfind ocamlc -package ppx_tools -w +A-4-9 -annot
 OCAMLOPT=ocamlfind ocamlopt -package ppx_tools -w +A-4-9 -annot
 
-all: sedlex$(EXE) sedlex.cma
-opt: sedlex.opt$(EXE) sedlex.cmxa sedlex.cmxs
+all: ppx_sedlex$(EXE) sedlex.cma
+opt: ppx_sedlex.opt$(EXE) sedlex.cmxa sedlex.cmxs
 
 sedlex.cma: $(SRCS)
 	$(OCAMLC) -a -o sedlex.cma $(SRCS)
@@ -20,11 +20,11 @@ sedlex.cmxa: $(SRCS)
 sedlex.cmxs: $(SRCS)
 	$(OCAMLOPT) -shared -o sedlex.cmxs $(SRCS)
 
-sedlex$(EXE): sedlex.cma
-	$(OCAMLC) -o sedlex$(EXE) -linkpkg -linkall sedlex.cma
+ppx_sedlex$(EXE): sedlex.cma
+	$(OCAMLC) -o $@ -linkpkg -linkall sedlex.cma
 
-sedlex.opt$(EXE): sedlex.cmxa
-	$(OCAMLOPT) -o sedlex.opt$(EXE) -linkpkg -linkall sedlex.cmxa
+ppx_sedlex.opt$(EXE): sedlex.cmxa
+	$(OCAMLOPT) -o $@ -linkpkg -linkall sedlex.cmxa
 
 clean:
-	rm -f *~ *.cm* *.a *.lib *.o *.obj *.annot sedlex$(EXE) sedlex.opt$(EXE)
+	rm -f *~ *.cm* *.a *.lib *.o *.obj *.annot ppx_sedlex$(EXE) ppx_sedlex.opt$(EXE)

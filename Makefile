@@ -27,9 +27,9 @@ clean:
 test: clean all opt
 	cd examples && make clean tokenizer$(EXE) && ./tokenizer$(EXE)
 
-INSTALL=META src/syntax/sedlex.cma src/syntax/sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
+INSTALL=META src/syntax/sedlex.cma src/syntax/ppx_sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
 
-INSTALL_OPT=src/syntax/sedlex.cmxs src/syntax/sedlex$(EXT_LIB) src/syntax/sedlex.cmxa src/syntax/sedlex.opt$(EXE) src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+INSTALL_OPT=src/syntax/sedlex.cmxs src/syntax/sedlex$(EXT_LIB) src/syntax/sedlex.cmxa src/syntax/ppx_sedlex.opt$(EXE) src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
 
 install:
 	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
