@@ -54,8 +54,8 @@ DISTRIB = \
   src/syntax/sedlex.ml \
   src/syntax/sedlex.mli \
   src/syntax/sedlex_ppx.ml \
-	src/syntax/unicode63.ml \
-	src/syntax/unicode63.mli
+  src/syntax/unicode63.ml \
+  src/syntax/unicode63.mli
 
 
 package: clean
