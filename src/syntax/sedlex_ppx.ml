@@ -100,10 +100,10 @@ let builtin_regexps =
      "tr8876_ident_char", Cset.tr8876_ident_char;
 
      (* Unicode 6.3 categories *)
-     "cc", Unicode63.Categories.cs;
-     "cf", Unicode63.Categories.cs;
-     "cn", Unicode63.Categories.cs;
-     "co", Unicode63.Categories.cs;
+     "cc", Unicode63.Categories.cc;
+     "cf", Unicode63.Categories.cf;
+     "cn", Unicode63.Categories.cn;
+     "co", Unicode63.Categories.co;
      "cs", Unicode63.Categories.cs;
      "ll", Unicode63.Categories.ll;
      "lm", Unicode63.Categories.lm;
