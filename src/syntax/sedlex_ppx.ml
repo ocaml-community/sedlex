@@ -288,8 +288,6 @@ let regexp_of_pattern env =
     | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
     | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
-    | Ppat_constant (Const_char c) -> regexp_for_char c
-    | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
     | Ppat_var {txt=x} ->
         begin try StringMap.find x env
         with Not_found ->
@@ -312,6 +310,8 @@ let regexp_of_pattern env =
           Cset.interval (Char.code c1) (Char.code c2)
       | Ppat_interval (Const_int i1, Const_int i2) ->
           Cset.interval (codepoint i1) (codepoint i2)
+      | Ppat_constant (Const_char c) -> Cset.singleton (Char.code c)
+      | Ppat_constant (Const_int c) -> Cset.singleton (codepoint c)
       | _ ->
         err p.ppat_loc "this pattern is not a valid regexp"
     in Sedlex.chars (aux p)
