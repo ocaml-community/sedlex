@@ -84,70 +84,72 @@ module StringMap = Map.Make(struct
   let compare = compare
 end)
 
-let builtin_regexps =
-  List.fold_left (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
-    StringMap.empty
-    [
-     "any", Cset.any;
-     "eof", Cset.eof;
-     "xml_letter", Cset.letter;
-     "xml_digit", Cset.digit;
-     "xml_extender", Cset.extender;
-     "xml_base_char", Cset.base_char;
-     "xml_ideographic", Cset.ideographic;
-     "xml_combining_char", Cset.combining_char;
-     "xml_blank", Cset.blank;
-     "tr8876_ident_char", Cset.tr8876_ident_char;
+let builtin_csets = [
+  "any", Cset.any;
+  "eof", Cset.eof;
+  "xml_letter", Cset.letter;
+  "xml_digit", Cset.digit;
+  "xml_extender", Cset.extender;
+  "xml_base_char", Cset.base_char;
+  "xml_ideographic", Cset.ideographic;
+  "xml_combining_char", Cset.combining_char;
+  "xml_blank", Cset.blank;
+  "tr8876_ident_char", Cset.tr8876_ident_char;
 
-     (* Unicode 6.3 categories *)
-     "cc", Unicode63.Categories.cc;
-     "cf", Unicode63.Categories.cf;
-     "cn", Unicode63.Categories.cn;
-     "co", Unicode63.Categories.co;
-     "cs", Unicode63.Categories.cs;
-     "ll", Unicode63.Categories.ll;
-     "lm", Unicode63.Categories.lm;
-     "lo", Unicode63.Categories.lo;
-     "lt", Unicode63.Categories.lt;
-     "lu", Unicode63.Categories.lu;
-     "mc", Unicode63.Categories.mc;
-     "me", Unicode63.Categories.me;
-     "mn", Unicode63.Categories.mn;
-     "nd", Unicode63.Categories.nd;
-     "nl", Unicode63.Categories.nl;
-     "no", Unicode63.Categories.no;
-     "pc", Unicode63.Categories.pc;
-     "pd", Unicode63.Categories.pd;
-     "pe", Unicode63.Categories.pe;
-     "pf", Unicode63.Categories.pf;
-     "pi", Unicode63.Categories.pi;
-     "po", Unicode63.Categories.po;
-     "ps", Unicode63.Categories.ps;
-     "sc", Unicode63.Categories.sc;
-     "sk", Unicode63.Categories.sk;
-     "sm", Unicode63.Categories.sm;
-     "so", Unicode63.Categories.so;
-     "zl", Unicode63.Categories.zl;
-     "zp", Unicode63.Categories.zp;
-     "zs", Unicode63.Categories.zs;
- 
-     (* Unicode 6.3 properties *)
-     "alphabetic", Unicode63.Properties.alphabetic;
-     "ascii_hex_digit", Unicode63.Properties.ascii_hex_digit;
-     "hex_digit", Unicode63.Properties.hex_digit;
-     "id_continue", Unicode63.Properties.id_continue;
-     "id_start", Unicode63.Properties.id_start;
-     "lowercase", Unicode63.Properties.lowercase;
-     "math", Unicode63.Properties.math;
-     "other_alphabetic", Unicode63.Properties.other_alphabetic;
-     "other_lowercase", Unicode63.Properties.other_lowercase;
-     "other_math", Unicode63.Properties.other_math;
-     "other_uppercase", Unicode63.Properties.other_uppercase;
-     "uppercase", Unicode63.Properties.uppercase;
-     "white_space", Unicode63.Properties.white_space;
-     "xid_continue", Unicode63.Properties.xid_continue;
-     "xid_start", Unicode63.Properties.xid_start;
-    ]
+  (* Unicode 6.3 categories *)
+  "cc", Unicode63.Categories.cc;
+  "cf", Unicode63.Categories.cf;
+  "cn", Unicode63.Categories.cn;
+  "co", Unicode63.Categories.co;
+  "cs", Unicode63.Categories.cs;
+  "ll", Unicode63.Categories.ll;
+  "lm", Unicode63.Categories.lm;
+  "lo", Unicode63.Categories.lo;
+  "lt", Unicode63.Categories.lt;
+  "lu", Unicode63.Categories.lu;
+  "mc", Unicode63.Categories.mc;
+  "me", Unicode63.Categories.me;
+  "mn", Unicode63.Categories.mn;
+  "nd", Unicode63.Categories.nd;
+  "nl", Unicode63.Categories.nl;
+  "no", Unicode63.Categories.no;
+  "pc", Unicode63.Categories.pc;
+  "pd", Unicode63.Categories.pd;
+  "pe", Unicode63.Categories.pe;
+  "pf", Unicode63.Categories.pf;
+  "pi", Unicode63.Categories.pi;
+  "po", Unicode63.Categories.po;
+  "ps", Unicode63.Categories.ps;
+  "sc", Unicode63.Categories.sc;
+  "sk", Unicode63.Categories.sk;
+  "sm", Unicode63.Categories.sm;
+  "so", Unicode63.Categories.so;
+  "zl", Unicode63.Categories.zl;
+  "zp", Unicode63.Categories.zp;
+  "zs", Unicode63.Categories.zs;
+
+  (* Unicode 6.3 properties *)
+  "alphabetic", Unicode63.Properties.alphabetic;
+  "ascii_hex_digit", Unicode63.Properties.ascii_hex_digit;
+  "hex_digit", Unicode63.Properties.hex_digit;
+  "id_continue", Unicode63.Properties.id_continue;
+  "id_start", Unicode63.Properties.id_start;
+  "lowercase", Unicode63.Properties.lowercase;
+  "math", Unicode63.Properties.math;
+  "other_alphabetic", Unicode63.Properties.other_alphabetic;
+  "other_lowercase", Unicode63.Properties.other_lowercase;
+  "other_math", Unicode63.Properties.other_math;
+  "other_uppercase", Unicode63.Properties.other_uppercase;
+  "uppercase", Unicode63.Properties.uppercase;
+  "white_space", Unicode63.Properties.white_space;
+  "xid_continue", Unicode63.Properties.xid_continue;
+  "xid_start", Unicode63.Properties.xid_start;
+]
+
+let builtin_charsets, builtin_regexps =
+  List.fold_left (fun (cs, rx) (n, c) -> StringMap.add n c cs, StringMap.add n (Sedlex.chars c) rx)
+    StringMap.(empty, empty)
+    builtin_csets
 
 (* Tables (indexed mapping: codepoint -> next state) *)
 
@@ -254,6 +256,10 @@ let gen_definition lexbuf l error =
     )
 
 (* Lexer specification parser *)
+type env = {
+  charsets : Cset.t StringMap.t;
+  regexps : Sedlex.regexp StringMap.t
+}
 
 let codepoint i =
   if i < 0 || i > Cset.max_code then
@@ -273,7 +279,7 @@ let regexp_for_string s =
 let err loc s =
   raise (Location.Error (Location.error ~loc ("Sedlex: " ^ s)))
 
-let regexp_of_pattern env =
+let rec regexp_of_pattern env =
   let rec aux p =
     match p.ppat_desc with
     | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
@@ -289,44 +295,60 @@ let regexp_of_pattern env =
         Sedlex.alt Sedlex.eps (aux p)
     | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
     | Ppat_var {txt=x} ->
-        begin try StringMap.find x env
+        begin try StringMap.find x env.regexps
         with Not_found ->
           err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
     | _ ->
-        aux_compl_pattern p
-  and aux_compl_pattern p =
-    let rec aux p =
-      match p.ppat_desc with
-      | Ppat_construct ({txt = Lident "Compl"}, Some p) ->
-          Cset.(difference any (aux p))
-      | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
-          let c = ref Cset.empty in
-          for i = 0 to String.length s - 1 do
-            c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-          done;
-          !c
-      | Ppat_interval (Const_char c1, Const_char c2) ->
-          Cset.interval (Char.code c1) (Char.code c2)
-      | Ppat_interval (Const_int i1, Const_int i2) ->
-          Cset.interval (codepoint i1) (codepoint i2)
-      | Ppat_constant (Const_char c) -> Cset.singleton (Char.code c)
-      | Ppat_constant (Const_int c) -> Cset.singleton (codepoint c)
-      | _ ->
-        err p.ppat_loc "this pattern is not a valid regexp"
-    in Sedlex.chars (aux p)
+        Sedlex.chars (cset_of_pattern env p)
   in
   aux
 
+and cset_of_pattern env =
+  let rec aux p =
+    match p.ppat_desc with
+    | Ppat_or (p1, p2) ->
+        Cset.union (aux p1) (aux p2)
+    | Ppat_construct ({txt = Lident "Compl"}, Some p) ->
+        Cset.(difference any (aux p))
+    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
+        let c = ref Cset.empty in
+        for i = 0 to String.length s - 1 do
+          c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+        done;
+        !c
+    | Ppat_interval (Const_char c1, Const_char c2) ->
+        Cset.interval (Char.code c1) (Char.code c2)
+    | Ppat_interval (Const_int i1, Const_int i2) ->
+        Cset.interval (codepoint i1) (codepoint i2)
+    | Ppat_constant (Const_char c) -> Cset.singleton (Char.code c)
+    | Ppat_constant (Const_int c) -> Cset.singleton (codepoint c)
+    | Ppat_var {txt=x} ->
+        begin try
+          StringMap.find x env.charsets
+        with
+          | Not_found -> err p.ppat_loc (Printf.sprintf "unbound charset %s" x)
+        end
+    | _ ->
+      err p.ppat_loc "this pattern is not a valid regexp"
+  in
+  aux
 
 let mapper =
   object(this)
     inherit Ast_mapper_class.mapper as super
 
-    val env = builtin_regexps
+    val env = {
+      charsets = builtin_charsets;
+      regexps = builtin_regexps
+    }
+
+    method define_charset name p =
+      {< env = { charsets = StringMap.add name (cset_of_pattern env p) env.charsets;
+                 regexps = StringMap.add name (regexp_of_pattern env p) env.regexps } >}
 
     method define_regexp name p =
-      {< env = StringMap.add name (regexp_of_pattern env p) env >}
+      {< env = { env with regexps = StringMap.add name (regexp_of_pattern env p) env.regexps } >}
 
     method! expr e =
       match e.pexp_desc with
@@ -348,6 +370,8 @@ let mapper =
                 ) cases
             in
             gen_definition lexbuf cases error
+      | Pexp_let (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.charset"}, PPat(p, None))}}], body) ->
+          (this # define_charset name p) # expr body
       | Pexp_let (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}], body) ->
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
@@ -366,6 +390,9 @@ let mapper =
         List.concat
           (List.map
              (function
+               | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.charset"}, PPat(p, None))}}])} ->
+                 mapper := !mapper # define_charset name p;
+                 []
                | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}])} ->
                  mapper := !mapper # define_regexp name p;
                  []

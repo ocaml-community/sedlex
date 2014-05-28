@@ -73,15 +73,31 @@ Regular expressions are syntactically OCaml patterns:
  - Plus R : equivalent to R, R*
  - Opt R : equivalent to ("" | R)
  - Chars "..." : recognize any character in the string
- - lid (lowercase identifier) : reference a named regexp (see below)
+ - Compl C : complement the specified character set (see below)
+ - lid (lowercase identifier) : reference a named character set or
+   regexp (see below)
+
+A character set is similar to a regular expression but strictly less
+powerful: it allows only a single character to be matched. Thus, its may
+only be generated using a subset of the aforementioned patterns:
+
+ - '....' (character constant) : recognize the specified character
+ - i (integer constant) : recognize the specified codepoint
+ - '...' .. '...': character range
+ - i1 .. i2: range between two codepoints
+ - C1 | C2 : union of the given character sets
+ - Chars "..." : reconize any character within the given string
+ - Compl C : complement the specified character set
+ - lid (lowercase identifier) : reference a named character set
 
 Note:
  - The OCaml source is assumed to be encoded in Latin1 (for string
    and character literals).
 
+It is possible to define named character sets and regular expressions.
 
-It is possible to define named regular expressions with the following
-construction, that can appear in place of a structure item:
+Named regular expressions are defined with the following construction,
+that can appear in place of a structure item:
 
   let lid = [%sedlex.regexp? R]
 
@@ -96,10 +112,19 @@ The same syntax can be used for local binding:
 
 The scope of "lid" is the body expression.
 
---------------------------------------------------------------------------
-Predefined regexps
+To define named character sets, an alternate construction is used:
 
-sedlex provides a set of predefined regexps:
+  let lid = [%sedlex.charset? C]
+
+Which can be used in the same contexts as its regular expression
+counterpart. Note that every named character set is also a regular
+expression (they share the same namespace); the converse however, is not
+true.
+
+--------------------------------------------------------------------------
+Predefined character sets and regexps
+
+sedlex provides a set of predefined character sets and regexps:
 - any: any character
 - eof: the virtual end-of-file character
 - xml_letter, xml_digit, xml_extender, xml_base_char, xml_ideographic,
