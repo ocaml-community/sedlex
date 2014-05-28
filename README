@@ -78,7 +78,7 @@ Regular expressions are syntactically OCaml patterns:
    regexp (see below)
 
 A character set is similar to a regular expression but strictly less
-powerful: it allows only a single character to be matched. Thus, its may
+powerful: it allows only a single character to be matched. Thus, it may
 only be generated using a subset of the aforementioned patterns:
 
  - '....' (character constant) : recognize the specified character
