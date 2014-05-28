@@ -20,8 +20,8 @@ let decision l =
   let rec merge2 = function
     | (a1, b1, d1) :: (a2, b2, d2) :: rest ->
 	let x =
-	  if b1 + 1 = a2 then d2
-	  else Lte (a2 - 1, Return (-1), d2)
+    if b1 + 1 = a2 then d2
+    else Lte (a2 - 1, Return (-1), d2)
 	in
 	(a1, b2, Lte (b1, d1, x)) :: merge2 rest
     | rest -> rest
@@ -193,8 +193,8 @@ let partition (name, p) =
     | Return i -> int i
     | Table (offset, t) ->
 	let c =
-          if offset = 0 then evar "c"
-	  else appfun "-" [evar "c"; int offset]
+        if offset = 0 then evar "c"
+        else appfun "-" [evar "c"; int offset]
         in
         appfun "-"
           [
@@ -287,17 +287,6 @@ let regexp_of_pattern env =
         Sedlex.plus (aux p)
     | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
-    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
-        let c = ref Cset.empty in
-        for i = 0 to String.length s - 1 do
-	  c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-        done;
-        Sedlex.chars !c
-    | Ppat_interval (Const_char c1, Const_char c2) ->
-        Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
-    | Ppat_interval (Const_int i1, Const_int i2) ->
-        Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
-
     | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
     | Ppat_constant (Const_char c) -> regexp_for_char c
     | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
@@ -307,7 +296,25 @@ let regexp_of_pattern env =
           err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
     | _ ->
-      err p.ppat_loc "this pattern is not a valid regexp"
+        aux_compl_pattern p
+  and aux_compl_pattern p =
+    let rec aux p =
+      match p.ppat_desc with
+      | Ppat_construct ({txt = Lident "Compl"}, Some p) ->
+          Cset.(difference any (aux p))
+      | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
+          let c = ref Cset.empty in
+          for i = 0 to String.length s - 1 do
+            c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+          done;
+          !c
+      | Ppat_interval (Const_char c1, Const_char c2) ->
+          Cset.interval (Char.code c1) (Char.code c2)
+      | Ppat_interval (Const_int i1, Const_int i2) ->
+          Cset.interval (codepoint i1) (codepoint i2)
+      | _ ->
+        err p.ppat_loc "this pattern is not a valid regexp"
+    in Sedlex.chars (aux p)
   in
   aux
 
