@@ -19,11 +19,11 @@ let decision l =
   let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
     | (a1, b1, d1) :: (a2, b2, d2) :: rest ->
-	let x =
-    if b1 + 1 = a2 then d2
-    else Lte (a2 - 1, Return (-1), d2)
-	in
-	(a1, b2, Lte (b1, d1, x)) :: merge2 rest
+        let x =
+          if b1 + 1 = a2 then d2
+          else Lte (a2 - 1, Return (-1), d2)
+        in
+        (a1, b2, Lte (b1, d1, x)) :: merge2 rest
     | rest -> rest
   in
   let rec aux = function
@@ -38,7 +38,7 @@ let limit = 8192
 let decision_table l =
   let rec aux m accu = function
     | ((a, b, i) as x)::rem when b < limit && i < 255->
-	aux (min a m) (x :: accu) rem
+        aux (min a m) (x :: accu) rem
     | rem -> m, accu, rem
   in
   let (min, table, rest) = aux max_int [] l in
@@ -194,9 +194,9 @@ let partition (name, p) =
             (Some (gen_tree no))
     | Return i -> int i
     | Table (offset, t) ->
-	let c =
-        if offset = 0 then evar "c"
-        else appfun "-" [evar "c"; int offset]
+        let c =
+          if offset = 0 then evar "c"
+          else appfun "-" [evar "c"; int offset]
         in
         appfun "-"
           [

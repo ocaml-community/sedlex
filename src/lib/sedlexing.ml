@@ -16,7 +16,7 @@ type lexbuf = {
   mutable buf: int array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
-			    in the input stream *)
+                           in the input stream *)
   mutable pos: int;
   mutable start: int; (* First char we need to keep visible *)
 
@@ -48,8 +48,8 @@ let create f = {
 
 let from_stream s =
   create (fun buf pos _len ->
-	    try buf.(pos) <- Stream.next s; 1
-	    with Stream.Failure -> 0)
+    try buf.(pos) <- Stream.next s; 1
+    with Stream.Failure -> 0)
 
 let from_int_array a =
   let len = Array.length a in
@@ -184,27 +184,27 @@ module Utf8 = struct
       | '\000'..'\127' as c ->
           Char.code c
       | '\192'..'\223' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
+          let n1 = Char.code c in
+          let n2 = Char.code s.[i+1] in
           if (n2 lsr 6 != 0b10) then raise MalFormed;
           ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
       | '\224'..'\239' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
-	  let n3 = Char.code s.[i+2] in
+          let n1 = Char.code c in
+          let n2 = Char.code s.[i+1] in
+          let n3 = Char.code s.[i+2] in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-	  let p =
+          let p =
             ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-	  in
-	  if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
-	  p
+          in
+          if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
+          p
       | '\240'..'\247' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
-	  let n3 = Char.code s.[i+2] in
-	  let n4 = Char.code s.[i+3] in
+          let n1 = Char.code c in
+          let n2 = Char.code s.[i+1] in
+          let n3 = Char.code s.[i+2] in
+          let n4 = Char.code s.[i+3] in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	  then raise MalFormed;
+          then raise MalFormed;
           ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
           ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
       | _ -> raise MalFormed
@@ -218,23 +218,23 @@ module Utf8 = struct
       | '\000'..'\127' as c ->
           Char.code c
       | '\192'..'\223' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code (Stream.next s) in
+          let n1 = Char.code c in
+          let n2 = Char.code (Stream.next s) in
           if (n2 lsr 6 != 0b10) then raise MalFormed;
           ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
       | '\224'..'\239' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code (Stream.next s) in
-	  let n3 = Char.code (Stream.next s) in
+          let n1 = Char.code c in
+          let n2 = Char.code (Stream.next s) in
+          let n3 = Char.code (Stream.next s) in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
           ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
       | '\240'..'\247' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code (Stream.next s) in
-	  let n3 = Char.code (Stream.next s) in
-	  let n4 = Char.code (Stream.next s) in
+          let n1 = Char.code c in
+          let n2 = Char.code (Stream.next s) in
+          let n3 = Char.code (Stream.next s) in
+          let n4 = Char.code (Stream.next s) in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	  then raise MalFormed;
+          then raise MalFormed;
           ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
           ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
       | _ -> raise MalFormed
