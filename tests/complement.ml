@@ -1,5 +1,5 @@
 
-let uppercase_or_lowercase = [%sedlex.charset? uppercase | lowercase]
+let uppercase_or_lowercase = [%sedlex.regexp? uppercase | lowercase]
 
 let rec token buf =
   match%sedlex buf with
