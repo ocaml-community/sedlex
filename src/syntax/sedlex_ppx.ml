@@ -238,6 +238,13 @@ let regexp_of_pattern env =
         Sedlex.plus (aux p)
     | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
+    | Ppat_construct ({txt = Lident "Compl"}, Some p0) ->
+        begin match Sedlex.compl (aux p0) with
+        | Some r -> r
+        | None ->
+          err p.ppat_loc
+            "the Compl operator can only applied to a single-character regexp"
+        end
     | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
         let c = ref Cset.empty in
         for i = 0 to String.length s - 1 do

@@ -73,7 +73,15 @@ Regular expressions are syntactically OCaml patterns:
  - Plus R : equivalent to R, R*
  - Opt R : equivalent to ("" | R)
  - Chars "..." : recognize any character in the string
+ - Compl R : assume that R is a single-character regexp (see below)
+   and recognize the complement set
  - lid (lowercase identifier) : reference a named regexp (see below)
+
+A single-character regexp is a regexp which does not contain (after expansion
+of references) concatenation, Star, Plus, Opt or string constants with a
+length different from one.
+
+
 
 Note:
  - The OCaml source is assumed to be encoded in Latin1 (for string

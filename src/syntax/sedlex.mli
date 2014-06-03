@@ -11,4 +11,9 @@ val rep: regexp -> regexp
 val plus: regexp -> regexp
 val eps: regexp
 
+val compl: regexp -> regexp option
+   (* If the argument is a single [chars] regexp, returns a regexp
+      which matches the complement set.  Otherwise returns [None]. *)
+
+
 val compile: regexp array -> ((Cset.t * int) array * bool array) array

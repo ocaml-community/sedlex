@@ -4,8 +4,16 @@
 
 include $(shell ocamlc -where)/Makefile.config
 
+.PHONY: test
+test: tokenizer$(EXE) complement$(EXE)
+	./tokenizer$(EXE)
+	./complement$(EXE)
+
 tokenizer$(EXE): tokenizer.ml
 	ocamlc -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o tokenizer$(EXE) sedlexing.cma tokenizer.ml
+
+complement$(EXE): complement.ml
+	ocamlc -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o complement$(EXE) sedlexing.cma complement.ml
 
 .PHONY: with_driver
 with_driver: tokenizer.ml
@@ -17,4 +25,4 @@ with_findlib: tokenizer.ml
 	ocamlfind ocamlc -o tokenizer$(EXE) -linkpkg -package sedlex tokenizer.cmo
 
 clean:
-	rm -f *~ *.cm* *.a *.lib *.o *.obj tokenizer$(EXE)
+	rm -f *~ *.cm* *.a *.lib *.o *.obj tokenizer$(EXE) complement$(EXE)

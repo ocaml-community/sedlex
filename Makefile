@@ -25,7 +25,7 @@ clean:
 	rm -rf libdoc
 
 test: clean all opt
-	cd examples && make clean tokenizer$(EXE) && ./tokenizer$(EXE)
+	cd examples && make test
 
 INSTALL=META src/syntax/sedlex.cma src/syntax/ppx_sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
 

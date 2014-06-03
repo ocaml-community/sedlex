@@ -21,10 +21,23 @@ let new_node () =
 
 let seq r1 r2 succ = r1 (r2 succ)
 
-let alt r1 r2 succ =
+let is_chars final = function
+  | {eps = []; trans = [c, f]} when f == final -> Some c
+  | _ -> None
+
+let chars c succ =
   let n = new_node () in
-  n.eps <- [r1 succ; r2 succ];
+  n.trans <- [c,succ];
   n
+
+let alt r1 r2 succ =
+  let nr1 = r1 succ and nr2 = r2 succ in
+  match is_chars succ nr1, is_chars succ nr2 with
+  | Some c1, Some c2 -> chars (Cset.union c1 c2) succ
+  | _ ->
+    let n = new_node () in
+    n.eps <- [r1 succ; r2 succ];
+    n
 
 let rep r succ =
   let n = new_node () in
@@ -39,10 +52,13 @@ let plus r succ =
 
 let eps succ = succ
 
-let chars c succ =
+let compl r =
   let n = new_node () in
-  n.trans <- [c,succ];
-  n
+  match is_chars n (r n) with
+  | Some c ->
+    Some (chars (Cset.difference Cset.any c))
+  | _ ->
+    None
 
 let compile_re re =
   let final = new_node () in
