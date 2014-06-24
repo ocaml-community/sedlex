@@ -9,4 +9,5 @@ package "ppx" (
   requires = "ppx_tools"
   archive(byte) = "sedlex.cma"
   archive(native) = "sedlex.cmxa"
+  ppx = "./ppx_sedlex"
 )
