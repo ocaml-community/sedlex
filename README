@@ -113,6 +113,13 @@ sedlex provides a set of predefined regexps:
 - xml_letter, xml_digit, xml_extender, xml_base_char, xml_ideographic,
   xml_combining_char, xml_blank: as defined by the XML recommandation
 - tr8876_ident_char: characters names in identifiers from ISO TR8876
+- cc, cf, cn, co, cs, ll, lm, lo, lt, lu, mc, me, mn, nd, nl, no, pc, pd,
+  pe, pf, pi, po, ps, sc, sk, sm, so, zl, zp, zs: as defined by the
+  Unicode standard (categories)
+- alphabetic, ascii_hex_digit, hex_digit, id_continue, id_start,
+  lowercase, math, other_alphabetic, other_lowercase, other_math,
+  other_uppercase, uppercase, white_space, xid_continue, xid_start: as
+  defined by the Unicode standard (properties)
 
 --------------------------------------------------------------------------
 Running a lexer

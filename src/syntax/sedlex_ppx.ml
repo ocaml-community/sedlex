@@ -98,6 +98,55 @@ let builtin_regexps =
      "xml_combining_char", Cset.combining_char;
      "xml_blank", Cset.blank;
      "tr8876_ident_char", Cset.tr8876_ident_char;
+
+     (* Unicode 6.3 categories *)
+     "cc", Unicode63.Categories.cc;
+     "cf", Unicode63.Categories.cf;
+     "cn", Unicode63.Categories.cn;
+     "co", Unicode63.Categories.co;
+     "cs", Unicode63.Categories.cs;
+     "ll", Unicode63.Categories.ll;
+     "lm", Unicode63.Categories.lm;
+     "lo", Unicode63.Categories.lo;
+     "lt", Unicode63.Categories.lt;
+     "lu", Unicode63.Categories.lu;
+     "mc", Unicode63.Categories.mc;
+     "me", Unicode63.Categories.me;
+     "mn", Unicode63.Categories.mn;
+     "nd", Unicode63.Categories.nd;
+     "nl", Unicode63.Categories.nl;
+     "no", Unicode63.Categories.no;
+     "pc", Unicode63.Categories.pc;
+     "pd", Unicode63.Categories.pd;
+     "pe", Unicode63.Categories.pe;
+     "pf", Unicode63.Categories.pf;
+     "pi", Unicode63.Categories.pi;
+     "po", Unicode63.Categories.po;
+     "ps", Unicode63.Categories.ps;
+     "sc", Unicode63.Categories.sc;
+     "sk", Unicode63.Categories.sk;
+     "sm", Unicode63.Categories.sm;
+     "so", Unicode63.Categories.so;
+     "zl", Unicode63.Categories.zl;
+     "zp", Unicode63.Categories.zp;
+     "zs", Unicode63.Categories.zs;
+ 
+     (* Unicode 6.3 properties *)
+     "alphabetic", Unicode63.Properties.alphabetic;
+     "ascii_hex_digit", Unicode63.Properties.ascii_hex_digit;
+     "hex_digit", Unicode63.Properties.hex_digit;
+     "id_continue", Unicode63.Properties.id_continue;
+     "id_start", Unicode63.Properties.id_start;
+     "lowercase", Unicode63.Properties.lowercase;
+     "math", Unicode63.Properties.math;
+     "other_alphabetic", Unicode63.Properties.other_alphabetic;
+     "other_lowercase", Unicode63.Properties.other_lowercase;
+     "other_math", Unicode63.Properties.other_math;
+     "other_uppercase", Unicode63.Properties.other_uppercase;
+     "uppercase", Unicode63.Properties.uppercase;
+     "white_space", Unicode63.Properties.white_space;
+     "xid_continue", Unicode63.Properties.xid_continue;
+     "xid_start", Unicode63.Properties.xid_start;
     ]
 
 (* Tables (indexed mapping: codepoint -> next state) *)
