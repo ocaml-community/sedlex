@@ -1,7 +1,7 @@
 sedlex: a OCaml lexer generator for Unicode
 
 License:
-  Copyright (C) 2003, 2004, 2005, 2006, 2013 Alain Frisch and LexiFi
+  Copyright (C) 2003-2014 Alain Frisch and LexiFi
   distributed under the terms of an MIT-like license : see LICENSE
 
 Homepage: http://www.lexifi.com/sedlex
@@ -176,6 +176,8 @@ link the application with the runtime support library for sedlex
 (sedlexing.cma / sedlexing.cmxa).
 
 --------------------------------------------------------------------------
-Acknowledgments
+Contributors
 
-Thanks to Benus Becker for contributing an implementation of Utf16.
+ - Benus Becker contributed an implementation of Utf16.
+ - sghost contributed support for Unicode 6.3 categories and properties.
+ - Peter Zotov contributed improvements to the build system.
