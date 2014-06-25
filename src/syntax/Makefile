@@ -5,8 +5,8 @@
 include $(shell ocamlc -where)/Makefile.config
 
 SRCS=cset.mli cset.ml unicode63.mli unicode63.ml sedlex.mli sedlex.ml ppx_sedlex.ml
-OCAMLC=ocamlfind ocamlc -package ppx_tools -w +A-4-9 -annot
-OCAMLOPT=ocamlfind ocamlopt -package ppx_tools -w +A-4-9 -annot
+OCAMLC=ocamlfind ocamlc -package ppx_tools.metaquot -w +A-4-9 -annot
+OCAMLOPT=ocamlfind ocamlopt -package ppx_tools.metaquot -w +A-4-9 -annot
 
 all: ppx_sedlex$(EXE) sedlex.cma
 opt: ppx_sedlex.opt$(EXE) sedlex.cmxa sedlex.cmxs
