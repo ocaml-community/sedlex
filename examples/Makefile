@@ -21,7 +21,7 @@ with_driver: tokenizer.ml
 
 .PHONY: with_findlib
 with_findlib: tokenizer.ml
-	ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/ppx_sedlex" tokenizer.ml
+	ocamlfind ocamlc -c -package sedlex tokenizer.ml
 	ocamlfind ocamlc -o tokenizer$(EXE) -linkpkg -package sedlex tokenizer.cmo
 
 clean:
