@@ -161,11 +161,16 @@ Installation (after "make all" and "make opt"):
 
 Compilation of OCaml files with lexer specifications:
 
-  ocamlfind ocamlc -c -package sedlex -ppx "ocamlfind sedlex/ppx_sedlex" my_file.ml
+  ocamlfind ocamlc -c -package sedlex my_file.ml
 
 When linking, you must also include the sedlex package:
 
   ocamlfind ocamlc -o my_prog -linkpkg -package sedlex my_file.cmo
+
+
+There is also a sedlex.ppx subpackage containing the code of the ppx
+filter.  This can be used to build custom drivers (combining several ppx
+transformations in a single process).
 
 
 2. Without findlib
@@ -178,6 +183,8 @@ link the application with the runtime support library for sedlex
 --------------------------------------------------------------------------
 Contributors
 
- - Benus Becker contributed an implementation of Utf16.
- - sghost contributed support for Unicode 6.3 categories and properties.
- - Peter Zotov contributed improvements to the build system.
+ - Benus Becker: implementation of Utf16
+ - sghost: for Unicode 6.3 categories and properties
+ - Peter Zotov:
+   - improvements to the build system
+   - switched parts of ppx_sedlex to using concrete syntax (with ppx_metaquot)
