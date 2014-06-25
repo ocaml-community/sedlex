@@ -1,0 +1,12 @@
+*.annot
+*.cmo
+*.cma
+*.cmi
+*.a
+*.o
+*.cmx
+*.cmxs
+*.cmxa
+*.exe
+libdoc
+src/syntax/ppx_sedlex

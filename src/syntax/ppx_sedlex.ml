@@ -130,7 +130,7 @@ let builtin_regexps =
      "zl", Unicode63.Categories.zl;
      "zp", Unicode63.Categories.zp;
      "zs", Unicode63.Categories.zs;
- 
+
      (* Unicode 6.3 properties *)
      "alphabetic", Unicode63.Properties.alphabetic;
      "ascii_hex_digit", Unicode63.Properties.ascii_hex_digit;
@@ -186,21 +186,11 @@ let partition_name x =
 let partition (name, p) =
   let rec gen_tree = function
     | Lte (i, yes, no) ->
-        Exp.ifthenelse
-            (appfun "<=" [evar "c"; int i])
-            (gen_tree yes)
-            (Some (gen_tree no))
+        [%expr if c <= [%e int i] then [%e gen_tree yes] else [%e gen_tree no]]
     | Return i -> int i
     | Table (offset, t) ->
-	let c =
-          if offset = 0 then evar "c"
-	  else appfun "-" [evar "c"; int offset]
-        in
-        appfun "-"
-          [
-           appfun "Char.code" [appfun "String.get" [evar (table_name t); c]];
-           int 1;
-          ]
+	      let c = if offset = 0 then [%expr c] else [%expr c - [%e int offset]] in
+        [%expr Char.code (String.get [%e evar (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (decision_table p) in
   glb_value name (func [pvar "c", body])
@@ -230,14 +220,14 @@ let gen_state lexbuf auto i (trans, final) =
   let cases = Array.to_list cases in
   let body () =
     Exp.match_
-      (appfun (partition_name partition) [appfun "Sedlexing.next" [evar lexbuf]])
-      (cases @ [Exp.case (Pat.any ()) (appfun "Sedlexing.backtrack" [evar lexbuf])])
+      (appfun (partition_name partition) [[%expr Sedlexing.next [%e evar lexbuf]]])
+      (cases @ [Exp.case [%pat? _] [%expr Sedlexing.backtrack [%e evar lexbuf]]])
   in
   let ret body = [ Vb.mk (pvar (state_fun i)) (func [pvar lexbuf, body]) ] in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret (Exp.sequence (appfun "Sedlexing.mark" [evar lexbuf; int i]) (body ()))
+    | Some i -> ret [%expr Sedlexing.mark [%e evar lexbuf] [%e int i]; [%e body ()]]
 
 let gen_definition lexbuf l error =
   let brs = Array.of_list l in
@@ -247,7 +237,7 @@ let gen_definition lexbuf l error =
   let states = List.flatten (Array.to_list states) in
   Exp.let_ Recursive states
     (Exp.sequence
-       (appfun "Sedlexing.start" [evar lexbuf])
+       [%expr Sedlexing.start [%e evar lexbuf]]
        (Exp.match_ (appfun (state_fun 0) [evar lexbuf])
           (cases @ [Exp.case (Pat.any ()) error])
        )
@@ -329,12 +319,12 @@ let mapper =
       {< env = StringMap.add name (regexp_of_pattern env p) env >}
 
     method! expr e =
-      match e.pexp_desc with
-      | Pexp_extension({txt="sedlex"}, PStr[{pstr_desc=Pstr_eval({pexp_desc=Pexp_match ({pexp_desc=Pexp_ident{txt=Lident lexbuf}}, cases)}, _)}]) ->
+      match e with
+      | [%expr [%sedlex [%e? {pexp_desc=Pexp_match ({pexp_desc=Pexp_ident{txt=Lident lexbuf}}, cases)}]]] ->
             let cases = List.rev cases in
             let error =
               match List.hd cases with
-              | {pc_lhs = {ppat_desc = Ppat_any}; pc_rhs = e; pc_guard = None} -> super # expr e
+              | {pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None} -> super # expr e
               | {pc_lhs = p} ->
                 err p.ppat_loc "the last branch must a catch-all error case"
             in
@@ -348,7 +338,7 @@ let mapper =
                 ) cases
             in
             gen_definition lexbuf cases error
-      | Pexp_let (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}], body) ->
+      | [%expr let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]] in [%e? body]] ->
           (this # define_regexp name p) # expr body
       | _ -> super # expr e
 
@@ -366,7 +356,7 @@ let mapper =
         List.concat
           (List.map
              (function
-               | {pstr_desc = Pstr_value (Nonrecursive, [{pvb_pat={ppat_desc=Ppat_var{txt=name}}; pvb_expr={pexp_desc=Pexp_extension({txt="sedlex.regexp"}, PPat(p, None))}}])} ->
+               | [%stri let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]]] ->
                  mapper := !mapper # define_regexp name p;
                  []
                | i ->
