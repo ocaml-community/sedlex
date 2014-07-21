@@ -4,7 +4,7 @@
 
 include $(shell ocamlc -where)/Makefile.config
 
-VERSION=1.99.1
+VERSION=1.99.2
 # Don't forget to change META file as well
 
 .PHONY: all opt clean test install package
