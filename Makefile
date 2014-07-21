@@ -42,7 +42,7 @@ uninstall:
 
 PACKAGE = sedlex-$(VERSION)
 DISTRIB = \
-  CHANGES LICENSE META README Makefile \
+  CHANGES LICENSE META README.md Makefile \
   examples/Makefile \
   examples/tokenizer.ml \
   src/lib/Makefile \

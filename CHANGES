@@ -1,3 +1,6 @@
+1.99.2
+     * First official release of sedlex
+
 1.99.1
      * Support for new Ast_mapper registration API, follow OCaml trunk after
        the inclusion of the extension_point branch
@@ -5,6 +8,8 @@
 1.99
      * First version of sedlex.  The history below refers to ulex, the ancestor
        or sedlex implemented with Camlp4.
+
+--------------------------------------------------------------------------
 
 1.1
      * Generate (more) globally unique identifiers to avoid conflicts when open'ing another module
