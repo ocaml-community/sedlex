@@ -19,11 +19,11 @@ let decision l =
   let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
     | (a1, b1, d1) :: (a2, b2, d2) :: rest ->
-	let x =
-	  if b1 + 1 = a2 then d2
-	  else Lte (a2 - 1, Return (-1), d2)
-	in
-	(a1, b2, Lte (b1, d1, x)) :: merge2 rest
+        let x =
+          if b1 + 1 = a2 then d2
+          else Lte (a2 - 1, Return (-1), d2)
+        in
+        (a1, b2, Lte (b1, d1, x)) :: merge2 rest
     | rest -> rest
   in
   let rec aux = function
@@ -38,7 +38,7 @@ let limit = 8192
 let decision_table l =
   let rec aux m accu = function
     | ((a, b, i) as x)::rem when b < limit && i < 255->
-	aux (min a m) (x :: accu) rem
+        aux (min a m) (x :: accu) rem
     | rem -> m, accu, rem
   in
   let (min, table, rest) = aux max_int [] l in
@@ -189,7 +189,7 @@ let partition (name, p) =
         [%expr if c <= [%e int i] then [%e gen_tree yes] else [%e gen_tree no]]
     | Return i -> int i
     | Table (offset, t) ->
-	      let c = if offset = 0 then [%expr c] else [%expr c - [%e int offset]] in
+              let c = if offset = 0 then [%expr c] else [%expr c - [%e int offset]] in
         [%expr Char.code (String.get [%e evar (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (decision_table p) in
@@ -287,7 +287,7 @@ let regexp_of_pattern env =
     | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
         let c = ref Cset.empty in
         for i = 0 to String.length s - 1 do
-	  c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+          c := Cset.union !c (Cset.singleton (Char.code s.[i]))
         done;
         Sedlex.chars !c
     | Ppat_interval (Const_char c1, Const_char c2) ->
@@ -320,7 +320,13 @@ let mapper =
 
     method! expr e =
       match e with
-      | [%expr [%sedlex [%e? {pexp_desc=Pexp_match ({pexp_desc=Pexp_ident{txt=Lident lexbuf}}, cases)}]]] ->
+      | [%expr [%sedlex [%e? {pexp_desc=Pexp_match (lexbuf, cases)}]]] ->
+            let lexbuf =
+              match lexbuf with
+              | {pexp_desc=Pexp_ident{txt=Lident lexbuf}} -> lexbuf
+              | _ ->
+                err lexbuf.pexp_loc "the matched expression must be a single identifier"
+            in
             let cases = List.rev cases in
             let error =
               match List.hd cases with
