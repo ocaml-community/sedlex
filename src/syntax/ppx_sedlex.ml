@@ -346,6 +346,8 @@ let mapper =
             gen_definition lexbuf cases error
       | [%expr let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]] in [%e? body]] ->
           (this # define_regexp name p) # expr body
+      | [%expr [%sedlex [%e? _]]] ->
+        err e.pexp_loc "the %sedlex extension is only recognized on match expressions"
       | _ -> super # expr e
 
 
