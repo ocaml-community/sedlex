@@ -43,7 +43,7 @@ let empty_lexbuf = {
 let create f = {
   empty_lexbuf with
     refill = f;
-    buf = Array.create chunk_size 0;
+    buf = Array.make chunk_size 0;
 }
 
 let from_stream s =
@@ -70,7 +70,7 @@ let refill lexbuf =
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
     else begin
       let newlen = (Array.length lexbuf.buf + chunk_size) * 2 in
-      let newbuf = Array.create newlen 0 in
+      let newbuf = Array.make newlen 0 in
       Array.blit lexbuf.buf s newbuf 0 ls;
       lexbuf.buf <- newbuf
     end;
@@ -259,7 +259,7 @@ module Utf8 = struct
 
     let to_int_array s pos bytes =
       let n = compute_len s pos bytes in
-      let a = Array.create n 0 in
+      let a = Array.make n 0 in
       blit_to_int s pos a 0 n;
       a
 
@@ -389,7 +389,7 @@ module Utf16 = struct
 
     let to_int_array opt_bo s pos bytes =
       let len = compute_len opt_bo s pos bytes in
-      let a = Array.create len 0 in
+      let a = Array.make len 0 in
       blit_to_int opt_bo s pos a 0 bytes ;
       a
 

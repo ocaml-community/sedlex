@@ -47,7 +47,7 @@ let decision_table l =
   | [(min, max, i)] ->
       Lte (min - 1, Return (-1), (Lte (max, Return i, decision rest)))
   | (_, max, _) :: _ ->
-      let arr = Array.create (max - min + 1) 0 in
+      let arr = Array.make (max - min + 1) 0 in
       let set (a, b, i) = for j = a to b do arr.(j - min) <- i + 1 done in
       List.iter set table;
       Lte (min - 1, Return (-1), Lte (max, Table (min, arr), decision rest))
