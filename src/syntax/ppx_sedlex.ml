@@ -282,7 +282,7 @@ let regexp_of_pattern env =
         | Some r -> r
         | None ->
           err p.ppat_loc
-            "the Compl operator can only applied to a single-character regexp"
+            "the Compl operator can only be applied to a single-character regexp"
         end
     | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
         let c = ref Cset.empty in
