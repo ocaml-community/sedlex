@@ -313,7 +313,10 @@ let mapper =
   object(this)
     inherit Ast_mapper_class.mapper as super
 
-    val env = builtin_regexps
+    val env = StringMap.empty
+
+    method get_env =
+      env
 
     method define_regexp name p =
       {< env = StringMap.add name (regexp_of_pattern env p) env >}
@@ -355,7 +358,14 @@ let mapper =
 
     method! structure l =
       if toplevel then
-        let l = {< toplevel = false >} # structure l in
+        let env =
+          match Ast_mapper.get_cookie "ppx_sedlex" with
+          | None -> builtin_regexps
+          | Some { pexp_desc = Pexp_constant (Const_string (str, None)) } ->
+            Marshal.from_string str 0
+          | _ -> assert false
+        in
+        let l = {< toplevel = false; env = env >} # structure l in
         let parts = List.map partition (get_partitions ()) in
         let tables = List.map table (get_tables ()) in
         tables @ parts @ l
@@ -366,6 +376,9 @@ let mapper =
              (function
                | [%stri let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]]] ->
                  mapper := !mapper # define_regexp name p;
+                 let regexps = Marshal.to_string (!mapper # get_env) [Marshal.Closures] in
+                 Ast_mapper.set_cookie "ppx_sedlex"
+                    (Exp.constant (Const_string (regexps, None)));
                  []
                | i ->
                  [ !mapper # structure_item i ]
