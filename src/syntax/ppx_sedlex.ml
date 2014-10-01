@@ -353,24 +353,39 @@ let mapper =
 
     val toplevel = true
 
+    method structure_with_regexps l =
+      let mapper = ref this in
+      let regexps = ref [] in
+      let l = List.concat
+        (List.map
+           (function
+             | [%stri let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]]] as i ->
+               regexps := i :: !regexps;
+               mapper := !mapper # define_regexp name p;
+               []
+             | i ->
+               [ !mapper # structure_item i ]
+         ) l) in
+      (l, List.rev !regexps)
+
     method! structure l =
       if toplevel then
-        let l = {< toplevel = false >} # structure l in
+        let sub = {< toplevel = false >} in
+        let previous =
+          match Ast_mapper.get_cookie "sedlex.regexps" with
+          | Some {pexp_desc = Pexp_extension (_, PStr l)} -> l
+          | Some _ -> assert false
+          | None -> []
+        in
+        let l, regexps = sub # structure_with_regexps (previous @ l) in
         let parts = List.map partition (get_partitions ()) in
         let tables = List.map table (get_tables ()) in
+        Ast_mapper.set_cookie "sedlex.regexps" (Exp.extension (Location.mknoloc "regexps", PStr regexps));
         tables @ parts @ l
       else
-        let mapper = ref this in
-        List.concat
-          (List.map
-             (function
-               | [%stri let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]]] ->
-                 mapper := !mapper # define_regexp name p;
-                 []
-               | i ->
-                 [ !mapper # structure_item i ]
-             ) l)
-  end
+        fst (this # structure_with_regexps l)
+
+ end
 
 
 let () =
