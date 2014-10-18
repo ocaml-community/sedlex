@@ -58,12 +58,18 @@ let create f = {
     buf = Array.make chunk_size 0;
 }
 
+
+let fill_buf_from_stream f gen buf pos len =
+  let rec aux i =
+    if i >= len then len
+    else match gen () with
+      | Some c -> buf.(pos + i) <- f c ; aux (i+1)
+      | None -> i
+  in
+  aux 0
+
 let from_stream s =
-  create (fun buf pos _len ->
-    match Gen.next s with
-      | Some c -> buf.(pos) <- c ; 1
-      | None -> 0
-  )
+  create (fill_buf_from_stream (fun id -> id) s)
 
 let from_int_array a =
   let len = Array.length a in
@@ -147,11 +153,7 @@ let lexeme_char lexbuf pos =
 
 module Latin1 = struct
   let from_stream s =
-    create (fun buf pos _len ->
-      match Gen.next s with
-        | Some c -> buf.(pos) <- Char.code c; 1
-        | None -> 0)
-
+    create (fill_buf_from_stream Char.code s)
 
   let from_string s =
     let len = String.length s in
@@ -321,10 +323,7 @@ module Utf8 = struct
     from_stream (Helper.stream_from_char_stream (gen_of_channel ic))
 
   let from_stream s =
-    create (fun buf pos _len ->
-      match Helper.from_stream s with
-        | Some x -> buf.(pos) <- x ; 1
-        | None -> 0)
+    create (fill_buf_from_stream (fun id -> id) (fun () -> Helper.from_stream s))
 
   let from_string s =
     from_int_array (Helper.to_int_array s 0 (String.length s))
