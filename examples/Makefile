@@ -10,19 +10,19 @@ test: tokenizer$(EXE) complement$(EXE)
 	./complement$(EXE)
 
 tokenizer$(EXE): tokenizer.ml
-	ocamlc -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o tokenizer$(EXE) sedlexing.cma tokenizer.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o tokenizer$(EXE) -linkpkg sedlexing.cma tokenizer.ml
 
 complement$(EXE): complement.ml
-	ocamlc -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o complement$(EXE) sedlexing.cma complement.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o complement$(EXE) -linkpkg sedlexing.cma complement.ml
 
 .PHONY: with_driver
 with_driver: tokenizer.ml
-	ocamlc -ppx "ppx_driver ../src/syntax/sedlex.cma" -I ../src/lib -o tokenizer$(EXE) sedlexing.cma tokenizer.ml
+	ocamlfind ocamlc -package gen -ppx "ppx_driver ../src/syntax/sedlex.cma" -I ../src/lib -o tokenizer$(EXE) sedlexing.cma tokenizer.ml
 
 .PHONY: with_findlib
 with_findlib: tokenizer.ml
-	ocamlfind ocamlc -c -package sedlex tokenizer.ml
-	ocamlfind ocamlc -o tokenizer$(EXE) -linkpkg -package sedlex tokenizer.cmo
+	ocamlfind ocamlc -c -package sedlex -package gen tokenizer.ml
+	ocamlfind ocamlc -o tokenizer$(EXE) -linkpkg -package sedlex -package gen tokenizer.cmo
 
 clean:
 	rm -f *~ *.cm* *.a *.lib *.o *.obj tokenizer$(EXE) complement$(EXE)

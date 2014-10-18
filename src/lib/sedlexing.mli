@@ -48,7 +48,7 @@ val create: (int array -> int -> int -> int) -> lexbuf
         position [pos], and return the number of characters provided. A
         return value of 0 means end of input. *)
 
-val from_stream: int Stream.t -> lexbuf
+val from_stream: int Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
 
 val from_int_array: int array -> lexbuf
@@ -136,7 +136,7 @@ val backtrack: lexbuf -> int
 (** {6 Support for common encodings} *)
 
 module Latin1: sig
-  val from_stream: char Stream.t -> lexbuf
+  val from_stream: char Gen.t -> lexbuf
       (** Create a lexbuf from a Latin1 encoded stream (ie a stream
           of Unicode code points in the range [0..255]) *)
 
@@ -166,7 +166,7 @@ end
 
 
 module Utf8: sig
-  val from_stream: char Stream.t -> lexbuf
+  val from_stream: char Gen.t -> lexbuf
       (** Create a lexbuf from a UTF-8 encoded stream. *)
 
   val from_channel: in_channel -> lexbuf
@@ -186,7 +186,7 @@ end
 module Utf16: sig
   type byte_order = Little_endian | Big_endian
 
-  val from_stream: char Stream.t -> byte_order option -> lexbuf
+  val from_stream: char Gen.t -> byte_order option -> lexbuf
       (** [from_utf16_stream s opt_bo] creates a lexbuf from an UTF-16
           encoded stream. If [opt_bo] matches with [None] the function
           expects a BOM (Byte Order Mark), and takes the byte order as
