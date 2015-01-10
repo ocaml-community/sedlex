@@ -18,6 +18,13 @@ let (>>=) o f = match o with
   | None -> None
 
 
+(* For legacy purposes. *)
+let gen_of_stream stream =
+  let f () =
+    try Some (Stream.next stream)
+    with Stream.Failure -> None
+  in f
+
 let eof = -1
 
 (* Absolute position from the beginning of the stream *)
@@ -59,7 +66,7 @@ let create f = {
 }
 
 
-let fill_buf_from_stream f gen buf pos len =
+let fill_buf_from_gen f gen buf pos len =
   let rec aux i =
     if i >= len then len
     else match gen () with
@@ -68,8 +75,10 @@ let fill_buf_from_stream f gen buf pos len =
   in
   aux 0
 
-let from_stream s =
-  create (fill_buf_from_stream (fun id -> id) s)
+let from_gen s =
+  create (fill_buf_from_gen (fun id -> id) s)
+
+let from_stream s = from_gen @@ gen_of_stream s
 
 let from_int_array a =
   let len = Array.length a in
@@ -152,8 +161,10 @@ let lexeme_char lexbuf pos =
 
 
 module Latin1 = struct
-  let from_stream s =
-    create (fill_buf_from_stream Char.code s)
+  let from_gen s =
+    create (fill_buf_from_gen Char.code s)
+
+  let from_stream s = from_gen @@ gen_of_stream s
 
   let from_string s =
     let len = String.length s in
@@ -165,7 +176,7 @@ module Latin1 = struct
     }
 
   let from_channel ic =
-    from_stream (gen_of_channel ic)
+    from_gen (gen_of_channel ic)
 
   let to_latin1 c =
     if (c >= 0) && (c < 256)
@@ -227,10 +238,7 @@ module Utf8 = struct
       | _ -> raise MalFormed
 
 
-(* With this implementation, a truncated code point will result
-   in Gen.Failure, not in MalFormed. *)
-
-    let from_stream s =
+    let from_gen s =
       Gen.next s >>= function
       | '\000'..'\127' as c ->
           Some (Char.code c)
@@ -316,14 +324,17 @@ module Utf8 = struct
         else Buffer.contents b in
       aux apos len
 
-    let stream_from_char_stream s = (fun () -> from_stream s)
+    let gen_from_char_gen s = (fun () -> from_gen s)
   end
 
   let from_channel ic =
-    from_stream (Helper.stream_from_char_stream (gen_of_channel ic))
+    from_gen (Helper.gen_from_char_gen (gen_of_channel ic))
 
-  let from_stream s =
-    create (fill_buf_from_stream (fun id -> id) (fun () -> Helper.from_stream s))
+  let from_gen s =
+    create (fill_buf_from_gen (fun id -> id)
+        (Helper.gen_from_char_gen s))
+
+  let from_stream s = from_gen @@ gen_of_stream s
 
   let from_string s =
     from_int_array (Helper.to_int_array s 0 (String.length s))
@@ -351,24 +362,24 @@ module Utf16 = struct
     | Big_endian ->
         (Char.chr ((num lsr 8) land 0xFF), Char.chr (num land 0xFF))
 
-    let next_in_stream bo s =
+    let next_in_gen bo s =
       Gen.next s >>= fun c1 ->
       Gen.next s >>= fun c2 ->
       Some (number_of_char_pair bo c1 c2)
 
-    let from_stream bo s w1 =
+    let from_gen bo s w1 =
       if w1 = 0xfffe then raise (InvalidCodepoint w1);
       if w1 < 0xd800 || 0xdfff < w1 then Some w1
       else if w1 <= 0xdbff
       then
-        next_in_stream bo s >>= fun w2 ->
+        next_in_gen bo s >>= fun w2 ->
         if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
         let upper10 = (w1 land 0x3ff) lsl 10
         and lower10 = w2 land 0x3ff in
         Some (0x10000 + upper10 + lower10)
       else raise MalFormed
 
-    let stream_from_char_stream opt_bo s =
+    let gen_from_char_gen opt_bo s =
       let bo = ref opt_bo in
       fun () ->
         Gen.next s >>= fun c1 ->
@@ -381,11 +392,11 @@ module Utf16 = struct
                 | _ -> Big_endian in
               bo := Some o;
               o in
-        from_stream o s (number_of_char_pair o c1 c2)
+        from_gen o s (number_of_char_pair o c1 c2)
 
 
     let compute_len opt_bo str pos bytes =
-      let s = stream_from_char_stream opt_bo
+      let s = gen_from_char_gen opt_bo
           (Gen.init ~limit:(bytes - pos) (fun i -> (str.[i + pos])))
       in
       let l = ref 0 in
@@ -393,7 +404,7 @@ module Utf16 = struct
       !l
 
     let blit_to_int opt_bo s spos a apos bytes =
-      let s = stream_from_char_stream opt_bo
+      let s = gen_from_char_gen opt_bo
           (Gen.init ~limit:(bytes - spos) (fun i -> (s.[i + spos]))) in
       let p = ref apos in
       Gen.iter (fun x -> a.(!p) <- x ; incr p) s
@@ -433,11 +444,13 @@ module Utf16 = struct
   end
 
 
-  let from_stream s opt_bo =
-    from_stream (Helper.stream_from_char_stream opt_bo s)
+  let from_gen s opt_bo =
+    from_gen (Helper.gen_from_char_gen opt_bo s)
+
+  let from_stream s = from_gen @@ gen_of_stream s
 
   let from_channel ic opt_bo =
-    from_stream ((gen_of_channel ic)) opt_bo
+    from_gen (gen_of_channel ic) opt_bo
 
   let from_string s opt_bo =
     let a = Helper.to_int_array opt_bo s 0 (String.length s) in
