@@ -8,17 +8,17 @@ all: sedlexing.cma
 opt: sedlexing.cmxa
 
 sedlexing.cma: $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlc -w +A-4-9 -safe-string -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlc -a -o sedlexing.cma $(MODS)
+	ocamlfind ocamlc -package gen -w +A-4-9 -safe-string -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
+	ocamlfind ocamlc -package gen -a -o sedlexing.cma $(MODS)
 
 sedlexing.cmxa: $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlopt -safe-string -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
-	ocamlopt -a -o sedlexing.cmxa $(MODS:.cmo=.cmx)
+	ocamlfind ocamlopt -package gen -safe-string -c $(MODS:.cmo=.mli) $(MODS:.cmo=.ml)
+	ocamlfind ocamlopt -package gen -a -o sedlexing.cmxa $(MODS:.cmo=.cmx)
 
 doc:
 	rm -rf ../../libdoc
 	mkdir ../../libdoc
-	ocamldoc -html sedlexing.mli -d ../../libdoc
+	ocamlfind ocamldoc -package gen -html sedlexing.mli -d ../../libdoc
 
 
 
