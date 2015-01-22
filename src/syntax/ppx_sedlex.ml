@@ -264,7 +264,14 @@ let err loc s =
   raise (Location.Error (Location.error ~loc ("Sedlex: " ^ s)))
 
 let regexp_of_pattern env =
-  let rec aux p =
+  let rec char_pair_op func name p p0 p1 = (* Construct something like Sub(a,b) *)
+    begin match func (aux p0) (aux p1) with
+      | Some r -> r
+      | None ->
+        err p.ppat_loc @@
+          "the "^name^" operator can only applied to single-character length regexps"
+    end
+  and aux p = (* interpret one pattern node *)
     match p.ppat_desc with
     | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
     | Ppat_tuple (p :: pl) ->
@@ -282,8 +289,12 @@ let regexp_of_pattern env =
         | Some r -> r
         | None ->
           err p.ppat_loc
-            "the Compl operator can only applied to a single-character regexp"
+            "the Compl operator can only applied to a single-character length regexp"
         end
+    | Ppat_construct ({ txt = Lident "Sub" }, Some {ppat_desc=Ppat_tuple (p0 :: p1 :: [])}) ->
+        char_pair_op Sedlex.subtract "Sub" p p0 p1
+    | Ppat_construct ({ txt = Lident "Intersect" }, Some {ppat_desc=Ppat_tuple (p0 :: p1 :: [])}) ->
+        char_pair_op Sedlex.intersection "Intersect" p p0 p1
     | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
         let c = ref Cset.empty in
         for i = 0 to String.length s - 1 do

@@ -50,7 +50,7 @@ let plus r succ =
   n.eps <- [nr; succ];
   nr
 
-let eps succ = succ
+let eps succ = succ (* eps for epsilon *)
 
 let compl r =
   let n = new_node () in
@@ -59,6 +59,19 @@ let compl r =
     Some (chars (Cset.difference Cset.any c))
   | _ ->
     None
+
+let pair_op f r0 r1 = (* Construct subtract or intersection *)
+  let n = new_node () in
+  let to_chars r = is_chars n (r n) in
+  match to_chars r0, to_chars r1 with
+  | Some c0, Some c1 ->
+    Some (chars (f c0 c1))
+  | _ ->
+    None
+
+let subtract = pair_op Cset.difference
+
+let intersection = pair_op Cset.intersection
 
 let compile_re re =
   let final = new_node () in

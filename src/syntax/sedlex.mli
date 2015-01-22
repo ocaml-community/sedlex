@@ -12,6 +12,8 @@ val plus: regexp -> regexp
 val eps: regexp
 
 val compl: regexp -> regexp option
+val subtract: regexp -> regexp -> regexp option
+val intersection: regexp -> regexp -> regexp option
    (* If the argument is a single [chars] regexp, returns a regexp
       which matches the complement set.  Otherwise returns [None]. *)
 
