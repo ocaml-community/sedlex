@@ -7,21 +7,45 @@ exception MalFormed
 
 
 let eof = -1
+let start_state = -1 (* FIXME: Comment needed, what is the meaning of -1? *)
+
+(* Position within DFA *)
+type state = int
 
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
+(* Position state *)
+type position_info = {
+  position : int; (* Within this file, used for array position; for external consumption, translated to stream position *)
+  line : int;
+  line_position : int;
+}
+
+(* Support bits for position type *)
+let newline_char = 0xA (* \n *)
+let empty_position = {position=0;line=0;line_position=0}
+(* Move to next character; last character was not newline *)
+let pos_nextchar {position;line;line_position} = {position=position+1;line;line_position=line_position+1}
+(* Move to next character; last character was newline *)
+let pos_nextline {position;line} = {position=position+1;line=line+1;line_position=0}
+(* Translate position for array shift *)
+let pos_shift_index ({position} as pos) by = {pos with position=position+by}
+(* A new character is being read; update values as appropriate *)
+let pos_next pos buf =
+  (if buf.(pos.position) = newline_char then pos_nextline else pos_nextchar) pos
+
 type lexbuf = {
   refill: (int array -> int -> int -> int);
   mutable buf: int array;
-  mutable len: int;    (* Number of meaningful char in buffer *)
+  mutable len: int;     (* Number of meaningful chars in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
 			    in the input stream *)
-  mutable pos: int;
-  mutable start: int; (* First char we need to keep visible *)
+  mutable pos:   position_info;
+  mutable start: position_info; (* First char we need to keep visible *)
 
-  mutable marked_pos: int;
-  mutable marked_val: int;
+  mutable marked_pos: position_info;
+  mutable marked_state: state;
 
   mutable finished: bool;
 }
@@ -33,10 +57,10 @@ let empty_lexbuf = {
   buf = [| |];
   len = 0;
   offset = 0;
-  pos = 0;
-  start = 0;
-  marked_pos = 0;
-  marked_val = 0;
+  pos = empty_position;
+  start = empty_position;
+  marked_pos = empty_position;
+  marked_state = 0; (* FIXME: Comment needed, why is this initialized to 0? *)
   finished = false;
 }
 
@@ -64,7 +88,7 @@ let from_int_array a =
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf
   then begin
-    let s = lexbuf.start in
+    let s = lexbuf.start.position in
     let ls = lexbuf.len - s in
     if ls + chunk_size <= Array.length lexbuf.buf then
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
@@ -76,11 +100,11 @@ let refill lexbuf =
     end;
     lexbuf.len <- ls;
     lexbuf.offset <- lexbuf.offset + s;
-    lexbuf.pos <- lexbuf.pos - s;
-    lexbuf.marked_pos <- lexbuf.marked_pos - s;
-    lexbuf.start <- 0
+    lexbuf.pos <- pos_shift_index lexbuf.pos (-s); (* Adjust coordinate system *)
+    lexbuf.marked_pos <- pos_shift_index lexbuf.marked_pos (-s);
+    lexbuf.start <- empty_position;
   end;
-  let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
+  let n = lexbuf.refill lexbuf.buf lexbuf.pos.position chunk_size in
   if (n = 0)
   then begin
     lexbuf.buf.(lexbuf.len) <- eof;
@@ -90,45 +114,50 @@ let refill lexbuf =
 
 let next lexbuf =
   let i =
-    if lexbuf.pos = lexbuf.len then
+    if lexbuf.pos.position = lexbuf.len then
       if lexbuf.finished then eof
-      else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
-    else lexbuf.buf.(lexbuf.pos)
+      else (refill lexbuf; lexbuf.buf.(lexbuf.pos.position))
+    else lexbuf.buf.(lexbuf.pos.position)
   in
-  if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
+  if i = eof then lexbuf.finished <- true else lexbuf.pos <- (pos_next lexbuf.pos lexbuf.buf);
   i
 
 let start lexbuf =
   lexbuf.start <- lexbuf.pos;
   lexbuf.marked_pos <- lexbuf.pos;
-  lexbuf.marked_val <- (-1)
+  lexbuf.marked_state <- start_state
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
-  lexbuf.marked_val <- i
+  lexbuf.marked_state <- i
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
-  lexbuf.marked_val
+  lexbuf.marked_state
 
 let rollback lexbuf =
   lexbuf.pos <- lexbuf.start
 
-let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
-let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
+let pair_filter x y arg = (x arg, y arg)
 
-let loc lexbuf = (lexbuf.start + lexbuf.offset, lexbuf.pos + lexbuf.offset)
+let lexeme_start lexbuf = lexbuf.start.position + lexbuf.offset
+let lexeme_end lexbuf = lexbuf.pos.position + lexbuf.offset
+let loc = pair_filter lexeme_start lexeme_end
 
-let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
+let lexeme_start_extended lexbuf = pos_shift_index lexbuf.start lexbuf.offset (* Revert to global coordinates *)
+let lexeme_end_extended lexbuf = pos_shift_index lexbuf.pos lexbuf.offset
+let loc_extended = pair_filter lexeme_start_extended lexeme_end_extended
+
+let lexeme_length lexbuf = lexbuf.pos.position - lexbuf.start.position
 
 let sub_lexeme lexbuf pos len =
-  Array.sub lexbuf.buf (lexbuf.start + pos) len
+  Array.sub lexbuf.buf (lexbuf.start.position + pos) len
 
 let lexeme lexbuf =
-  Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
+  Array.sub lexbuf.buf (lexbuf.start.position) (lexbuf.pos.position - lexbuf.start.position)
 
 let lexeme_char lexbuf pos =
-  lexbuf.buf.(lexbuf.start + pos)
+  lexbuf.buf.(lexbuf.start.position + pos)
 
 
 module Latin1 = struct
@@ -160,11 +189,11 @@ module Latin1 = struct
 
   let sub_lexeme lexbuf pos len =
     let s = Bytes.create len in
-    for i = 0 to len - 1 do Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start + pos + i)) done;
+    for i = 0 to len - 1 do Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start.position + pos + i)) done;
     Bytes.to_string s
 
   let lexeme lexbuf =
-    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+    sub_lexeme lexbuf 0 (lexbuf.pos.position - lexbuf.start.position)
 end
 
 
@@ -312,10 +341,10 @@ module Utf8 = struct
     from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
-    Helper.from_int_array lexbuf.buf (lexbuf.start + pos) len
+    Helper.from_int_array lexbuf.buf (lexbuf.start.position + pos) len
 
   let lexeme lexbuf =
-    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+    sub_lexeme lexbuf 0 (lexbuf.pos.position - lexbuf.start.position)
 end
 
 
@@ -433,8 +462,8 @@ module Utf16 = struct
     from_int_array a
 
   let sub_lexeme lb pos len bo bom  =
-    Helper.from_int_array bo lb.buf (lb.start + pos) len bom
+    Helper.from_int_array bo lb.buf (lb.start.position + pos) len bom
 
   let lexeme lb bo bom =
-    sub_lexeme lb 0 (lb.pos - lb.start) bo bom
+    sub_lexeme lb 0 (lb.pos.position - lb.start.position) bo bom
 end

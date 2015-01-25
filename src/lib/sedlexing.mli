@@ -22,6 +22,17 @@
     Of course, you'll probably want to define functions like [lexeme] to
     be used in the lexers semantic actions.  *)
 
+type position_info = {
+  position : int;
+  line : int;
+  line_position : int;
+}
+      (** Lexer position info structure. Fields:
+          * position: offset in stream
+          * line: number of newlines preceding offset
+          * line_position: offset since beginning of line
+          position, line, and line_position all start at 0 *)
+
 type lexbuf
       (** The type of lexer buffers. A lexer buffer is the argument passed
           to the scanning functions defined by the generated lexers.
@@ -75,6 +86,19 @@ val loc: lexbuf -> int * int
     (** [Sedlexing.loc lexbuf] returns the pair
         [(Sedlexing.lexeme_start lexbuf,Sedlexing.lexeme_end
         lexbuf)]. *)
+
+val lexeme_start_extended: lexbuf -> position_info
+    (** [Sedlexing.lexeme_start_extended lexbuf] returns a position info
+        structure for the first code point of the matched string. *)
+
+val lexeme_end_extended: lexbuf -> position_info
+    (** [Sedlexing.lexeme_end_extended lexbuf] returns a position info
+        structure for the last code point of the matched string. *)
+
+val loc_extended: lexbuf -> position_info * position_info
+    (** [Sedlexing.loc_extended lexbuf] returns the pair
+        [(Sedlexing.lexeme_start_extended lexbuf,
+        Sedlexing.lexeme_end_extended lexbuf)]. *)
 
 val lexeme_length: lexbuf -> int
     (** [Sedlexing.loc lexbuf] returns the difference
