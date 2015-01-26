@@ -17,7 +17,7 @@ type apos = int
 
 (* Position state *)
 type position_info = {
-  position : int; (* Within this file, used for array position; for external consumption, translated to stream position *)
+  position : int; (* Buffer position *)
   line : int;
   line_position : int;
 }
@@ -34,6 +34,8 @@ let pos_shift_index ({position} as pos) by = {pos with position=position+by}
 (* A new character is being read; update values as appropriate *)
 let pos_next pos buf =
   (if buf.(pos.position) = newline_char then pos_nextline else pos_nextchar) pos
+let pos_lexing {position;line;line_position} =
+  Lexing.{pos_fname=""; pos_lnum=line; pos_cnum=line_position; pos_bol=position-line_position}
 
 type lexbuf = {
   refill: (int array -> int -> int -> int);
@@ -144,9 +146,10 @@ let lexeme_start lexbuf = lexbuf.start.position + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos.position + lexbuf.offset
 let loc = pair_filter lexeme_start lexeme_end
 
-let lexeme_start_extended lexbuf = pos_shift_index lexbuf.start lexbuf.offset (* Revert to global coordinates *)
-let lexeme_end_extended lexbuf = pos_shift_index lexbuf.pos lexbuf.offset
-let loc_extended = pair_filter lexeme_start_extended lexeme_end_extended
+(* Convert to externally usable structure *)
+let lexeme_start_position lexbuf = pos_lexing @@ pos_shift_index lexbuf.start lexbuf.offset
+let lexeme_end_position lexbuf = pos_lexing @@ pos_shift_index lexbuf.pos lexbuf.offset
+let loc_position = pair_filter lexeme_start_position lexeme_end_position
 
 let lexeme_length lexbuf = lexbuf.pos.position - lexbuf.start.position
 
