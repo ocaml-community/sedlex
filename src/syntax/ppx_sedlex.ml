@@ -264,7 +264,17 @@ let err loc s =
   raise (Location.Error (Location.error ~loc ("Sedlex: " ^ s)))
 
 let regexp_of_pattern env =
-  let rec aux p =
+  let rec char_pair_op func name p tuple = (* Construct something like Sub(a,b) *)
+    match tuple with
+      | Some {ppat_desc=Ppat_tuple (p0 :: p1 :: [])} ->
+        begin match func (aux p0) (aux p1) with
+        | Some r -> r
+        | None ->
+          err p.ppat_loc @@
+            "the "^name^" operator can only applied to single-character length regexps"
+        end
+      | _ -> err p.ppat_loc @@ "the "^name^" operator requires two arguments, like "^name^"(a,b)"
+  and aux p = (* interpret one pattern node *)
     match p.ppat_desc with
     | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
     | Ppat_tuple (p :: pl) ->
@@ -277,19 +287,31 @@ let regexp_of_pattern env =
         Sedlex.plus (aux p)
     | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
-    | Ppat_construct ({txt = Lident "Compl"}, Some p0) ->
-        begin match Sedlex.compl (aux p0) with
-        | Some r -> r
-        | None ->
-          err p.ppat_loc
-            "the Compl operator can only applied to a single-character regexp"
+    | Ppat_construct ({txt = Lident "Compl"}, arg) ->
+        begin match arg with
+        | Some p0 ->
+            begin match Sedlex.compl (aux p0) with
+            | Some r -> r
+            | None ->
+              err p.ppat_loc
+                "the Compl operator can only applied to a single-character length regexp"
+            end
+        | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
-    | Ppat_construct ({txt = Lident "Chars"}, Some {ppat_desc=Ppat_constant (Const_string (s, _))}) ->
-        let c = ref Cset.empty in
-        for i = 0 to String.length s - 1 do
-          c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-        done;
-        Sedlex.chars !c
+    | Ppat_construct ({ txt = Lident "Sub" }, arg) ->
+        char_pair_op Sedlex.subtract "Sub" p arg
+    | Ppat_construct ({ txt = Lident "Intersect" }, arg) ->
+        char_pair_op Sedlex.intersection "Intersect" p arg
+    | Ppat_construct ({txt = Lident "Chars"}, arg) ->
+        begin match arg with
+        | Some {ppat_desc=Ppat_constant (Const_string (s, _))} ->
+            let c = ref Cset.empty in
+            for i = 0 to String.length s - 1 do
+              c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+            done;
+            Sedlex.chars !c
+        | _ -> err p.ppat_loc "the Chars operator requires a string argument"
+        end
     | Ppat_interval (Const_char c1, Const_char c2) ->
         Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
     | Ppat_interval (Const_int i1, Const_int i2) ->
