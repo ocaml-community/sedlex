@@ -12,3 +12,4 @@ libdoc
 src/syntax/ppx_sedlex
 examples/complement
 examples/tokenizer
+examples/substraction
