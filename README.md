@@ -40,7 +40,7 @@ if you use camlp4 or camlp5, with the standard or revised syntax.
 sedlex adds a new kind of expression to OCaml: lexer definitions.
 The syntax for the new construction is:
 
-```
+```ocaml
   match%sedlex lexbuf with
   | R1 -> e1
   ...
@@ -50,7 +50,7 @@ The syntax for the new construction is:
 
 or:
 
-```
+```ocaml
   [%sedlex match lexbuf with 
   | R1 -> e1
   ...
@@ -110,7 +110,7 @@ Note:
 It is possible to define named regular expressions with the following
 construction, that can appear in place of a structure item:
 
-```
+```ocaml
   let lid = [%sedlex.regexp? R]
 ```
 
@@ -120,7 +120,7 @@ after the definition.
 
 The same syntax can be used for local binding:
 
-```
+```ocaml
   let lid = [%sedlex.regexp? R] in
   body
 ```
