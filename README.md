@@ -77,24 +77,24 @@ The actions can call functions from the Sedlexing module to extract
 
 Regular expressions are syntactically OCaml patterns:
 
-- "...." (string constant): recognize the specified string
-- '....' (character constant) : recognize the specified character
-- i (integer constant) : recognize the specified codepoint
-- '...' .. '...': character range
-- i1 .. i2: range between two codepoints
-- R1 | R2 : alternation
-- R1, R2, ..., Rn : concatenation
-- Star R : Kleene star (0 or more repetition)
-- Plus R : equivalent to R, R*
-- Opt R : equivalent to ("" | R)
-- Chars "..." : recognize any character in the string
-- Compl R : assume that R is a single-character length regexp (see below)
+- `"...."` (string constant): recognize the specified string
+- `'....'` (character constant) : recognize the specified character
+- `i` (integer constant) : recognize the specified codepoint
+- `'...' .. '...'`: character range
+- `i1 .. i2`: range between two codepoints
+- `R1 | R2` : alternation
+- `R, R2, ..., Rn` : concatenation
+- `Star R` : Kleene star (0 or more repetition)
+- `Plus R` : equivalent to `R, R*`
+- `Opt R` : equivalent to `("" | R)`
+- `Chars "..."` : recognize any character in the string
+- `Compl R` : assume that R is a single-character length regexp (see below)
   and recognize the complement set
-- Sub (R1,R2) : assume that R is a single-character length regexp (see below)
-  and recognize the set of items in R1 but not in R2 ("subtract")
-- Intersect (R1,R2) : assume that R is a single-character length regexp (see
-  below) and recognize the set of items which are in both R1 and R2
-- lid (lowercase identifier) : reference a named regexp (see below)
+- `Sub (R1,R2)` : assume that R is a single-character length regexp (see below)
+  and recognize the set of items in `R1` but not in `R2` ("subtract")
+- `Intersect (R1,R2)` : assume that `R` is a single-character length regexp (see
+  below) and recognize the set of items which are in both `R1` and `R2`
+- `lid` (lowercase identifier) : reference a named regexp (see below)
 
 A single-character length regexp is a regexp which does not contain (after
 expansion of references) concatenation, Star, Plus, Opt or string constants
