@@ -1,3 +1,4 @@
+module Cset = Sedlex_cset
 module Categories = struct
   
   let cc = [0000, 0x1f; 0x7f, 0x9f]

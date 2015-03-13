@@ -49,8 +49,8 @@ DISTRIB = \
   src/lib/sedlexing.ml \
   src/lib/sedlexing.mli \
   src/syntax/Makefile \
-  src/syntax/cset.ml \
-  src/syntax/cset.mli \
+  src/syntax/sedlex_cset.ml \
+  src/syntax/sedlex_cset.mli \
   src/syntax/sedlex.ml \
   src/syntax/sedlex.mli \
   src/syntax/sedlex_ppx.ml \
