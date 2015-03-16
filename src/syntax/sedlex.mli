@@ -4,7 +4,7 @@
 
 type regexp
 
-val chars: Cset.t -> regexp
+val chars: Sedlex_cset.t -> regexp
 val seq: regexp -> regexp -> regexp
 val alt: regexp -> regexp -> regexp
 val rep: regexp -> regexp
@@ -21,4 +21,4 @@ val intersection: regexp -> regexp -> regexp option
    (* If each argument is a single [chars] regexp, returns a regexp
       which matches the intersection set.  Otherwise returns [None]. *)
 
-val compile: regexp array -> ((Cset.t * int) array * bool array) array
+val compile: regexp array -> ((Sedlex_cset.t * int) array * bool array) array

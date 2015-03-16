@@ -1,54 +1,54 @@
 module Categories : sig
 
-  val cc : Cset.t
-  val cf : Cset.t
-  val cn : Cset.t
-  val co : Cset.t
-  val cs : Cset.t
-  val ll : Cset.t
-  val lm : Cset.t
-  val lo : Cset.t
-  val lt : Cset.t
-  val lu : Cset.t
-  val mc : Cset.t
-  val me : Cset.t
-  val mn : Cset.t
-  val nd : Cset.t
-  val nl : Cset.t
-  val no : Cset.t
-  val pc : Cset.t
-  val pd : Cset.t
-  val pe : Cset.t
-  val pf : Cset.t
-  val pi : Cset.t
-  val po : Cset.t
-  val ps : Cset.t
-  val sc : Cset.t
-  val sk : Cset.t
-  val sm : Cset.t
-  val so : Cset.t
-  val zl : Cset.t
-  val zp : Cset.t
-  val zs : Cset.t
+  val cc : Sedlex_cset.t
+  val cf : Sedlex_cset.t
+  val cn : Sedlex_cset.t
+  val co : Sedlex_cset.t
+  val cs : Sedlex_cset.t
+  val ll : Sedlex_cset.t
+  val lm : Sedlex_cset.t
+  val lo : Sedlex_cset.t
+  val lt : Sedlex_cset.t
+  val lu : Sedlex_cset.t
+  val mc : Sedlex_cset.t
+  val me : Sedlex_cset.t
+  val mn : Sedlex_cset.t
+  val nd : Sedlex_cset.t
+  val nl : Sedlex_cset.t
+  val no : Sedlex_cset.t
+  val pc : Sedlex_cset.t
+  val pd : Sedlex_cset.t
+  val pe : Sedlex_cset.t
+  val pf : Sedlex_cset.t
+  val pi : Sedlex_cset.t
+  val po : Sedlex_cset.t
+  val ps : Sedlex_cset.t
+  val sc : Sedlex_cset.t
+  val sk : Sedlex_cset.t
+  val sm : Sedlex_cset.t
+  val so : Sedlex_cset.t
+  val zl : Sedlex_cset.t
+  val zp : Sedlex_cset.t
+  val zs : Sedlex_cset.t
 
 end
 
 module Properties : sig
 
-  val alphabetic       : Cset.t
-  val ascii_hex_digit  : Cset.t
-  val hex_digit        : Cset.t
-  val id_continue      : Cset.t
-  val id_start         : Cset.t
-  val lowercase        : Cset.t
-  val math             : Cset.t
-  val other_alphabetic : Cset.t
-  val other_lowercase  : Cset.t
-  val other_math       : Cset.t
-  val other_uppercase  : Cset.t
-  val uppercase        : Cset.t
-  val white_space      : Cset.t
-  val xid_continue     : Cset.t
-  val xid_start        : Cset.t
+  val alphabetic       : Sedlex_cset.t
+  val ascii_hex_digit  : Sedlex_cset.t
+  val hex_digit        : Sedlex_cset.t
+  val id_continue      : Sedlex_cset.t
+  val id_start         : Sedlex_cset.t
+  val lowercase        : Sedlex_cset.t
+  val math             : Sedlex_cset.t
+  val other_alphabetic : Sedlex_cset.t
+  val other_lowercase  : Sedlex_cset.t
+  val other_math       : Sedlex_cset.t
+  val other_uppercase  : Sedlex_cset.t
+  val uppercase        : Sedlex_cset.t
+  val white_space      : Sedlex_cset.t
+  val xid_continue     : Sedlex_cset.t
+  val xid_start        : Sedlex_cset.t
 
 end

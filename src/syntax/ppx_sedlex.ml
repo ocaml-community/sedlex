@@ -8,6 +8,8 @@ open Asttypes
 open Ast_helper
 open Ast_convenience
 
+module Cset = Sedlex_cset
+
 (* Decision tree for partitions *)
 
 type decision_tree =
