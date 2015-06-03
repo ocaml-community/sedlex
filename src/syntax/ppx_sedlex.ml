@@ -356,7 +356,7 @@ let mapper =
               match List.hd cases with
               | {pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None} -> super # expr e
               | {pc_lhs = p} ->
-                err p.ppat_loc "the last branch must a catch-all error case"
+                err p.ppat_loc "the last branch must be a catch-all error case"
             in
             let cases = List.rev (List.tl cases) in
             let cases =
