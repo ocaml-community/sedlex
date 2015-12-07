@@ -10,22 +10,22 @@ VERSION=1.99.2
 .PHONY: all opt clean test install package
 
 all:
-	(cd src/lib && make all doc)
-	(cd src/syntax && make all)
+	(cd src/lib && $(MAKE) all doc)
+	(cd src/syntax && $(MAKE) all)
 
 opt:
-	(cd src/syntax && make opt)
-	(cd src/lib && make opt)
+	(cd src/syntax && $(MAKE) opt)
+	(cd src/lib && $(MAKE) opt)
 
 clean:
 	rm -f *~ *.cm* *.a *.lib *.o *.obj
-	(cd src/lib && make clean)
-	(cd src/syntax && make clean)
-	(cd examples && make clean)
+	(cd src/lib && $(MAKE) clean)
+	(cd src/syntax && $(MAKE) clean)
+	(cd examples && $(MAKE) clean)
 	rm -rf libdoc
 
 test: clean all opt
-	cd examples && make test
+	cd examples && $(MAKE) test
 
 INSTALL=META src/syntax/sedlex.cma src/syntax/ppx_sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
 
