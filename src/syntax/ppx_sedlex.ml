@@ -268,64 +268,68 @@ let err loc s =
 let regexp_of_pattern env =
   let rec char_pair_op func name p tuple = (* Construct something like Sub(a,b) *)
     match tuple with
-      | Some {ppat_desc=Ppat_tuple (p0 :: p1 :: [])} ->
-        begin match func (aux p0) (aux p1) with
-        | Some r -> r
-        | None ->
-          err p.ppat_loc @@
-            "the "^name^" operator can only applied to single-character length regexps"
-        end
-      | _ -> err p.ppat_loc @@ "the "^name^" operator requires two arguments, like "^name^"(a,b)"
+      | [%pat? ([%p? p0 ], [%p? p1 ]) ] ->
+          begin match func (aux p0) (aux p1) with
+            | Some r -> r
+            | None ->
+                err p.ppat_loc @@
+                "the "^name^" operator can only applied to single-character length regexps"
+          end
+      | _ ->
+          err p.ppat_loc @@ "the "^name^" operator requires two arguments, like "^name^"(a,b)"
+
   and aux p = (* interpret one pattern node *)
-    match p.ppat_desc with
-    | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
-    | Ppat_tuple (p :: pl) ->
+    match p with
+    | [%pat? [%p? p1 ] | [%p? p2 ] ] ->
+        Sedlex.alt (aux p1) (aux p2)
+    | { ppat_desc = Ppat_tuple (p :: pl) } ->
         List.fold_left (fun r p -> Sedlex.seq r (aux p))
           (aux p)
           pl
-    | Ppat_construct ({txt = Lident "Star"}, Some p) ->
-        Sedlex.rep (aux p)
-    | Ppat_construct ({txt = Lident "Plus"}, Some p) ->
-        Sedlex.plus (aux p)
-    | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
-        Sedlex.alt Sedlex.eps (aux p)
-    | Ppat_construct ({txt = Lident "Compl"}, arg) ->
-        begin match arg with
-        | Some p0 ->
-            begin match Sedlex.compl (aux p0) with
-            | Some r -> r
-            | None ->
+    | [%pat? Star [%p? arg ] ] ->
+        Sedlex.rep (aux arg)
+    | [%pat? Plus [%p? arg ] ] ->
+        Sedlex.plus (aux arg)
+    | [%pat? Opt [%p? arg ] ] ->
+        Sedlex.alt Sedlex.eps (aux arg)
+    | [%pat? Compl [%p? arg ] ] ->
+        begin match Sedlex.compl (aux arg) with
+          | Some r -> r
+          | None ->
               err p.ppat_loc
                 "the Compl operator can only applied to a single-character length regexp"
-            end
-        | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
-    | Ppat_construct ({ txt = Lident "Sub" }, arg) ->
+    | [%pat? Sub [%p? arg ] ] ->
         char_pair_op Sedlex.subtract "Sub" p arg
-    | Ppat_construct ({ txt = Lident "Intersect" }, arg) ->
+    | [%pat? Intersect [%p? arg ] ] ->
         char_pair_op Sedlex.intersection "Intersect" p arg
-    | Ppat_construct ({txt = Lident "Chars"}, arg) ->
+    | [%pat? Chars [%p? arg ] ] ->
         begin match arg with
-        | Some {ppat_desc=Ppat_constant (Const_string (s, _))} ->
-            let c = ref Cset.empty in
-            for i = 0 to String.length s - 1 do
-              c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-            done;
-            Sedlex.chars !c
-        | _ -> err p.ppat_loc "the Chars operator requires a string argument"
+          | { ppat_desc = Ppat_constant (Const_string (s, _)) } ->
+              let c = ref Cset.empty in
+              for i = 0 to String.length s - 1 do
+                c := Cset.union !c (Cset.singleton (Char.code s.[i]))
+              done;
+              Sedlex.chars !c
+          | _ ->
+              err p.ppat_loc "the Chars operator requires a string argument"
         end
-    | Ppat_interval (Const_char c1, Const_char c2) ->
+    | { ppat_desc = Ppat_interval (Const_char c1, Const_char c2) } ->
         Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
-    | Ppat_interval (Const_int i1, Const_int i2) ->
+    | { ppat_desc = Ppat_interval (Const_int i1, Const_int i2) } ->
         Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
-
-    | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
-    | Ppat_constant (Const_char c) -> regexp_for_char c
-    | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
-    | Ppat_var {txt=x} ->
-        begin try StringMap.find x env
-        with Not_found ->
-          err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
+    | { ppat_desc = Ppat_constant (Const_string (s, _)) } ->
+        regexp_for_string s
+    | { ppat_desc = Ppat_constant (Const_char c) } ->
+        regexp_for_char c
+    | { ppat_desc = Ppat_constant (Const_int c) } ->
+        Sedlex.chars (Cset.singleton (codepoint c))
+    | { ppat_desc = Ppat_var { txt = x } } ->
+        begin
+          try
+            StringMap.find x env
+          with Not_found ->
+            err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
     | _ ->
       err p.ppat_loc "this pattern is not a valid regexp"
