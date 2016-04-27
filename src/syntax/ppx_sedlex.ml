@@ -76,7 +76,6 @@ let decision_table p =
 
 
 let appfun s l = app (evar s) l
-(* let pint i = Pat.constant (Const_int i) *)
 let glb_value name def = Str.value Nonrecursive [Vb.mk (pvar name) def]
 
 (* Named regexps *)
