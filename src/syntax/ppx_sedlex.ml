@@ -7,6 +7,7 @@ open Parsetree
 open Asttypes
 open Ast_helper
 open Ast_convenience
+open Ast_convenience.Constant
 
 module Cset = Sedlex_cset
 
@@ -309,7 +310,7 @@ let regexp_of_pattern env =
           | _ -> None) arg 
         in 
         begin match const with
-        | Some (Const_string(s,_))->
+        | Some (Pconst_string(s,_))->
             let c = ref Cset.empty in
             for i = 0 to String.length s - 1 do
               c := Cset.union !c (Cset.singleton (Char.code s.[i]))
@@ -317,17 +318,18 @@ let regexp_of_pattern env =
             Sedlex.chars !c
         | _ -> err p.ppat_loc "the Chars operator requires a string argument"
         end
-    | Ppat_interval (interval1, interval2) -> 
-        begin match constant_type interval1, constant_type interval2 with
-          | Const_char c1, Const_char c2 -> Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
-          | Const_int i1, Const_int i2 -> Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
+    | Ppat_interval (i_start, i_end) -> 
+        begin match constant_type i_start, constant_type i_end with
+          | Pconst_char c1, Pconst_char c2 -> Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
+          | Pconst_integer(i1,_), Pconst_integer(i2,_) -> 
+              Sedlex.chars (Cset.interval (codepoint (int_of_string i1)) (codepoint (int_of_string i2)))
           | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end 
     | Ppat_constant (const) -> 
         begin match constant_type const with 
-          | Const_string (s, _) -> regexp_for_string s
-          | Const_char c -> regexp_for_char c
-          | Const_int c -> Sedlex.chars (Cset.singleton (codepoint c))
+          | Pconst_string (s, _) -> regexp_for_string s
+          | Pconst_char c -> regexp_for_char c
+          | Pconst_integer(i,_) -> Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
           | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end 
     | Ppat_var {txt=x} ->
