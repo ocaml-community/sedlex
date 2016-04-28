@@ -306,7 +306,7 @@ let regexp_of_pattern env =
         char_pair_op Sedlex.intersection "Intersect" p arg
     | Ppat_construct ({txt = Lident "Chars"}, arg) ->
         let const = (function 
-          | Some {ppat_desc=Ppat_constant (const)} -> Some (constant_type const)
+          | Some {ppat_desc=Ppat_constant (const)} -> Some (of_constant const)
           | _ -> None) arg 
         in 
         begin match const with
@@ -319,14 +319,14 @@ let regexp_of_pattern env =
         | _ -> err p.ppat_loc "the Chars operator requires a string argument"
         end
     | Ppat_interval (i_start, i_end) -> 
-        begin match constant_type i_start, constant_type i_end with
+        begin match of_constant i_start, of_constant i_end with
           | Pconst_char c1, Pconst_char c2 -> Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
           | Pconst_integer(i1,_), Pconst_integer(i2,_) -> 
               Sedlex.chars (Cset.interval (codepoint (int_of_string i1)) (codepoint (int_of_string i2)))
           | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end 
     | Ppat_constant (const) -> 
-        begin match constant_type const with 
+        begin match of_constant const with 
           | Pconst_string (s, _) -> regexp_for_string s
           | Pconst_char c -> regexp_for_char c
           | Pconst_integer(i,_) -> Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
