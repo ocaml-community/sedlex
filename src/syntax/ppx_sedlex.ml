@@ -76,7 +76,7 @@ let decision_table p =
 
 
 let appfun s l = app (evar s) l
-let pint i = Pat.constant (Const_int i)
+let pint i = Pat.constant (Pconst_integer (string_of_int i, None))
 let glb_value name def = Str.value Nonrecursive [Vb.mk (pvar name) def]
 
 (* Named regexps *)
@@ -248,9 +248,10 @@ let gen_definition lexbuf l error =
 (* Lexer specification parser *)
 
 let codepoint i =
-  if i < 0 || i > Cset.max_code then
-    failwith (Printf.sprintf "Invalid Unicode code point: %i" i);
-  i
+  let i = int_of_string i
+  in if i < 0 || i > Cset.max_code then
+       failwith (Printf.sprintf "Invalid Unicode code point: %i" i);
+     i
 
 let regexp_for_char c =
   Sedlex.chars (Cset.singleton (Char.code c))
@@ -306,7 +307,7 @@ let regexp_of_pattern env =
         char_pair_op Sedlex.intersection "Intersect" p arg
     | Ppat_construct ({txt = Lident "Chars"}, arg) ->
         begin match arg with
-        | Some {ppat_desc=Ppat_constant (Const_string (s, _))} ->
+        | Some {ppat_desc=Ppat_constant (Pconst_string (s, _))} ->
             let c = ref Cset.empty in
             for i = 0 to String.length s - 1 do
               c := Cset.union !c (Cset.singleton (Char.code s.[i]))
@@ -314,14 +315,16 @@ let regexp_of_pattern env =
             Sedlex.chars !c
         | _ -> err p.ppat_loc "the Chars operator requires a string argument"
         end
-    | Ppat_interval (Const_char c1, Const_char c2) ->
+    | Ppat_interval (Pconst_char c1, Pconst_char c2) ->
         Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
-    | Ppat_interval (Const_int i1, Const_int i2) ->
-        Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
+    | Ppat_interval (Pconst_integer (i1, _),
+                     Pconst_integer (i2, _)) ->
+       Sedlex.chars (Cset.interval (codepoint i1) (codepoint i2))
 
-    | Ppat_constant (Const_string (s, _)) -> regexp_for_string s
-    | Ppat_constant (Const_char c) -> regexp_for_char c
-    | Ppat_constant (Const_int c) -> Sedlex.chars (Cset.singleton (codepoint c))
+    | Ppat_constant (Pconst_string (s, _)) -> regexp_for_string s
+    | Ppat_constant (Pconst_char c) -> regexp_for_char c
+    | Ppat_constant (Pconst_integer (c, _)) ->
+       Sedlex.chars (Cset.singleton (codepoint c))
     | Ppat_var {txt=x} ->
         begin try StringMap.find x env
         with Not_found ->
