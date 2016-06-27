@@ -1,4 +1,4 @@
-version = "1.99.2"
+version = "1.99.3"
 description = "Runtime support for sedlex"
 archive(byte) = "sedlexing.cma"
 archive(native) = "sedlexing.cmxa"
@@ -6,7 +6,7 @@ requires = "gen"
 ppx = "./ppx_sedlex"
 
 package "ppx" (
-  version = "1.99.2"
+  version = "1.99.3"
   description = "ppx implementation of sedlex"
   requires = "ppx_tools gen"
   archive(byte) = "sedlex.cma"
