@@ -305,7 +305,7 @@ let regexp_of_pattern env =
         char_pair_op Sedlex.intersection "Intersect" p arg
     | Ppat_construct ({txt = Lident "Chars"}, arg) ->
         let const = match arg with
-          | Some {ppat_desc=Ppat_constant (const)} ->
+          | Some {ppat_desc=Ppat_constant const} ->
               Some (Constant.of_constant const)
           | _ -> None
         in
