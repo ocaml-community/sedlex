@@ -291,13 +291,18 @@ let regexp_of_pattern env =
           if n == 0 then init else rep1 ~init:(p::init) p (n-1)
         in
         let rep2 p (n, m) =
-          let rec aux p n =
+          let rec aux a n =
             if n == 0 then
-              {p with ppat_desc = Ppat_construct ({lidt with txt = Lident "Opt"}, Some p)}
+              a
             else
-              {p with ppat_desc = Ppat_construct ({lidt with txt = Lident "Opt"}, Some {p with ppat_desc = Ppat_tuple (p :: aux p (n-1) :: [])})}
+              aux {p with ppat_desc = Ppat_construct ({lidt with txt = Lident "Opt"}, Some {p with ppat_desc = Ppat_tuple (p :: a :: [])})} (n-1)
           in
-          if n == m then rep1 p n else rep1 ~init:(aux p (m-n-1)::[]) p n
+          if n = m then
+            rep1 p n
+          else
+            rep1 
+            ~init:(aux {p with ppat_desc = Ppat_construct ({lidt with txt = Lident "Opt"}, Some p)} (m-n-1)::[])
+            p n
         in
         begin match arg with
         | Some {ppat_desc=Ppat_tuple (p0 :: p1 :: []); ppat_loc} ->
