@@ -87,6 +87,8 @@ Regular expressions are syntactically OCaml patterns:
 - `Star R` : Kleene star (0 or more repetition)
 - `Plus R` : equivalent to `R, R*`
 - `Opt R` : equivalent to `("" | R)`
+- `Rep (R, n)` : equivalent to `R{n}`
+- `Rep (R, n .. m)` : equivalent to `R{n, m}`
 - `Chars "..."` : recognize any character in the string
 - `Compl R` : assume that R is a single-character length regexp (see below)
   and recognize the complement set

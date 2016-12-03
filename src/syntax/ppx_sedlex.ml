@@ -317,7 +317,7 @@ let regexp_of_pattern env =
                 | Pconst_integer(i1,_), Pconst_integer(i2,_) ->
                     let n1 = int_of_string i1 in
                     let n2 = int_of_string i2 in
-                    if n1 > n2 then
+                    if n1 > n2 || n2 = 0 then
                       err p.ppat_loc "invalid range"
                     else
                       aux {p0 with ppat_desc = Ppat_tuple (rep2 p0 (n1, n2))}
