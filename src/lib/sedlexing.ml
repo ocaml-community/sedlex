@@ -153,12 +153,9 @@ let next lexbuf =
       else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
     else lexbuf.buf.(lexbuf.pos)
   in
-  begin
-    match i with
-      (* '\n' = 10 *)
-      | 10 -> new_line lexbuf
-      | _ -> incr_curr lexbuf
-  end;
+  incr_curr lexbuf;
+  (* '\n' = 10 *)
+  if i = 10 then new_line lexbuf;
   if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
   i
 
