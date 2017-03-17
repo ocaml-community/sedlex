@@ -52,7 +52,7 @@ type lexbuf = {
 
 let chunk_size = 512
 
-let empty_position () = {
+let empty_position = {
   Lexing.
     pos_fname = "";
     pos_lnum = 1;
@@ -60,7 +60,7 @@ let empty_position () = {
     pos_cnum = 0;
 }
 
-let empty_lexbuf () = {
+let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
   buf = [| |];
   len = 0;
@@ -70,13 +70,13 @@ let empty_lexbuf () = {
   marked_pos = 0;
   marked_val = 0;
   finished = false;
-  lex_marked_p = empty_position ();
-  lex_start_p = empty_position ();
-  lex_curr_p = empty_position ()
+  lex_marked_p = empty_position;
+  lex_start_p = empty_position;
+  lex_curr_p = empty_position
 }
 
 let create f = {
-  empty_lexbuf () with
+  empty_lexbuf with
     refill = f;
     buf = Array.make chunk_size 0;
 }
