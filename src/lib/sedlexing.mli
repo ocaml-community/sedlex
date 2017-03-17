@@ -86,6 +86,11 @@ val lexeme_length: lexbuf -> int
         lexbuf)], that is, the length (in code points) of the matched
         string. *)
 
+val lexing_positions : lexbuf -> Lexing.position*Lexing.position
+    (** [Sedlexing.lexing_positions lexbuf] returns the start and current
+        positions with type [Lexing.position], suitable for consumption
+        by parsers like [Menhir]. *)
+
 val lexeme: lexbuf -> int array
     (** [Sedlexing.lexeme lexbuf] returns the string matched by the
         regular expression as an array of Unicode code point. *)
@@ -97,7 +102,6 @@ val lexeme_char: lexbuf -> int -> int
 val sub_lexeme: lexbuf -> int -> int -> int array
 (** [Sedlexing.lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
-
 
 val rollback: lexbuf -> unit
 (** [Sedlexing.rollback lexbuf] puts [lexbuf] back in its configuration before
