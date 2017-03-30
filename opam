@@ -8,7 +8,8 @@ build: [ [make "all"]  [make "opt"] ]
 install: [make "install"]
 remove: [["ocamlfind" "remove" "sedlex"]]
 depends: ["ocamlfind" {build}
-          "ppx_tools" {>= "5.0"}
+          "ppx_tools_versioned"
+          "ocaml-migrate-parsetree"
           "gen"
          ]
 available: [ ocaml-version >= "4.02.0" ]
