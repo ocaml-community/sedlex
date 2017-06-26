@@ -3,12 +3,12 @@ description = "Runtime support for sedlex"
 archive(byte) = "sedlexing.cma"
 archive(native) = "sedlexing.cmxa"
 requires = "gen"
-ppx = "./ppx_sedlex"
+ppx = "./ppx_sedlex --as-ppx"
 
 package "ppx" (
   version = "1.99.3"
   description = "ppx implementation of sedlex"
-  requires = "ppx_tools gen"
+  requires = "ocaml-migrate-parsetree ppx_tools_versioned gen"
   archive(byte) = "sedlex.cma"
   archive(native) = "sedlex.cmxa"
 )
