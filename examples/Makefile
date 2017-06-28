@@ -5,10 +5,11 @@
 include $(shell ocamlc -where)/Makefile.config
 
 .PHONY: test
-test: tokenizer$(EXE) complement$(EXE) subtraction$(EXE)
+test: tokenizer$(EXE) complement$(EXE) subtraction$(EXE) repeat$(EXE)
 	./tokenizer$(EXE)
 	./complement$(EXE)
 	./subtraction$(EXE)
+	./repeat$(EXE)
 
 tokenizer$(EXE): tokenizer.ml
 	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o tokenizer$(EXE) -linkpkg sedlexing.cma tokenizer.ml
@@ -18,6 +19,9 @@ complement$(EXE): complement.ml
 
 subtraction$(EXE): subtraction.ml
 	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o subtraction$(EXE) -linkpkg sedlexing.cma subtraction.ml
+
+repeat$(EXE): repeat.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o repeat$(EXE) -linkpkg sedlexing.cma repeat.ml
 
 .PHONY: with_driver
 with_driver: tokenizer.ml
@@ -29,4 +33,4 @@ with_findlib: tokenizer.ml
 	ocamlfind ocamlc -o tokenizer$(EXE) -linkpkg -package sedlex -package gen tokenizer.cmo
 
 clean:
-	rm -f *~ *.cm* *.a *.lib *.o *.obj tokenizer$(EXE) complement$(EXE) subtraction$(EXE)
+	rm -f *~ *.cm* *.a *.lib *.o *.obj tokenizer$(EXE) complement$(EXE) subtraction$(EXE) repeat$(EXE)
