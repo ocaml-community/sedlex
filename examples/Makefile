@@ -11,13 +11,13 @@ test: tokenizer$(EXE) complement$(EXE) subtraction$(EXE)
 	./subtraction$(EXE)
 
 tokenizer$(EXE): tokenizer.ml
-	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o tokenizer$(EXE) -linkpkg sedlexing.cma tokenizer.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE) --as-ppx" -I ../src/lib -o tokenizer$(EXE) -linkpkg sedlexing.cma tokenizer.ml
 
 complement$(EXE): complement.ml
-	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o complement$(EXE) -linkpkg sedlexing.cma complement.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE) --as-ppx" -I ../src/lib -o complement$(EXE) -linkpkg sedlexing.cma complement.ml
 
 subtraction$(EXE): subtraction.ml
-	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o subtraction$(EXE) -linkpkg sedlexing.cma subtraction.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE) --as-ppx" -I ../src/lib -o subtraction$(EXE) -linkpkg sedlexing.cma subtraction.ml
 
 .PHONY: with_driver
 with_driver: tokenizer.ml

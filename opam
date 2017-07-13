@@ -12,7 +12,7 @@ depends: ["ocamlfind" {build}
           "ocaml-migrate-parsetree"
           "gen"
          ]
-available: [ ocaml-version >= "4.02.0" ]
+available: [ ocaml-version >= "4.02.3" ]
 homepage: "https://github.com/alainfrisch/sedlex"
 bug-reports: "https://github.com/alainfrisch/sedlex/issues"
 license: "MIT"
