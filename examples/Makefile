@@ -21,7 +21,7 @@ subtraction$(EXE): subtraction.ml
 	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE) --as-ppx" -I ../src/lib -o subtraction$(EXE) -linkpkg sedlexing.cma subtraction.ml
 
 repeat$(EXE): repeat.ml
-	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE)" -I ../src/lib -o repeat$(EXE) -linkpkg sedlexing.cma repeat.ml
+	ocamlfind ocamlc -package gen -ppx "../src/syntax/ppx_sedlex$(EXE) --as-ppx" -I ../src/lib -o repeat$(EXE) -linkpkg sedlexing.cma repeat.ml
 
 .PHONY: with_driver
 with_driver: tokenizer.ml
