@@ -1,5 +1,6 @@
 1.99.4
      * GPR#47: Switch to ocaml-migrate-parsetree (contributed by Adrien Guatto)
+     * GPR#42: Added 'Rep' (repeat operator) (contributed by jpathy)
 
 1.99.3
      * Update to work with 4.03 (4.02 still supported)
