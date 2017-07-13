@@ -291,6 +291,51 @@ let regexp_of_pattern env =
         Sedlex.rep (aux p)
     | Ppat_construct ({txt = Lident "Plus"}, Some p) ->
         Sedlex.plus (aux p)
+    | Ppat_construct ({txt = Lident "Rep"}, arg) ->
+        let rec rep1 ?(init=Sedlex.eps) r n =
+          let rec aux n =
+            if n == 0 then
+              init
+            else
+              Sedlex.seq r (aux (n-1))
+          in
+          aux n
+        in
+        let rep2 r (n, m) =
+          let rec aux n =
+            if n == 0 then
+              Sedlex.alt Sedlex.eps r
+            else
+              Sedlex.alt Sedlex.eps (Sedlex.seq r (aux (n-1)))
+          in
+          if n = m then
+            rep1 r n
+          else
+            rep1 ~init:(aux (m-n-1)) r n
+        in
+        begin match arg with
+        | Some {ppat_desc=Ppat_tuple (p0 :: p1 :: []); ppat_loc} ->
+            begin match p1 with
+            | {ppat_desc=Ppat_constant const} as p ->
+                begin match Constant.of_constant const with
+                | Pconst_integer(i1,_) -> rep1 (aux p0) (int_of_string i1)
+                | _ -> err p.ppat_loc "invalid regexp : must be integer constant"
+                end
+            | {ppat_desc=Ppat_interval (i_start, i_end)} as p ->
+                begin match Constant.of_constant i_start, Constant.of_constant i_end with
+                | Pconst_integer(i1,_), Pconst_integer(i2,_) ->
+                    let n1 = int_of_string i1 in
+                    let n2 = int_of_string i2 in
+                    if 0 <= n1 && n1 <= n2 then
+                      rep2 (aux p0) (n1, n2)
+                    else
+                      err p.ppat_loc "invalid range : 0 <= i1 <= i2 not satisfied"
+                | _ -> err p.ppat_loc "invalid regexp : must be integer interval"
+                end
+            | _ -> err ppat_loc "the Rep operator 2nd argument must be integer constant/interval"
+            end
+        | _ -> err p.ppat_loc "the Rep operator takes 2 arguments"
+        end
     | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
         Sedlex.alt Sedlex.eps (aux p)
     | Ppat_construct ({txt = Lident "Compl"}, arg) ->
