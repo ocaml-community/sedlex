@@ -1,4 +1,5 @@
 opam-version: "1.2"
+name: "sedlex"
 version: "1.99.4"
 maintainer: "Alain Frisch <alain.frisch@lexifi.com>"
 authors: [
