@@ -67,7 +67,7 @@ where:
   an existing value of type [Sedlexing.lexbuf].
 - the Ri are regular expressions (see below);
 - the ei and def are OCaml expressions (called actions) of the same type
-  (the type for the whole lexer definitioon).
+  (the type for the whole lexer definition).
 
 Unlike ocamllex, lexers work on stream of Unicode codepoints, not
 bytes.
