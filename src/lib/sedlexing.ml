@@ -25,14 +25,12 @@ let gen_of_stream stream =
     with Stream.Failure -> None
   in f
 
-let eof = -1
-
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
 type lexbuf = {
-  refill: (int array -> int -> int -> int);
-  mutable buf: int array;
+  refill: (Uchar.t array -> int -> int -> int);
+  mutable buf: Uchar.t array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
                             in the input stream *)
@@ -77,7 +75,7 @@ let empty_lexbuf = {
 let create f = {
   empty_lexbuf with
     refill = f;
-    buf = Array.make chunk_size 0;
+    buf = Array.make chunk_size (Uchar.of_int 0);
     curr_line = 1;
 }
 
@@ -107,6 +105,15 @@ let from_int_array a =
   let len = Array.length a in
   {
     empty_lexbuf with
+      buf = Array.init len (fun i -> Uchar.of_int a.(i));
+      len = len;
+      finished = true;
+  }
+
+let from_uchar_array a =
+  let len = Array.length a in
+  {
+    empty_lexbuf with
       buf = Array.init len (fun i -> a.(i));
       len = len;
       finished = true;
@@ -122,7 +129,7 @@ let refill lexbuf =
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
     else begin
       let newlen = (Array.length lexbuf.buf + chunk_size) * 2 in
-      let newbuf = Array.make newlen 0 in
+      let newbuf = Array.make newlen (Uchar.of_int 0) in
       Array.blit lexbuf.buf s newbuf 0 ls;
       lexbuf.buf <- newbuf
     end;
@@ -133,11 +140,8 @@ let refill lexbuf =
     lexbuf.start_pos <- 0
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
-  if (n = 0)
-  then begin
-    lexbuf.buf.(lexbuf.len) <- eof;
-    lexbuf.len <- lexbuf.len + 1;
-  end
+  if n = 0
+  then lexbuf.finished <- true
   else lexbuf.len <- lexbuf.len + n
 
 let new_line lexbuf =
@@ -146,18 +150,14 @@ let new_line lexbuf =
   lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
 
 let next lexbuf =
-  let i =
-    if lexbuf.pos = lexbuf.len then
-      if lexbuf.finished then eof
-      else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
-    else lexbuf.buf.(lexbuf.pos)
-  in
-  if i = eof then lexbuf.finished <- true
-             else lexbuf.pos <- lexbuf.pos + 1;
-  (* '\n' = 10 *)
-  if i = 10 then new_line lexbuf;
-  i
-
+  if (not lexbuf.finished) && (lexbuf.pos = lexbuf.len) then refill lexbuf;
+  if lexbuf.finished && (lexbuf.pos = lexbuf.len) then None
+  else begin
+    let ret = lexbuf.buf.(lexbuf.pos) in
+    lexbuf.pos <- lexbuf.pos + 1;
+    if ret = (Uchar.of_int 10) then new_line lexbuf;
+    Some ret
+  end
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
@@ -221,7 +221,7 @@ let with_tokenizer lexer' lexbuf =
 
 module Latin1 = struct
   let from_gen s =
-    create (fill_buf_from_gen Char.code s)
+    create (fill_buf_from_gen Uchar.of_char s)
 
   let from_stream s = from_gen @@ gen_of_stream s
 
@@ -229,7 +229,7 @@ module Latin1 = struct
     let len = String.length s in
     {
      empty_lexbuf with
-     buf = Array.init len (fun i -> Char.code s.[i]);
+     buf = Array.init len (fun i -> Uchar.of_char s.[i]);
      len = len;
      finished = true;
     }
@@ -238,9 +238,9 @@ module Latin1 = struct
     from_gen (gen_of_channel ic)
 
   let to_latin1 c =
-    if (c >= 0) && (c < 256)
-    then Char.chr c
-    else raise (InvalidCodepoint c)
+    if Uchar.is_char c
+    then Uchar.to_char c
+    else raise (InvalidCodepoint (Uchar.to_int c))
 
   let lexeme_char lexbuf pos =
     to_latin1 (lexeme_char lexbuf pos)
@@ -300,13 +300,13 @@ module Utf8 = struct
     let from_gen s =
       Gen.next s >>= function
       | '\000'..'\127' as c ->
-          Some (Char.code c)
+          Some (Uchar.of_char c)
       | '\192'..'\223' as c ->
 	  let n1 = Char.code c in
 	  Gen.next s >>= fun c2 ->
 	  let n2 = Char.code c2 in
           if (n2 lsr 6 != 0b10) then raise MalFormed;
-          Some (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
+          Some (Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)))
       | '\224'..'\239' as c ->
 	  let n1 = Char.code c in
 	  Gen.next s >>= fun c2 ->
@@ -314,7 +314,8 @@ module Utf8 = struct
 	  Gen.next s >>= fun c3 ->
 	  let n3 = Char.code c3 in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-          Some (((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f))
+          Some (Uchar.of_int (((n1 land 0x0f) lsl 12)
+                              lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)))
       | '\240'..'\247' as c ->
 	  let n1 = Char.code c in
 	  Gen.next s >>= fun c2 ->
@@ -325,8 +326,9 @@ module Utf8 = struct
 	  let n4 = Char.code c4 in
           if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
 	  then raise MalFormed;
-          Some (((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
-          ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f))
+          Some (Uchar.of_int (((n1 land 0x07) lsl 18)
+                              lor ((n2 land 0x3f) lsl 12)
+                              lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)))
       | _ -> raise MalFormed
 
 
@@ -376,10 +378,11 @@ module Utf8 = struct
        )
       else raise MalFormed
 
-    let from_int_array a apos len =
+    let from_uchar_array a apos len =
       let b = Buffer.create (len * 4) in
       let rec aux apos len =
-        if len > 0 then (store b a.(apos); aux (succ apos) (pred len))
+        if len > 0
+        then (store b (Uchar.to_int a.(apos)); aux (succ apos) (pred len))
         else Buffer.contents b in
       aux apos len
 
@@ -399,7 +402,7 @@ module Utf8 = struct
     from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
-    Helper.from_int_array lexbuf.buf (lexbuf.start_pos + pos) len
+    Helper.from_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
 
   let lexeme lexbuf =
     sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
@@ -428,14 +431,14 @@ module Utf16 = struct
 
     let from_gen bo s w1 =
       if w1 = 0xfffe then raise (InvalidCodepoint w1);
-      if w1 < 0xd800 || 0xdfff < w1 then Some w1
+      if w1 < 0xd800 || 0xdfff < w1 then Some (Uchar.of_int w1)
       else if w1 <= 0xdbff
       then
         next_in_gen bo s >>= fun w2 ->
         if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
         let upper10 = (w1 land 0x3ff) lsl 10
         and lower10 = w2 land 0x3ff in
-        Some (0x10000 + upper10 + lower10)
+        Some (Uchar.of_int (0x10000 + upper10 + lower10))
       else raise MalFormed
 
     let gen_from_char_gen opt_bo s =
@@ -468,11 +471,12 @@ module Utf16 = struct
       let p = ref apos in
       Gen.iter (fun x -> a.(!p) <- x ; incr p) s
 
-    let to_int_array opt_bo s pos bytes =
+
+    let to_uchar_array opt_bo s pos bytes =
       let len = compute_len opt_bo s pos bytes in
-      let a = Array.make len 0 in
+      let a = Array.make len (Uchar.of_int 0) in
       blit_to_int opt_bo s pos a 0 bytes ;
-      a
+       a
 
     let store bo buf code =
       if code < 0x10000
@@ -492,15 +496,15 @@ module Utf16 = struct
         Buffer.add_char buf c4
        )
 
-    let from_int_array bo a apos len bom =
-      let b = Buffer.create (len * 4) in
+    let from_uchar_array bo a apos len bom =
+      let b = Buffer.create (len * 4 + 2) in
       if bom then store bo b 0xfeff ; (* first, store the BOM *)
       let rec aux apos len =
         if len > 0
-        then (store bo b a.(apos); aux (succ apos) (pred len))
+        then (store bo b (Uchar.to_int a.(apos)); aux (succ apos) (pred len))
         else Buffer.contents b  in
       aux apos len
-  end
+end
 
 
   let from_gen s opt_bo =
@@ -512,11 +516,11 @@ module Utf16 = struct
     from_gen (gen_of_channel ic) opt_bo
 
   let from_string s opt_bo =
-    let a = Helper.to_int_array opt_bo s 0 (String.length s) in
-    from_int_array a
+    let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in
+    from_uchar_array a
 
   let sub_lexeme lb pos len bo bom  =
-    Helper.from_int_array bo lb.buf (lb.start_pos + pos) len bom
+    Helper.from_uchar_array bo lb.buf (lb.start_pos + pos) len bom
 
   let lexeme lb bo bom =
     sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
