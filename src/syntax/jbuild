@@ -11,4 +11,6 @@
     )
   )
   (ppx_runtime_libraries (sedlex))
-  (preprocess (pps (ppx_tools_versioned.metaquot_405)))))
+  (preprocess (pps (ppx_tools_versioned.metaquot_405)))
+ )
+)
