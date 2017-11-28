@@ -2,53 +2,41 @@
 # See the attached LICENSE file.
 # Copyright 2005, 2013 by Alain Frisch and LexiFi.
 
-include $(shell ocamlc -where)/Makefile.config
+VERSION=1.99.5
 
-VERSION=1.99.2
-# Don't forget to change META file as well
+INSTALL_ARGS := $(if $(PREFIX),--prefix $(PREFIX),)
 
-.PHONY: all opt clean test install package
-
-all:
-	(cd src/lib && $(MAKE) all doc)
-	(cd src/syntax && $(MAKE) all)
-
-opt:
-	(cd src/syntax && $(MAKE) opt)
-	(cd src/lib && $(MAKE) opt)
-
-clean:
-	rm -f *~ *.cm* *.a *.lib *.o *.obj
-	(cd src/lib && $(MAKE) clean)
-	(cd src/syntax && $(MAKE) clean)
-	(cd examples && $(MAKE) clean)
-	rm -rf libdoc
-
-test: clean all opt
-	cd examples && $(MAKE) test
-
-INSTALL=META src/syntax/sedlex.cma src/syntax/ppx_sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
-
-INSTALL_OPT=src/syntax/sedlex.cmxs src/syntax/sedlex$(EXT_LIB) src/syntax/sedlex.cmxa src/syntax/ppx_sedlex.opt$(EXE) src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+build:
+	time -p jbuilder build @install
 
 install:
-	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
-
-install_byteonly:
-	ocamlfind install sedlex $(INSTALL)
+	jbuilder install $(INSTALL_ARGS)
 
 uninstall:
-	ocamlfind remove sedlex
+	jbuilder uninstall $(INSTALL_ARGS)
+
+clean:
+	jbuilder clean
+
+doc:
+	jbuilder build @doc
+
+test:
+	jbuilder build @runtest
+
+all: build doc
+
+.PHONY: build install uninstall clean doc test all package upload
 
 PACKAGE = sedlex-$(VERSION)
 DISTRIB = \
-  CHANGES LICENSE META README.md Makefile \
-  examples/Makefile \
+  CHANGES LICENSE README.md Makefile \
+  examples/jbuild \
   examples/tokenizer.ml \
-  src/lib/Makefile \
+  src/lib/jbuild \
   src/lib/sedlexing.ml \
   src/lib/sedlexing.mli \
-  src/syntax/Makefile \
+  src/syntax/jbuild \
   src/syntax/sedlex_cset.ml \
   src/syntax/sedlex_cset.mli \
   src/syntax/sedlex.ml \
@@ -69,6 +57,6 @@ package: clean
 
 
 TARGET=foo:bar/sedlex_dara
-upload:
-	scp $(PACKAGE).tar.gz README CHANGES $(TARGET)/
-	rsync -avz libdoc $(TARGET)
+upload: doc
+	scp $(PACKAGE).tar.gz README.md CHANGES $(TARGET)/
+	rsync -avz _build/default/_doc/  $(TARGET)/libdoc
