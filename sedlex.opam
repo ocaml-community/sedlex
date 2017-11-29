@@ -9,8 +9,6 @@ authors: [
 build: ["jbuilder" "build" "-p" name "-j" jobs]
 build-doc: ["jbuilder" "build" "@doc" "-p" name "-j" jobs]
 build-test: ["jbuilder" "runtest" "-p" name "-j" jobs]
-install: ["jbuilder" "install" "-p" name "-j" jobs]
-remove: ["jbuilder" "uninstall" "-p" name "-j" jobs ]
 
 depends: ["ocamlfind" {build}
           "ppx_tools_versioned"
