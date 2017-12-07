@@ -7,7 +7,7 @@ INSTALL_ARGS := $(if $(PREFIX),--prefix $(PREFIX),)
 .PHONY: build install uninstall clean doc test all
 
 build:
-	time -p jbuilder build @install
+	jbuilder build @install
 
 install:
 	jbuilder install $(INSTALL_ARGS)
