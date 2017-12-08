@@ -1,0 +1,10 @@
+(jbuild_version 1)
+
+(library
+ ((name        sedlex)
+  (public_name sedlex)
+  (wrapped false)
+  (libraries (gen))
+  (flags (:standard -w +A-4-9 -safe-string))
+ )
+)

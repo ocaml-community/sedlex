@@ -1,0 +1,16 @@
+(jbuild_version 1)
+
+(library
+ ((name sedlex_ppx)
+  (public_name sedlex.ppx)
+  (kind ppx_rewriter)
+  (libraries 
+    (ppx_tools_versioned.metaquot_405
+     ocaml-migrate-parsetree
+     sedlex
+    )
+  )
+  (ppx_runtime_libraries (sedlex))
+  (preprocess (pps (ppx_tools_versioned.metaquot_405)))
+ )
+)

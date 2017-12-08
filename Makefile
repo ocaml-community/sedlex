@@ -2,73 +2,26 @@
 # See the attached LICENSE file.
 # Copyright 2005, 2013 by Alain Frisch and LexiFi.
 
-include $(shell ocamlc -where)/Makefile.config
+INSTALL_ARGS := $(if $(PREFIX),--prefix $(PREFIX),)
 
-VERSION=1.99.2
-# Don't forget to change META file as well
+.PHONY: build install uninstall clean doc test all
 
-.PHONY: all opt clean test install package
-
-all:
-	(cd src/lib && $(MAKE) all doc)
-	(cd src/syntax && $(MAKE) all)
-
-opt:
-	(cd src/syntax && $(MAKE) opt)
-	(cd src/lib && $(MAKE) opt)
-
-clean:
-	rm -f *~ *.cm* *.a *.lib *.o *.obj
-	(cd src/lib && $(MAKE) clean)
-	(cd src/syntax && $(MAKE) clean)
-	(cd examples && $(MAKE) clean)
-	rm -rf libdoc
-
-test: clean all opt
-	cd examples && $(MAKE) test
-
-INSTALL=META src/syntax/sedlex.cma src/syntax/ppx_sedlex$(EXE) src/lib/sedlexing.cma src/lib/sedlexing.cmi
-
-INSTALL_OPT=src/syntax/sedlex.cmxs src/syntax/sedlex$(EXT_LIB) src/syntax/sedlex.cmxa src/syntax/ppx_sedlex.opt$(EXE) src/lib/sedlexing.cmx src/lib/sedlexing$(EXT_LIB) src/lib/sedlexing.cmxa
+build:
+	jbuilder build @install
 
 install:
-	ocamlfind install sedlex $(INSTALL) $(INSTALL_OPT)
-
-install_byteonly:
-	ocamlfind install sedlex $(INSTALL)
+	jbuilder install $(INSTALL_ARGS)
 
 uninstall:
-	ocamlfind remove sedlex
+	jbuilder uninstall $(INSTALL_ARGS)
 
-PACKAGE = sedlex-$(VERSION)
-DISTRIB = \
-  CHANGES LICENSE META README.md Makefile \
-  examples/Makefile \
-  examples/tokenizer.ml \
-  src/lib/Makefile \
-  src/lib/sedlexing.ml \
-  src/lib/sedlexing.mli \
-  src/syntax/Makefile \
-  src/syntax/sedlex_cset.ml \
-  src/syntax/sedlex_cset.mli \
-  src/syntax/sedlex.ml \
-  src/syntax/sedlex.mli \
-  src/syntax/sedlex_ppx.ml \
-  src/syntax/unicode63.ml \
-  src/syntax/unicode63.mli
+clean:
+	jbuilder clean
 
+doc:
+	jbuilder build @doc
 
-package: clean
-	rm -rf sedlex.tar.gz
-	tar czf sedlex.tar.gz $(DISTRIB)
-	rm -Rf $(PACKAGE)
-	mkdir $(PACKAGE)
-	cd $(PACKAGE) && tar xzf ../sedlex.tar.gz
-	tar czf $(PACKAGE).tar.gz $(PACKAGE)
-	rm -Rf $(PACKAGE) sedlex.tar.gz
+test:
+	jbuilder build @runtest
 
-
-TARGET=foo:bar/sedlex_dara
-upload:
-	scp $(PACKAGE).tar.gz README CHANGES $(TARGET)/
-	rsync -avz libdoc $(TARGET)
+all: build doc

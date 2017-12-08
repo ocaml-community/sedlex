@@ -8,6 +8,9 @@
 *.cmxs
 *.cmxa
 *.exe
+*.install
+*.merlin
+_build
 libdoc
 src/syntax/ppx_sedlex
 examples/complement

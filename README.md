@@ -172,11 +172,10 @@ The quick way:
 
 
 Otherwise, the first thing to do is to compile and install sedlex.
-You need a recent version of OCaml.
+You need a recent version of OCaml and jbuilder.
 
 ```
-  make all
-  make opt (* optional *)
+  make
 ```
 
 ### With findlib
@@ -184,7 +183,7 @@ You need a recent version of OCaml.
 If you have findlib, you can use it to install and use sedlex.
 The name of the findlib package is "sedlex".
 
-Installation (after "make all" and "make opt"):
+Installation (after "make"):
 
 ```
   make install
@@ -223,3 +222,4 @@ link the application with the runtime support library for sedlex
 - Peter Zotov:
   - improvements to the build system
   - switched parts of ppx_sedlex to using concrete syntax (with ppx_metaquot)
+- Steffen Smolka: port to jbuilder
