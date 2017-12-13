@@ -10,7 +10,7 @@ build: ["jbuilder" "build" "-p" name "-j" jobs]
 build-doc: ["jbuilder" "build" "@doc" "-p" name "-j" jobs]
 build-test: ["jbuilder" "runtest" "-p" name "-j" jobs]
 
-depends: ["ocamlfind" {build}
+depends: ["jbuilder" {build}
           "ppx_tools_versioned"
           "ocaml-migrate-parsetree"
           "gen"
