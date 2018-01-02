@@ -64,7 +64,7 @@ Guard expressions are not allowed.)
 
 where:
 - lexbuf is an arbitrary lowercase identifier, which must refer to
-  an existing value of type [Sedlexing.lexbuf].
+  an existing value of type `Sedlexing.lexbuf`.
 - the Ri are regular expressions (see below);
 - the ei and def are OCaml expressions (called actions) of the same type
   (the type for the whole lexer definition).
