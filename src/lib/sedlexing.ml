@@ -43,9 +43,22 @@ type lexbuf = {
   mutable marked_val: int;
 
   mutable finished: bool;
+
+  (* Compat with other lexers. *)
+  mutable lex_marked_p: Lexing.position;
+  mutable lex_start_p:  Lexing.position;
+  mutable lex_curr_p:   Lexing.position
 }
 
 let chunk_size = 512
+
+let empty_position = {
+  Lexing.
+    pos_fname = "";
+    pos_lnum = 1;
+    pos_bol = 0;
+    pos_cnum = 0;
+}
 
 let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
@@ -57,6 +70,9 @@ let empty_lexbuf = {
   marked_pos = 0;
   marked_val = 0;
   finished = false;
+  lex_marked_p = empty_position;
+  lex_start_p = empty_position;
+  lex_curr_p = empty_position
 }
 
 let create f = {
@@ -117,6 +133,19 @@ let refill lexbuf =
   end
   else lexbuf.len <- lexbuf.len + n
 
+let lex_p_new_line lexbuf =
+  lexbuf.lex_curr_p <- {
+    lexbuf.lex_curr_p with
+      Lexing.
+        pos_bol = lexbuf.lex_curr_p.Lexing.pos_cnum ;
+        pos_lnum = lexbuf.lex_curr_p.Lexing.pos_lnum+1}
+
+let lex_p_incr_curr lexbuf =
+  lexbuf.lex_curr_p <- {
+    lexbuf.lex_curr_p with
+      Lexing.
+        pos_cnum = lexbuf.lex_curr_p.Lexing.pos_cnum+1 }
+
 let next lexbuf =
   let i =
     if lexbuf.pos = lexbuf.len then
@@ -124,19 +153,26 @@ let next lexbuf =
       else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
     else lexbuf.buf.(lexbuf.pos)
   in
+  incr_curr lexbuf;
+  (* '\n' = 10 *)
+  if i = 10 then new_line lexbuf;
   if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
   i
 
 let start lexbuf =
+  lexbuf.lex_start_p <- lexbuf.lex_curr_p;
+  lexbuf.lex_marked_p <- lexbuf.lex_curr_p;
   lexbuf.start <- lexbuf.pos;
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_val <- (-1)
 
 let mark lexbuf i =
+  lexbuf.lex_marked_p <- lexbuf.lex_curr_p;
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_val <- i
 
 let backtrack lexbuf =
+  lexbuf.lex_curr_p <- lexbuf.lex_marked_p;
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.marked_val
 
@@ -159,6 +195,8 @@ let lexeme lexbuf =
 let lexeme_char lexbuf pos =
   lexbuf.buf.(lexbuf.start + pos)
 
+let lexing_positions lexbuf =
+  (lexbuf.lex_start_p,lexbuf.lex_curr_p)
 
 module Latin1 = struct
   let from_gen s =
