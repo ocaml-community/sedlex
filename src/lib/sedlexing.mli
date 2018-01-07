@@ -80,6 +80,22 @@ val loc: lexbuf -> int * int
         [(Sedlexing.lexeme_start lexbuf,Sedlexing.lexeme_end
         lexbuf)]. *)
 
+val lexeme_start_position: lexbuf -> Lexing.position
+    (** [Sedlexing.lexeme_start_position lexbuf] returns a Lexing.position
+        structure for the first code point of the matched string.
+        pos_fname is always set to 0. *)
+
+val lexeme_end_position: lexbuf -> Lexing.position
+    (** [Sedlexing.lexeme_end_position lexbuf] returns a Lexing.position
+        structure for the last code point of the matched string.
+        pos_fname is always set to 0. *)
+
+val loc_position: lexbuf -> Lexing.position * Lexing.position
+    (** [Sedlexing.loc_extended lexbuf] returns the pair
+        [(Sedlexing.lexeme_start_position lexbuf,
+        Sedlexing.lexeme_end_position lexbuf)].
+        pos_fname is always set to 0. *)
+
 val lexeme_length: lexbuf -> int
     (** [Sedlexing.loc lexbuf] returns the difference
         [(Sedlexing.lexeme_end lexbuf) - (Sedlexing.lexeme_start
