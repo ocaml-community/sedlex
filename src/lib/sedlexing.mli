@@ -80,6 +80,10 @@ val loc: lexbuf -> int * int
         [(Sedlexing.lexeme_start lexbuf,Sedlexing.lexeme_end
         lexbuf)]. *)
 
+val pos: lexbuf -> int * int * int
+    (** [Sedlexing.pos lexbuf] returns the pair
+        [(lexbuf.line,lexbuf.bol,lexbuf.pos)]. *)
+
 val lexeme_length: lexbuf -> int
     (** [Sedlexing.loc lexbuf] returns the difference
         [(Sedlexing.lexeme_end lexbuf) - (Sedlexing.lexeme_start
@@ -120,6 +124,13 @@ val start: lexbuf -> unit
     The current position become the "start" position as returned
     by [Sedlexing.lexeme_start]. Moreover, the internal slot is set to
     [-1] and the backtrack position is set to the current position.
+ *)
+
+val new_line: lexbuf -> unit
+(** [start lexbuf] informs the lexer buffer that a new line
+    is encountered at current position and the buffer would auto
+    adjust "line" and "bol" position for you. Use [Sedlexing.pos]
+    to obtain the line and column information.
  *)
 
 val next: lexbuf -> int
