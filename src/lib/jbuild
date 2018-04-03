@@ -5,6 +5,18 @@
   (public_name sedlex)
   (wrapped false)
   (libraries (gen))
+  (modules (sedlexing))
+  (flags (:standard -w +A-4-9 -safe-string))
+ )
+)
+
+(library
+ ((name        sedlex_menhir)
+  (public_name sedlex.menhir)
+  (wrapped false)
+  (libraries (menhirLib sedlex))
+  (modules (sedlexing_menhir))
+  (optional)
   (flags (:standard -w +A-4-9 -safe-string))
  )
 )

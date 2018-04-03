@@ -15,6 +15,7 @@ depends: ["jbuilder" {build}
           "ocaml-migrate-parsetree"
           "gen"
          ]
+depopts: ["menhir"]
 available: [ ocaml-version >= "4.02.3" ]
 homepage: "https://github.com/alainfrisch/sedlex"
 bug-reports: "https://github.com/alainfrisch/sedlex/issues"
