@@ -133,14 +133,12 @@ let next lexbuf =
 
 let start lexbuf =
   lexbuf.start <- lexbuf.pos;
-  lexbuf.line <- 0;
-  lexbuf.bol <- lexbuf.pos;
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_val <- (-1)
 
 let new_line lexbuf =
   lexbuf.line <- lexbuf.line + 1;
-  lexbuf.bol <- lexbuf.pos
+  lexbuf.bol <- lexbuf.pos + lexbuf.offset
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
@@ -158,7 +156,7 @@ let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 
 let loc lexbuf = (lexbuf.start + lexbuf.offset, lexbuf.pos + lexbuf.offset)
 
-let pos lexbuf = (lexbuf.line, lexbuf.bol, lexbuf.pos)
+let pos lexbuf = (lexbuf.line, lexbuf.bol, lexbuf.pos + lexbuf.offset)
 
 let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
 
