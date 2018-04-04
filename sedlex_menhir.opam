@@ -11,9 +11,8 @@ build-doc: ["jbuilder" "build" "@doc" "-p" name "-j" jobs]
 build-test: ["jbuilder" "runtest" "-p" name "-j" jobs]
 
 depends: ["jbuilder" {build}
-          "ppx_tools_versioned"
-          "ocaml-migrate-parsetree"
-          "gen"
+          "sedlex"
+          "menhir"
          ]
 available: [ ocaml-version >= "4.02.3" ]
 homepage: "https://github.com/alainfrisch/sedlex"
