@@ -80,6 +80,12 @@ let create f = {
 let set_curr_p lexbuf curr_p =
   lexbuf.lex_curr_p <- curr_p
 
+let set_filename lexbuf fname =
+  lexbuf.lex_curr_p <- {
+    lexbuf.lex_curr_p with
+      Lexing.pos_fname = fname;
+  }
+
 let fill_buf_from_gen f gen buf pos len =
   let rec aux i =
     if i >= len then len
@@ -136,8 +142,8 @@ let lex_p_new_line lexbuf =
   lexbuf.lex_curr_p <- {
     lexbuf.lex_curr_p with
       Lexing.
-        pos_bol = lexbuf.lex_curr_p.Lexing.pos_cnum ;
-        pos_lnum = lexbuf.lex_curr_p.Lexing.pos_lnum+1}
+        pos_lnum = lexbuf.lex_curr_p.Lexing.pos_lnum+1;
+        pos_bol = lexbuf.lex_curr_p.Lexing.pos_cnum }
 
 let lex_p_incr_curr lexbuf =
   if lexbuf.lex_curr_p != Lexing.dummy_pos then

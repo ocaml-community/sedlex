@@ -50,8 +50,11 @@ val create: (int array -> int -> int -> int) -> lexbuf
 
 val set_curr_p: lexbuf -> Lexing.position -> unit
     (** set initial [lex_curr_p] for [lexbuf],
-        if set to [Lexing.dummy_pos], Sedlexing would not track position info for you,
-        could also set filename use this *)
+        if set to [Lexing.dummy_pos], Sedlexing would not track position info for you *)
+
+val set_filename: lexbuf -> string -> unit
+    (** set [lex_curr_p.pos_fname] for [lexbuf],
+        this implies to track the position info *)
 
 val from_gen: int Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
