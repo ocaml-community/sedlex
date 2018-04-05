@@ -35,7 +35,7 @@ type lexbuf = {
   mutable buf: int array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
-			    in the input stream *)
+                            in the input stream *)
   mutable pos: int;
   mutable start: int; (* First char we need to keep visible *)
 
@@ -47,18 +47,10 @@ type lexbuf = {
   (* Compat with other lexers. *)
   mutable lex_marked_p: Lexing.position;
   mutable lex_start_p:  Lexing.position;
-  mutable lex_curr_p:   Lexing.position
+  mutable lex_curr_p:   Lexing.position;
 }
 
 let chunk_size = 512
-
-let empty_position = {
-  Lexing.
-    pos_fname = "";
-    pos_lnum = 1;
-    pos_bol = 0;
-    pos_cnum = 0;
-}
 
 let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
@@ -70,17 +62,20 @@ let empty_lexbuf = {
   marked_pos = 0;
   marked_val = 0;
   finished = false;
-  lex_marked_p = empty_position;
-  lex_start_p = empty_position;
-  lex_curr_p = empty_position
+  lex_marked_p = Lexing.dummy_pos;
+  lex_start_p = Lexing.dummy_pos;
+  lex_curr_p = Lexing.dummy_pos;
 }
 
 let create f = {
   empty_lexbuf with
     refill = f;
     buf = Array.make chunk_size 0;
+    lex_curr_p = {
+      Lexing.dummy_pos with
+        Lexing.pos_cnum = 0;
+    };
 }
-
 
 let fill_buf_from_gen f gen buf pos len =
   let rec aux i =
@@ -134,6 +129,7 @@ let refill lexbuf =
   else lexbuf.len <- lexbuf.len + n
 
 let lex_p_new_line lexbuf =
+  if lexbuf.lex_curr_p != Lexing.dummy_pos then
   lexbuf.lex_curr_p <- {
     lexbuf.lex_curr_p with
       Lexing.
@@ -141,6 +137,7 @@ let lex_p_new_line lexbuf =
         pos_lnum = lexbuf.lex_curr_p.Lexing.pos_lnum+1}
 
 let lex_p_incr_curr lexbuf =
+  if lexbuf.lex_curr_p != Lexing.dummy_pos then
   lexbuf.lex_curr_p <- {
     lexbuf.lex_curr_p with
       Lexing.
@@ -153,10 +150,10 @@ let next lexbuf =
       else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
     else lexbuf.buf.(lexbuf.pos)
   in
-  incr_curr lexbuf;
+  if i = eof then lexbuf.finished <- true
+             else (lex_p_incr_curr lexbuf; lexbuf.pos <- lexbuf.pos + 1);
   (* '\n' = 10 *)
-  if i = 10 then new_line lexbuf;
-  if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
+  if i = 10 then lex_p_new_line lexbuf;
   i
 
 let start lexbuf =
@@ -196,7 +193,7 @@ let lexeme_char lexbuf pos =
   lexbuf.buf.(lexbuf.start + pos)
 
 let lexing_positions lexbuf =
-  (lexbuf.lex_start_p,lexbuf.lex_curr_p)
+  (lexbuf.lex_start_p, lexbuf.lex_curr_p)
 
 module Latin1 = struct
   let from_gen s =
