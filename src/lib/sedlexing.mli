@@ -48,6 +48,11 @@ val create: (int array -> int -> int -> int) -> lexbuf
         position [pos], and return the number of characters provided. A
         return value of 0 means end of input. *)
 
+val set_curr_p: lexbuf -> Lexing.position -> unit
+    (** set initial [lex_curr_p] for [lexbuf],
+        if set to [Lexing.dummy_pos], Sedlexing would not track position info for you,
+        could also set filename use this *)
+
 val from_gen: int Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
 
@@ -140,6 +145,9 @@ val backtrack: lexbuf -> int
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
 
+val convert_for_menhir: (lexbuf -> 'token) -> lexbuf -> (unit -> 'token * Lexing.position * Lexing.position)
+(** [backtrack convert_for_menhir] convert a lexer to a rivised lexer that
+    menhirLib accepts *)
 
 (** {6 Support for common encodings} *)
 

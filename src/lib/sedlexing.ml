@@ -77,6 +77,9 @@ let create f = {
     };
 }
 
+let set_curr_p lexbuf curr_p =
+  lexbuf.lex_curr_p <- curr_p
+
 let fill_buf_from_gen f gen buf pos len =
   let rec aux i =
     if i >= len then len
@@ -194,6 +197,12 @@ let lexeme_char lexbuf pos =
 
 let lexing_positions lexbuf =
   (lexbuf.lex_start_p, lexbuf.lex_curr_p)
+
+let convert_for_menhir lexer' lexbuf =
+  let lexer () =
+    let token = lexer' lexbuf in
+    (token, lexbuf.lex_start_p, lexbuf.lex_curr_p)
+  in lexer
 
 module Latin1 = struct
   let from_gen s =
