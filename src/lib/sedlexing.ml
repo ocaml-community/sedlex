@@ -183,6 +183,7 @@ let backtrack lexbuf =
   lexbuf.marked_val
 
 let rollback lexbuf =
+  lexbuf.lex_curr_p <- lexbuf.lex_start_p;
   lexbuf.pos <- lexbuf.start
 
 let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
