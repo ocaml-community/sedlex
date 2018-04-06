@@ -212,7 +212,7 @@ let lexing_positions lexbuf =
   } in
   (start_p, curr_p)
 
-let convert_for_menhir lexer' lexbuf =
+let with_tokenizer lexer' lexbuf =
   let lexer () =
     let token = lexer' lexbuf in
     let (start_p, curr_p) = lexing_positions lexbuf in
