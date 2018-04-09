@@ -35,12 +35,20 @@ type lexbuf = {
   mutable buf: int array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
-			    in the input stream *)
-  mutable pos: int;
-  mutable start: int; (* First char we need to keep visible *)
+                            in the input stream *)
+  mutable pos: int; (* pos is the index in the buffer *)
+  mutable curr_bol: int; (* bol is the index in the input stream but not buffer *)
+  mutable curr_line: int; (* start from 1, if it is 0, we would not track postion info for you *)
+  mutable start_pos: int; (* First char we need to keep visible *)
+  mutable start_bol: int;
+  mutable start_line: int;
 
   mutable marked_pos: int;
+  mutable marked_bol: int;
+  mutable marked_line: int;
   mutable marked_val: int;
+
+  mutable filename: string;
 
   mutable finished: bool;
 }
@@ -53,9 +61,16 @@ let empty_lexbuf = {
   len = 0;
   offset = 0;
   pos = 0;
-  start = 0;
+  curr_bol = 0;
+  curr_line = 0;
+  start_pos = 0;
+  start_bol = 0;
+  start_line = 0;
   marked_pos = 0;
+  marked_bol = 0;
+  marked_line = 0;
   marked_val = 0;
+  filename = "";
   finished = false;
 }
 
@@ -63,8 +78,16 @@ let create f = {
   empty_lexbuf with
     refill = f;
     buf = Array.make chunk_size 0;
+    curr_line = 1;
 }
 
+let set_curr_p lexbuf curr_p =
+  lexbuf.offset <- curr_p.Lexing.pos_cnum - lexbuf.pos;
+  lexbuf.curr_bol <- curr_p.Lexing.pos_bol;
+  lexbuf.curr_line <- curr_p.Lexing.pos_lnum
+
+let set_filename lexbuf fname =
+  lexbuf.filename <- fname
 
 let fill_buf_from_gen f gen buf pos len =
   let rec aux i =
@@ -93,7 +116,7 @@ let from_int_array a =
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf
   then begin
-    let s = lexbuf.start in
+    let s = lexbuf.start_pos in
     let ls = lexbuf.len - s in
     if ls + chunk_size <= Array.length lexbuf.buf then
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
@@ -107,7 +130,7 @@ let refill lexbuf =
     lexbuf.offset <- lexbuf.offset + s;
     lexbuf.pos <- lexbuf.pos - s;
     lexbuf.marked_pos <- lexbuf.marked_pos - s;
-    lexbuf.start <- 0
+    lexbuf.start_pos <- 0
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
   if (n = 0)
@@ -117,6 +140,11 @@ let refill lexbuf =
   end
   else lexbuf.len <- lexbuf.len + n
 
+let new_line lexbuf =
+  if lexbuf.curr_line != 0 then
+  lexbuf.curr_line <- lexbuf.curr_line + 1;
+  lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
+
 let next lexbuf =
   let i =
     if lexbuf.pos = lexbuf.len then
@@ -124,41 +152,72 @@ let next lexbuf =
       else (refill lexbuf; lexbuf.buf.(lexbuf.pos))
     else lexbuf.buf.(lexbuf.pos)
   in
-  if i = eof then lexbuf.finished <- true else lexbuf.pos <- lexbuf.pos + 1;
+  if i = eof then lexbuf.finished <- true
+             else lexbuf.pos <- lexbuf.pos + 1;
+  (* '\n' = 10 *)
+  if i = 10 then new_line lexbuf;
   i
 
-let start lexbuf =
-  lexbuf.start <- lexbuf.pos;
-  lexbuf.marked_pos <- lexbuf.pos;
-  lexbuf.marked_val <- (-1)
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
+  lexbuf.marked_bol <- lexbuf.curr_bol;
+  lexbuf.marked_line <- lexbuf.curr_line;
   lexbuf.marked_val <- i
+
+let start lexbuf =
+  lexbuf.start_pos <- lexbuf.pos;
+  lexbuf.start_bol <- lexbuf.curr_bol;
+  lexbuf.start_line <- lexbuf.curr_line;
+  mark lexbuf (-1)
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
+  lexbuf.curr_bol <- lexbuf.marked_bol;
+  lexbuf.curr_line <- lexbuf.marked_line;
   lexbuf.marked_val
 
 let rollback lexbuf =
-  lexbuf.pos <- lexbuf.start
+  lexbuf.pos <- lexbuf.start_pos;
+  lexbuf.curr_bol <- lexbuf.start_bol;
+  lexbuf.curr_line <- lexbuf.start_line
 
-let lexeme_start lexbuf = lexbuf.start + lexbuf.offset
+let lexeme_start lexbuf = lexbuf.start_pos + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 
-let loc lexbuf = (lexbuf.start + lexbuf.offset, lexbuf.pos + lexbuf.offset)
+let loc lexbuf = (lexbuf.start_pos + lexbuf.offset, lexbuf.pos + lexbuf.offset)
 
-let lexeme_length lexbuf = lexbuf.pos - lexbuf.start
+let lexeme_length lexbuf = lexbuf.pos - lexbuf.start_pos
 
 let sub_lexeme lexbuf pos len =
-  Array.sub lexbuf.buf (lexbuf.start + pos) len
+  Array.sub lexbuf.buf (lexbuf.start_pos + pos) len
 
 let lexeme lexbuf =
-  Array.sub lexbuf.buf (lexbuf.start) (lexbuf.pos - lexbuf.start)
+  Array.sub lexbuf.buf (lexbuf.start_pos) (lexbuf.pos - lexbuf.start_pos)
 
 let lexeme_char lexbuf pos =
-  lexbuf.buf.(lexbuf.start + pos)
+  lexbuf.buf.(lexbuf.start_pos + pos)
 
+let lexing_positions lexbuf =
+  let start_p = {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.start_line;
+    pos_cnum = lexbuf.start_pos + lexbuf.offset;
+    pos_bol = lexbuf.start_bol;
+  } and curr_p = {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.curr_line;
+    pos_cnum = lexbuf.pos + lexbuf.offset;
+    pos_bol = lexbuf.curr_bol;
+  } in
+  (start_p, curr_p)
+
+let with_tokenizer lexer' lexbuf =
+  let lexer () =
+    let token = lexer' lexbuf in
+    let (start_p, curr_p) = lexing_positions lexbuf in
+    (token, start_p, curr_p)
+  in lexer
 
 module Latin1 = struct
   let from_gen s =
@@ -188,11 +247,11 @@ module Latin1 = struct
 
   let sub_lexeme lexbuf pos len =
     let s = Bytes.create len in
-    for i = 0 to len - 1 do Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start + pos + i)) done;
+    for i = 0 to len - 1 do Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start_pos + pos + i)) done;
     Bytes.to_string s
 
   let lexeme lexbuf =
-    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
 end
 
 
@@ -340,10 +399,10 @@ module Utf8 = struct
     from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
-    Helper.from_int_array lexbuf.buf (lexbuf.start + pos) len
+    Helper.from_int_array lexbuf.buf (lexbuf.start_pos + pos) len
 
   let lexeme lexbuf =
-    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start)
+    sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
 end
 
 
@@ -457,8 +516,8 @@ module Utf16 = struct
     from_int_array a
 
   let sub_lexeme lb pos len bo bom  =
-    Helper.from_int_array bo lb.buf (lb.start + pos) len bom
+    Helper.from_int_array bo lb.buf (lb.start_pos + pos) len bom
 
   let lexeme lb bo bom =
-    sub_lexeme lb 0 (lb.pos - lb.start) bo bom
+    sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
 end

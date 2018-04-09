@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
 (executables
- ((names     (tokenizer complement subtraction repeat))
+ ((names     (tokenizer complement subtraction repeat performance))
   (libraries (sedlex))
   (preprocess (pps (sedlex.ppx)))
  )
@@ -31,6 +31,13 @@
 (alias
   ((name    runtest)
    (deps (repeat.exe))
+   (action (run ${<}))
+ )
+)
+
+(alias
+  ((name    runtest)
+   (deps (performance.exe))
    (action (run ${<}))
  )
 )

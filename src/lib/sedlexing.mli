@@ -48,6 +48,14 @@ val create: (int array -> int -> int -> int) -> lexbuf
         position [pos], and return the number of characters provided. A
         return value of 0 means end of input. *)
 
+val set_curr_p: lexbuf -> Lexing.position -> unit
+    (** set initial [lex_curr_p] for [lexbuf],
+        if set to [Lexing.dummy_pos], Sedlexing would not track position info for you *)
+
+val set_filename: lexbuf -> string -> unit
+    (** [set_filename lexbuf file] set [lex_curr_p.pos_fname] for [lexbuf],
+        this would be used in [lexing_positions] and [with_tokenizer] *)
+
 val from_gen: int Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
 
@@ -86,6 +94,14 @@ val lexeme_length: lexbuf -> int
         lexbuf)], that is, the length (in code points) of the matched
         string. *)
 
+val lexing_positions : lexbuf -> Lexing.position*Lexing.position
+    (** [Sedlexing.lexing_positions lexbuf] returns the start and current
+        positions with type [Lexing.position], suitable for consumption
+        by parsers like [Menhir]. *)
+
+val new_line: lexbuf -> unit
+    (** [Sedlexing.new_line lexbuf] tolds lexbuf that  *)
+
 val lexeme: lexbuf -> int array
     (** [Sedlexing.lexeme lexbuf] returns the string matched by the
         regular expression as an array of Unicode code point. *)
@@ -97,7 +113,6 @@ val lexeme_char: lexbuf -> int -> int
 val sub_lexeme: lexbuf -> int -> int -> int array
 (** [Sedlexing.lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
-
 
 val rollback: lexbuf -> unit
 (** [Sedlexing.rollback lexbuf] puts [lexbuf] back in its configuration before
@@ -125,7 +140,8 @@ val start: lexbuf -> unit
 val next: lexbuf -> int
 (** [next lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
-    is exhausted, the function returns [-1]. *)
+    is exhausted, the function returns [-1],
+    would update line info when meeting '\n'. *)
 
 val mark: lexbuf -> int -> unit
 (** [mark lexbuf i] stores the integer [i] in the internal
@@ -136,6 +152,9 @@ val backtrack: lexbuf -> int
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
 
+val with_tokenizer: (lexbuf -> 'token) -> lexbuf -> (unit -> 'token * Lexing.position * Lexing.position)
+(** [with_tokenizer tokenizer lexbuf] returns a generator of tokens annotated with positions.
+    This generator can be used with {!TheRightMenhirFunction} *)
 
 (** {6 Support for common encodings} *)
 
