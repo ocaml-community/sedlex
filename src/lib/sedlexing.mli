@@ -6,8 +6,8 @@
 
 (** This module is roughly equivalent to the module Lexing from the
     OCaml standard library, except that its lexbuffers handle Unicode
-    code points (OCaml type: [int] in the range [0..0x10ffff]) instead
-    of bytes (OCaml type: [char]).
+    code points (OCaml type: {!Uchar.t} in the range [0..0x10ffff])
+    instead of bytes (OCaml type: [char]).
 
     It is possible to have sedlex-generated lexers work on a custom
     implementation for lex buffers. To do this, define a module [L]
@@ -40,10 +40,10 @@ exception MalFormed
 
 (** {6 Creating generic lexbufs} *)
 
-val create: (int array -> int -> int -> int) -> lexbuf
+val create: (Uchar.t array -> int -> int -> int) -> lexbuf
     (** Create a generic lexer buffer.  When the lexer needs more
         characters, it will call the given function, giving it an array of
-        integers [a], a position [pos] and a code point count [n].  The
+        Uchars [a], a position [pos] and a code point count [n].  The
         function should put [n] code points or less in [a], starting at
         position [pos], and return the number of characters provided. A
         return value of 0 means end of input. *)
@@ -56,14 +56,17 @@ val set_filename: lexbuf -> string -> unit
     (** [set_filename lexbuf file] set [lex_curr_p.pos_fname] for [lexbuf],
         this would be used in [lexing_positions] and [with_tokenizer] *)
 
-val from_gen: int Gen.t -> lexbuf
+val from_gen: Uchar.t Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
 
-val from_stream: int Stream.t -> lexbuf
+val from_stream: Uchar.t Stream.t -> lexbuf
     [@@ocaml.deprecated "Use [Sedlexing.from_gen] instead."]
     (** Create a lexbuf from a stream of Unicode code points. *)
 
 val from_int_array: int array -> lexbuf
+    (** Create a lexbuf from an array of Unicode code points. *)
+
+val from_uchar_array: Uchar.t array -> lexbuf
     (** Create a lexbuf from an array of Unicode code points. *)
 
 (** {6 Interface for lexers semantic actions} *)
@@ -102,15 +105,15 @@ val lexing_positions : lexbuf -> Lexing.position*Lexing.position
 val new_line: lexbuf -> unit
     (** [Sedlexing.new_line lexbuf] tolds lexbuf that  *)
 
-val lexeme: lexbuf -> int array
+val lexeme: lexbuf -> Uchar.t array
     (** [Sedlexing.lexeme lexbuf] returns the string matched by the
         regular expression as an array of Unicode code point. *)
 
-val lexeme_char: lexbuf -> int -> int
+val lexeme_char: lexbuf -> int -> Uchar.t
     (** [Sedlexing.lexeme_char lexbuf pos] returns code point number [pos] in
         the matched string. *)
 
-val sub_lexeme: lexbuf -> int -> int -> int array
+val sub_lexeme: lexbuf -> int -> int -> Uchar.t array
 (** [Sedlexing.lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
 
@@ -137,10 +140,10 @@ val start: lexbuf -> unit
     [-1] and the backtrack position is set to the current position.
  *)
 
-val next: lexbuf -> int
+val next: lexbuf -> Uchar.t option
 (** [next lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
-    is exhausted, the function returns [-1],
+    is exhausted, the function returns [None],
     would update line info when meeting '\n'. *)
 
 val mark: lexbuf -> int -> unit

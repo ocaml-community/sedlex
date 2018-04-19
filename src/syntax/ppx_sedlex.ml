@@ -189,6 +189,8 @@ let partition_name x =
     Hashtbl.add partitions x s;
     s
 
+(* We duplicate the body for the EOF (-1) case rather than creating
+   an interior utility function. *)
 let partition (name, p) =
   let rec gen_tree = function
     | Lte (i, yes, no) ->
@@ -199,7 +201,10 @@ let partition (name, p) =
         [%expr Char.code (String.get [%e evar (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (decision_table p) in
-  glb_value name (func [pvar "c", body])
+  glb_value name (func [(pconstr "Some" [pvar "uc"],
+                         [%expr let c = Uchar.to_int uc in [%e body]]);
+                        (pconstr "None" [],
+                         [%expr let c = (-1) in [%e body]])])
 
 (* Code generation for the automata *)
 
