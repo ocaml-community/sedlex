@@ -6,8 +6,8 @@
 
 (** This module is roughly equivalent to the module Lexing from the
     OCaml standard library, except that its lexbuffers handle Unicode
-    code points (OCaml type: [Uchar.t] in the range [0..0x10ffff]) instead
-    of bytes (OCaml type: [char]).
+    code points (OCaml type: {!Uchar.t} in the range [0..0x10ffff])
+    instead of bytes (OCaml type: [char]).
 
     It is possible to have sedlex-generated lexers work on a custom
     implementation for lex buffers. To do this, define a module [L]
@@ -143,7 +143,7 @@ val start: lexbuf -> unit
 val next: lexbuf -> Uchar.t option
 (** [next lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
-    is exhausted, the function returns None,
+    is exhausted, the function returns [None],
     would update line info when meeting '\n'. *)
 
 val mark: lexbuf -> int -> unit

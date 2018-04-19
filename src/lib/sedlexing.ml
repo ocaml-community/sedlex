@@ -497,7 +497,7 @@ module Utf16 = struct
        )
 
     let from_uchar_array bo a apos len bom =
-      let b = Buffer.create (len * 4 + 2) in
+      let b = Buffer.create (len * 4 + 2) in (* +2 for the BOM *)
       if bom then store bo b 0xfeff ; (* first, store the BOM *)
       let rec aux apos len =
         if len > 0

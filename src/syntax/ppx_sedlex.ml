@@ -189,8 +189,8 @@ let partition_name x =
     Hashtbl.add partitions x s;
     s
 
-(* Currently, we duplicate the body for the EOF (-1) case instead of
-   creating an interior utility function. This needs to be fixed.  *)
+(* We duplicate the body for the EOF (-1) case rather than creating
+   an interior utility function. *)
 let partition (name, p) =
   let rec gen_tree = function
     | Lte (i, yes, no) ->
@@ -204,7 +204,7 @@ let partition (name, p) =
   glb_value name (func [(pconstr "Some" [pvar "uc"],
                          [%expr let c = Uchar.to_int uc in [%e body]]);
                         (pconstr "None" [],
-                         [%expr let c = (-1) in [%e body]])]) (* XXX *)
+                         [%expr let c = (-1) in [%e body]])])
 
 (* Code generation for the automata *)
 
