@@ -79,10 +79,10 @@ let create f = {
     curr_line = 1;
 }
 
-let set_curr_p lexbuf curr_p =
-  lexbuf.offset <- curr_p.Lexing.pos_cnum - lexbuf.pos;
-  lexbuf.curr_bol <- curr_p.Lexing.pos_bol;
-  lexbuf.curr_line <- curr_p.Lexing.pos_lnum
+let set_position lexbuf position =
+  lexbuf.offset <- position.Lexing.pos_cnum - lexbuf.pos;
+  lexbuf.curr_bol <- position.Lexing.pos_bol;
+  lexbuf.curr_line <- position.Lexing.pos_lnum
 
 let set_filename lexbuf fname =
   lexbuf.filename <- fname
