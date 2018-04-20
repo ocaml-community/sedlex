@@ -54,10 +54,9 @@ val set_position: lexbuf -> Lexing.position -> unit
         information for you. *)
 
 val set_filename: lexbuf -> string -> unit
-    (** [set_filename lexbuf file] sets the filename known to [lexbuf].
-        This is also made available through the [lexing_positions] and
-        [with_tokenizer] calls, where it is exposed via the returned
-        [Lexing.position.pos_fname] values. *)
+    (** [set_filename lexbuf file] sets the filename to [file] in
+        [lexbuf]. It also sets the {!Lexing.pos_fname} field in
+        returned {!Lexing.position} records. *)
 
 val from_gen: Uchar.t Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
