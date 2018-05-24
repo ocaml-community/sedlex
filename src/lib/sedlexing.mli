@@ -119,7 +119,7 @@ val lexeme_char: lexbuf -> int -> Uchar.t
         the matched string. *)
 
 val sub_lexeme: lexbuf -> int -> int -> Uchar.t array
-(** [Sedlexing.lexeme lexbuf pos len] returns a substring of the string
+(** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
 
 val rollback: lexbuf -> unit
