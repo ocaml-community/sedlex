@@ -1,5 +1,7 @@
 # sedlex
 
+[![Build Status](https://travis-ci.com/ocaml-community/sedlex.svg?branch=master)](https://travis-ci.com/ocaml-community/sedlex)
+
 Unicode-friendly lexer generator for OCaml.
 
 This package is licensed by LexiFi under the terms of the MIT license.
