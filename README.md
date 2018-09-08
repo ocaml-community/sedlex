@@ -6,7 +6,9 @@ Unicode-friendly lexer generator for OCaml.
 
 This package is licensed by LexiFi under the terms of the MIT license.
 
-Contact: alain.frisch@lexifi.com
+sedlex was originally written by Alain Frisch
+<alain.frisch@lexifi.com> and is now maintained as part of the
+ocaml-community repositories on github.
 
 ## Overview
 
@@ -216,6 +218,9 @@ source file through -ppx rewriter ppx_sedlex. Moreover, you need to
 link the application with the runtime support library for sedlex
 (sedlexing.cma / sedlexing.cmxa).
 
+## Examples
+
+The `examples/` subdirectory contains several samples of sedlex in use.
 
 ## Contributors
 
