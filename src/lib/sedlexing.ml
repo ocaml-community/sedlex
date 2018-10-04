@@ -30,6 +30,7 @@ type apos = int
 
 type lexbuf = {
   refill: (Uchar.t array -> int -> int -> int);
+  mutable chunk_size: int;
   mutable buf: Uchar.t array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
@@ -51,10 +52,9 @@ type lexbuf = {
   mutable finished: bool;
 }
 
-let chunk_size = 512
-
 let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
+  chunk_size = 512;
   buf = [| |];
   len = 0;
   offset = 0;
@@ -72,11 +72,12 @@ let empty_lexbuf = {
   finished = false;
 }
 
-let create f = {
+let create ?(chunk_size=512) f = {
   empty_lexbuf with
-    refill = f;
-    buf = Array.make chunk_size (Uchar.of_int 0);
-    curr_line = 1;
+  refill = f;
+  chunk_size;
+  buf = Array.make chunk_size (Uchar.of_int 0);
+  curr_line = 1;
 }
 
 let set_position lexbuf position =
@@ -96,39 +97,39 @@ let fill_buf_from_gen f gen buf pos len =
   in
   aux 0
 
-let from_gen s =
-  create (fill_buf_from_gen (fun id -> id) s)
+let from_gen ?(chunk_size=512) s =
+  create ~chunk_size (fill_buf_from_gen (fun id -> id) s)
 
-let from_stream s = from_gen @@ gen_of_stream s
+let from_stream ?(chunk_size=512) s =
+  from_gen ~chunk_size @@ gen_of_stream s
 
 let from_int_array a =
   let len = Array.length a in
   {
     empty_lexbuf with
-      buf = Array.init len (fun i -> Uchar.of_int a.(i));
-      len = len;
-      finished = true;
+    buf = Array.init len (fun i -> Uchar.of_int a.(i));
+    len = len;
+    finished = true;
   }
 
 let from_uchar_array a =
   let len = Array.length a in
   {
     empty_lexbuf with
-      buf = Array.init len (fun i -> a.(i));
-      len = len;
-      finished = true;
+    buf = Array.init len (fun i -> a.(i));
+    len = len;
+    finished = true;
   }
 
-
 let refill lexbuf =
-  if lexbuf.len + chunk_size > Array.length lexbuf.buf
+  if lexbuf.len + lexbuf.chunk_size > Array.length lexbuf.buf
   then begin
     let s = lexbuf.start_pos in
     let ls = lexbuf.len - s in
-    if ls + chunk_size <= Array.length lexbuf.buf then
+    if ls + lexbuf.chunk_size <= Array.length lexbuf.buf then
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
     else begin
-      let newlen = (Array.length lexbuf.buf + chunk_size) * 2 in
+      let newlen = (Array.length lexbuf.buf + lexbuf.chunk_size) * 2 in
       let newbuf = Array.make newlen (Uchar.of_int 0) in
       Array.blit lexbuf.buf s newbuf 0 ls;
       lexbuf.buf <- newbuf
@@ -139,14 +140,14 @@ let refill lexbuf =
     lexbuf.marked_pos <- lexbuf.marked_pos - s;
     lexbuf.start_pos <- 0
   end;
-  let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
+  let n = lexbuf.refill lexbuf.buf lexbuf.pos lexbuf.chunk_size in
   if n = 0
   then lexbuf.finished <- true
   else lexbuf.len <- lexbuf.len + n
 
 let new_line lexbuf =
   if lexbuf.curr_line != 0 then
-  lexbuf.curr_line <- lexbuf.curr_line + 1;
+    lexbuf.curr_line <- lexbuf.curr_line + 1;
   lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
 
 let next lexbuf =
@@ -220,22 +221,23 @@ let with_tokenizer lexer' lexbuf =
   in lexer
 
 module Latin1 = struct
-  let from_gen s =
-    create (fill_buf_from_gen Uchar.of_char s)
+  let from_gen ?(chunk_size=512) s =
+    create ~chunk_size (fill_buf_from_gen Uchar.of_char s)
 
-  let from_stream s = from_gen @@ gen_of_stream s
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
   let from_string s =
     let len = String.length s in
     {
-     empty_lexbuf with
-     buf = Array.init len (fun i -> Uchar.of_char s.[i]);
-     len = len;
-     finished = true;
+      empty_lexbuf with
+      buf = Array.init len (fun i -> Uchar.of_char s.[i]);
+      len = len;
+      finished = true;
     }
 
-  let from_channel ic =
-    from_gen (gen_of_channel ic)
+  let from_channel ?(chunk_size=512) ic =
+    from_gen ~chunk_size (gen_of_channel ic)
 
   let to_latin1 c =
     if Uchar.is_char c
@@ -269,69 +271,66 @@ module Utf8 = struct
     let next s i =
       match s.[i] with
       | '\000'..'\127' as c ->
-          Char.code c
+        Char.code c
       | '\192'..'\223' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
-          if (n2 lsr 6 != 0b10) then raise MalFormed;
-          ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
+        let n1 = Char.code c in
+        let n2 = Char.code s.[i+1] in
+        if (n2 lsr 6 != 0b10) then raise MalFormed;
+        ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
       | '\224'..'\239' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
-	  let n3 = Char.code s.[i+2] in
-          if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-	  let p =
-            ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
-	  in
-	  if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
-	  p
+        let n1 = Char.code c in
+        let n2 = Char.code s.[i+1] in
+        let n3 = Char.code s.[i+2] in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        let p =
+          ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+        in
+        if (p >= 0xd800) && (p <= 0xdf00) then raise MalFormed;
+        p
       | '\240'..'\247' as c ->
-	  let n1 = Char.code c in
-	  let n2 = Char.code s.[i+1] in
-	  let n3 = Char.code s.[i+2] in
-	  let n4 = Char.code s.[i+3] in
-          if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	  then raise MalFormed;
-          ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
-          ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
+        let n1 = Char.code c in
+        let n2 = Char.code s.[i+1] in
+        let n3 = Char.code s.[i+2] in
+        let n4 = Char.code s.[i+3] in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+        then raise MalFormed;
+        ((n1 land 0x07) lsl 18) lor ((n2 land 0x3f) lsl 12) lor
+        ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)
       | _ -> raise MalFormed
-
 
     let from_gen s =
       Gen.next s >>= function
       | '\000'..'\127' as c ->
-          Some (Uchar.of_char c)
+        Some (Uchar.of_char c)
       | '\192'..'\223' as c ->
-	  let n1 = Char.code c in
-	  Gen.next s >>= fun c2 ->
-	  let n2 = Char.code c2 in
-          if (n2 lsr 6 != 0b10) then raise MalFormed;
-          Some (Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)))
+        let n1 = Char.code c in
+        Gen.next s >>= fun c2 ->
+        let n2 = Char.code c2 in
+        if (n2 lsr 6 != 0b10) then raise MalFormed;
+        Some (Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)))
       | '\224'..'\239' as c ->
-	  let n1 = Char.code c in
-	  Gen.next s >>= fun c2 ->
-	  let n2 = Char.code c2 in
-	  Gen.next s >>= fun c3 ->
-	  let n3 = Char.code c3 in
-          if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
-          Some (Uchar.of_int (((n1 land 0x0f) lsl 12)
-                              lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)))
+        let n1 = Char.code c in
+        Gen.next s >>= fun c2 ->
+        let n2 = Char.code c2 in
+        Gen.next s >>= fun c3 ->
+        let n3 = Char.code c3 in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) then raise MalFormed;
+        Some (Uchar.of_int (((n1 land 0x0f) lsl 12)
+                            lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)))
       | '\240'..'\247' as c ->
-	  let n1 = Char.code c in
-	  Gen.next s >>= fun c2 ->
-	  let n2 = Char.code c2 in
-	  Gen.next s >>= fun c3 ->
-	  let n3 = Char.code c3 in
-	  Gen.next s >>= fun c4 ->
-	  let n4 = Char.code c4 in
-          if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
-	  then raise MalFormed;
-          Some (Uchar.of_int (((n1 land 0x07) lsl 18)
-                              lor ((n2 land 0x3f) lsl 12)
-                              lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)))
+        let n1 = Char.code c in
+        Gen.next s >>= fun c2 ->
+        let n2 = Char.code c2 in
+        Gen.next s >>= fun c3 ->
+        let n3 = Char.code c3 in
+        Gen.next s >>= fun c4 ->
+        let n4 = Char.code c4 in
+        if (n2 lsr 6 != 0b10) || (n3 lsr 6 != 0b10) || (n4 lsr 6 != 0b10)
+        then raise MalFormed;
+        Some (Uchar.of_int (((n1 land 0x07) lsl 18)
+                            lor ((n2 land 0x3f) lsl 12)
+                            lor ((n3 land 0x3f) lsl 6) lor (n4 land 0x3f)))
       | _ -> raise MalFormed
-
-
 
     let compute_len s pos bytes =
       let rec aux n i =
@@ -355,27 +354,25 @@ module Utf8 = struct
       blit_to_int s pos a 0 n;
       a
 
-(**************************)
-
     let store b p =
       if p <= 0x7f then
         Buffer.add_char b (Char.chr p)
       else if p <= 0x7ff then (
         Buffer.add_char b (Char.chr (0xc0 lor (p lsr 6)));
         Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
-       )
+      )
       else if p <= 0xffff then (
         if (p >= 0xd800 && p < 0xe000) then raise MalFormed;
         Buffer.add_char b (Char.chr (0xe0 lor (p lsr 12)));
         Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6) land 0x3f)));
         Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
-       )
+      )
       else if p <= 0x10ffff then (
         Buffer.add_char b (Char.chr (0xf0 lor (p lsr 18)));
         Buffer.add_char b (Char.chr (0x80 lor ((p lsr 12) land 0x3f)));
         Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6)  land 0x3f)));
         Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f)))
-       )
+      )
       else raise MalFormed
 
     let from_uchar_array a apos len =
@@ -389,14 +386,15 @@ module Utf8 = struct
     let gen_from_char_gen s = (fun () -> from_gen s)
   end
 
-  let from_channel ic =
-    from_gen (Helper.gen_from_char_gen (gen_of_channel ic))
+  let from_channel ?(chunk_size=512) ic =
+    from_gen ~chunk_size (Helper.gen_from_char_gen (gen_of_channel ic))
 
-  let from_gen s =
-    create (fill_buf_from_gen (fun id -> id)
-        (Helper.gen_from_char_gen s))
+  let from_gen ?(chunk_size=512) s =
+    create ~chunk_size (fill_buf_from_gen (fun id -> id)
+                          (Helper.gen_from_char_gen s))
 
-  let from_stream s = from_gen @@ gen_of_stream s
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
   let from_string s =
     from_int_array (Helper.to_int_array s 0 (String.length s))
@@ -415,13 +413,13 @@ module Utf16 = struct
     (* http://www.ietf.org/rfc/rfc2781.txt *)
 
     let number_of_char_pair bo c1 c2 = match bo with
-    | Little_endian -> ((Char.code c2) lsl 8) + (Char.code c1)
-    | Big_endian -> ((Char.code c1) lsl 8) + (Char.code c2)
+      | Little_endian -> ((Char.code c2) lsl 8) + (Char.code c1)
+      | Big_endian -> ((Char.code c1) lsl 8) + (Char.code c2)
 
     let char_pair_of_number bo num = match bo with
-    | Little_endian ->
+      | Little_endian ->
         (Char.chr (num land 0xFF), Char.chr ((num lsr 8) land 0xFF ))
-    | Big_endian ->
+      | Big_endian ->
         (Char.chr ((num lsr 8) land 0xFF), Char.chr (num land 0xFF))
 
     let next_in_gen bo s =
@@ -449,13 +447,12 @@ module Utf16 = struct
         let o = match !bo with
           | Some o -> o
           | None ->
-              let o = match (Char.code c1, Char.code c2) with
-                | (0xff,0xfe) -> Little_endian
-                | _ -> Big_endian in
-              bo := Some o;
-              o in
+            let o = match (Char.code c1, Char.code c2) with
+              | (0xff,0xfe) -> Little_endian
+              | _ -> Big_endian in
+            bo := Some o;
+            o in
         from_gen o s (number_of_char_pair o c1 c2)
-
 
     let compute_len opt_bo str pos bytes =
       let s = gen_from_char_gen opt_bo
@@ -476,7 +473,7 @@ module Utf16 = struct
       let len = compute_len opt_bo s pos bytes in
       let a = Array.make len (Uchar.of_int 0) in
       blit_to_int opt_bo s pos a 0 bytes ;
-       a
+      a
 
     let store bo buf code =
       if code < 0x10000
@@ -484,7 +481,7 @@ module Utf16 = struct
         let (c1,c2) = char_pair_of_number bo code in
         Buffer.add_char buf c1;
         Buffer.add_char buf c2
-       ) else (
+      ) else (
         let u' = code - 0x10000  in
         let w1 = 0xd800 + (u' lsr 10)
         and w2 = 0xdc00 + (u' land 0x3ff) in
@@ -494,7 +491,7 @@ module Utf16 = struct
         Buffer.add_char buf c2;
         Buffer.add_char buf c3;
         Buffer.add_char buf c4
-       )
+      )
 
     let from_uchar_array bo a apos len bom =
       let b = Buffer.create (len * 4 + 2) in (* +2 for the BOM *)
@@ -504,16 +501,16 @@ module Utf16 = struct
         then (store bo b (Uchar.to_int a.(apos)); aux (succ apos) (pred len))
         else Buffer.contents b  in
       aux apos len
-end
+  end
 
+  let from_gen ?(chunk_size=512) s opt_bo =
+    from_gen ~chunk_size (Helper.gen_from_char_gen opt_bo s)
 
-  let from_gen s opt_bo =
-    from_gen (Helper.gen_from_char_gen opt_bo s)
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
-  let from_stream s = from_gen @@ gen_of_stream s
-
-  let from_channel ic opt_bo =
-    from_gen (gen_of_channel ic) opt_bo
+  let from_channel ?(chunk_size=512) ic opt_bo =
+    from_gen ~chunk_size (gen_of_channel ic) opt_bo
 
   let from_string s opt_bo =
     let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in
