@@ -30,6 +30,7 @@ type apos = int
 
 type lexbuf = {
   refill: (Uchar.t array -> int -> int -> int);
+  mutable chunk_size: int;
   mutable buf: Uchar.t array;
   mutable len: int;    (* Number of meaningful char in buffer *)
   mutable offset: apos; (* Position of the first char in buffer
@@ -51,10 +52,9 @@ type lexbuf = {
   mutable finished: bool;
 }
 
-let chunk_size = 512
-
 let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
+  chunk_size = 512;
   buf = [| |];
   len = 0;
   offset = 0;
@@ -72,9 +72,10 @@ let empty_lexbuf = {
   finished = false;
 }
 
-let create f = {
+let create ?(chunk_size=512) f = {
   empty_lexbuf with
     refill = f;
+    chunk_size;
     buf = Array.make chunk_size (Uchar.of_int 0);
     curr_line = 1;
 }
@@ -96,10 +97,11 @@ let fill_buf_from_gen f gen buf pos len =
   in
   aux 0
 
-let from_gen s =
-  create (fill_buf_from_gen (fun id -> id) s)
+let from_gen ?(chunk_size=512) s =
+  create ~chunk_size (fill_buf_from_gen (fun id -> id) s)
 
-let from_stream s = from_gen @@ gen_of_stream s
+let from_stream ?(chunk_size=512) s =
+  from_gen ~chunk_size @@ gen_of_stream s
 
 let from_int_array a =
   let len = Array.length a in
@@ -121,14 +123,14 @@ let from_uchar_array a =
 
 
 let refill lexbuf =
-  if lexbuf.len + chunk_size > Array.length lexbuf.buf
+  if lexbuf.len + lexbuf.chunk_size > Array.length lexbuf.buf
   then begin
     let s = lexbuf.start_pos in
     let ls = lexbuf.len - s in
-    if ls + chunk_size <= Array.length lexbuf.buf then
+    if ls + lexbuf.chunk_size <= Array.length lexbuf.buf then
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
     else begin
-      let newlen = (Array.length lexbuf.buf + chunk_size) * 2 in
+      let newlen = (Array.length lexbuf.buf + lexbuf.chunk_size) * 2 in
       let newbuf = Array.make newlen (Uchar.of_int 0) in
       Array.blit lexbuf.buf s newbuf 0 ls;
       lexbuf.buf <- newbuf
@@ -139,7 +141,7 @@ let refill lexbuf =
     lexbuf.marked_pos <- lexbuf.marked_pos - s;
     lexbuf.start_pos <- 0
   end;
-  let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
+  let n = lexbuf.refill lexbuf.buf lexbuf.pos lexbuf.chunk_size in
   if n = 0
   then lexbuf.finished <- true
   else lexbuf.len <- lexbuf.len + n
@@ -220,10 +222,11 @@ let with_tokenizer lexer' lexbuf =
   in lexer
 
 module Latin1 = struct
-  let from_gen s =
-    create (fill_buf_from_gen Uchar.of_char s)
+  let from_gen ?(chunk_size=512) s =
+    create ~chunk_size (fill_buf_from_gen Uchar.of_char s)
 
-  let from_stream s = from_gen @@ gen_of_stream s
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
   let from_string s =
     let len = String.length s in
@@ -234,8 +237,8 @@ module Latin1 = struct
      finished = true;
     }
 
-  let from_channel ic =
-    from_gen (gen_of_channel ic)
+  let from_channel ?(chunk_size=512) ic =
+    from_gen ~chunk_size (gen_of_channel ic)
 
   let to_latin1 c =
     if Uchar.is_char c
@@ -389,14 +392,15 @@ module Utf8 = struct
     let gen_from_char_gen s = (fun () -> from_gen s)
   end
 
-  let from_channel ic =
-    from_gen (Helper.gen_from_char_gen (gen_of_channel ic))
+  let from_channel ?(chunk_size=512) ic =
+    from_gen ~chunk_size (Helper.gen_from_char_gen (gen_of_channel ic))
 
-  let from_gen s =
-    create (fill_buf_from_gen (fun id -> id)
+  let from_gen ?(chunk_size=512) s =
+    create ~chunk_size (fill_buf_from_gen (fun id -> id)
         (Helper.gen_from_char_gen s))
 
-  let from_stream s = from_gen @@ gen_of_stream s
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
   let from_string s =
     from_int_array (Helper.to_int_array s 0 (String.length s))
@@ -507,13 +511,14 @@ module Utf16 = struct
 end
 
 
-  let from_gen s opt_bo =
-    from_gen (Helper.gen_from_char_gen opt_bo s)
+  let from_gen ?(chunk_size=512) s opt_bo =
+    from_gen ~chunk_size (Helper.gen_from_char_gen opt_bo s)
 
-  let from_stream s = from_gen @@ gen_of_stream s
+  let from_stream ?(chunk_size=512) s =
+    from_gen ~chunk_size @@ gen_of_stream s
 
-  let from_channel ic opt_bo =
-    from_gen (gen_of_channel ic) opt_bo
+  let from_channel ?(chunk_size=512) ic opt_bo =
+    from_gen ~chunk_size (gen_of_channel ic) opt_bo
 
   let from_string s opt_bo =
     let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in

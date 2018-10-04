@@ -40,7 +40,7 @@ exception MalFormed
 
 (** {6 Creating generic lexbufs} *)
 
-val create: (Uchar.t array -> int -> int -> int) -> lexbuf
+val create: ?chunk_size:int -> (Uchar.t array -> int -> int -> int) -> lexbuf
     (** Create a generic lexer buffer.  When the lexer needs more
         characters, it will call the given function, giving it an array of
         Uchars [a], a position [pos] and a code point count [n].  The
@@ -58,10 +58,10 @@ val set_filename: lexbuf -> string -> unit
         [lexbuf]. It also sets the {!Lexing.pos_fname} field in
         returned {!Lexing.position} records. *)
 
-val from_gen: Uchar.t Gen.t -> lexbuf
+val from_gen: ?chunk_size:int -> Uchar.t Gen.t -> lexbuf
     (** Create a lexbuf from a stream of Unicode code points. *)
 
-val from_stream: Uchar.t Stream.t -> lexbuf
+val from_stream: ?chunk_size:int -> Uchar.t Stream.t -> lexbuf
     [@@ocaml.deprecated "Use [Sedlexing.from_gen] instead."]
     (** Create a lexbuf from a stream of Unicode code points. *)
 
@@ -169,16 +169,16 @@ val with_tokenizer: (lexbuf -> 'token) -> lexbuf -> (unit -> 'token * Lexing.pos
 (** {6 Support for common encodings} *)
 
 module Latin1: sig
-  val from_gen: char Gen.t -> lexbuf
+  val from_gen: ?chunk_size:int -> char Gen.t -> lexbuf
       (** Create a lexbuf from a Latin1 encoded stream (ie a stream
           of Unicode code points in the range [0..255]) *)
 
-  val from_stream: char Stream.t -> lexbuf
+  val from_stream: ?chunk_size:int -> char Stream.t -> lexbuf
       [@@ocaml.deprecated "Use [Sedlexing.Latin1.from_gen] instead."]
       (** Create a lexbuf from a Latin1 encoded stream (ie a stream
           of Unicode code points in the range [0..255]) *)
 
-  val from_channel: in_channel -> lexbuf
+  val from_channel: ?chunk_size:int -> in_channel -> lexbuf
       (** Create a lexbuf from a Latin1 encoded input channel.
           The client is responsible for closing the channel. *)
 
@@ -204,14 +204,14 @@ end
 
 
 module Utf8: sig
-  val from_gen: char Gen.t -> lexbuf
+  val from_gen: ?chunk_size:int -> char Gen.t -> lexbuf
       (** Create a lexbuf from a UTF-8 encoded stream. *)
 
-  val from_stream: char Stream.t -> lexbuf
+  val from_stream: ?chunk_size:int -> char Stream.t -> lexbuf
       [@@ocaml.deprecated "Use [Sedlexing.Utf8.from_gen] instead."]
       (** Create a lexbuf from a UTF-8 encoded stream. *)
 
-  val from_channel: in_channel -> lexbuf
+  val from_channel: ?chunk_size:int -> in_channel -> lexbuf
       (** Create a lexbuf from a UTF-8 encoded input channel. *)
 
   val from_string: string -> lexbuf
@@ -228,7 +228,7 @@ end
 module Utf16: sig
   type byte_order = Little_endian | Big_endian
 
-  val from_gen: char Gen.t -> byte_order option -> lexbuf
+  val from_gen: ?chunk_size:int -> char Gen.t -> byte_order option -> lexbuf
       (** [Utf16.from_gen s opt_bo] creates a lexbuf from an UTF-16
           encoded stream. If [opt_bo] matches with [None] the function
           expects a BOM (Byte Order Mark), and takes the byte order as
@@ -238,11 +238,11 @@ module Utf16: sig
           ignore it and a `wrong' BOM ([0xfffe]) will raise
           Utf16.InvalidCodepoint.  *)
 
-  val from_stream: char Stream.t -> byte_order option -> lexbuf
+  val from_stream: ?chunk_size:int -> char Stream.t -> byte_order option -> lexbuf
       [@@ocaml.deprecated "Use [Sedlexing.Utf16.from_gen] instead."]
       (** Works as [Utf16.from_gen] with a [stream]. *)
 
-  val from_channel: in_channel -> byte_order option-> lexbuf
+  val from_channel: ?chunk_size:int -> in_channel -> byte_order option-> lexbuf
       (** Works as [Utf16.from_gen] with an [in_channel]. *)
 
   val from_string: string -> byte_order option -> lexbuf
