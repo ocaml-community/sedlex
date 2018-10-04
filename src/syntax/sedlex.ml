@@ -82,7 +82,7 @@ let compile_re re =
 (* Determinization *)
 
 type state = node list
-      (* A state of the DFA corresponds to a set of nodes in the NFA. *)
+(* A state of the DFA corresponds to a set of nodes in the NFA. *)
 
 let rec add_node state node =
   if List.memq node state then state else add_nodes (node::state) node.eps
@@ -94,8 +94,8 @@ let transition (state : state) =
   (* Merge transition with the same target *)
   let rec norm = function
     | (c1, n1)::((c2, n2)::q as l) ->
-	if n1 == n2 then norm ((Cset.union c1 c2, n1)::q)
-	else (c1, n1)::(norm l)
+      if n1 == n2 then norm ((Cset.union c1 c2, n1)::q)
+      else (c1, n1)::(norm l)
     | l -> l in
   let t = List.concat (List.map (fun n -> n.trans) state) in
   let t = norm (List.sort (fun (_, n1) (_, n2) -> n1.id - n2.id) t) in

@@ -23,11 +23,11 @@ let rec union c1 c2 =
   | [], _ -> c2
   | _, [] -> c1
   | ((i1, j1) as s1)::r1, (i2, j2)::r2 ->
-	if (i1 <= i2) then
-	  if j1 + 1 < i2 then s1::(union r1 c2)
-	  else if (j1 < j2) then union r1 ((i1, j2)::r2)
-	  else union c1 r2
-	else union c2 c1
+    if (i1 <= i2) then
+      if j1 + 1 < i2 then s1::(union r1 c2)
+      else if (j1 < j2) then union r1 ((i1, j2)::r2)
+      else union c1 r2
+    else union c2 c1
 
 let complement c =
   let rec aux start = function
@@ -35,8 +35,8 @@ let complement c =
     | (i, j)::l -> (start, i-1)::(aux (succ j) l)
   in
   match c with
-    | (-1,j)::l -> aux (succ j) l
-    | l -> aux (-1) l
+  | (-1,j)::l -> aux (succ j) l
+  | l -> aux (-1) l
 
 let intersection c1 c2 =
   complement (union (complement c1) (complement c2))
