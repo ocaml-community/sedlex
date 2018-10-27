@@ -14,6 +14,7 @@ depends: ["jbuilder" {build}
           "ppx_tools_versioned"
           "ocaml-migrate-parsetree"
           "gen"
+          "uchar"
          ]
 available: [ ocaml-version >= "4.02.3" ]
 homepage: "https://github.com/alainfrisch/sedlex"
