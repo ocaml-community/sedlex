@@ -15,7 +15,7 @@ let time f x =
 
 let () =
   let long_str = String.make 1000000 '\n' in
-  let token_from str =
+  let token_from _ =
     let lexbuf = Sedlexing.Latin1.from_string long_str in
     (* let () = Sedlexing.set_curr_p lexbuf Lexing.dummy_pos in *)
     token lexbuf

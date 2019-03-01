@@ -2,7 +2,8 @@
  (names tokenizer complement subtraction repeat performance)
  (libraries sedlex)
  (preprocess
-  (pps sedlex.ppx)))
+  (pps sedlex.ppx))
+  (flags :standard -w -39))
 
 (alias
  (name runtest)
