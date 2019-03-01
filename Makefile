@@ -7,21 +7,21 @@ INSTALL_ARGS := $(if $(PREFIX),--prefix $(PREFIX),)
 .PHONY: build install uninstall clean doc test all
 
 build:
-	jbuilder build @install
+	dune build @install
 
 install:
-	jbuilder install $(INSTALL_ARGS)
+	dune install $(INSTALL_ARGS)
 
 uninstall:
-	jbuilder uninstall $(INSTALL_ARGS)
+	dune uninstall $(INSTALL_ARGS)
 
 clean:
-	jbuilder clean
+	dune clean
 
 doc:
-	jbuilder build @doc
+	dune build @doc
 
 test:
-	jbuilder build @runtest
+	dune build @runtest
 
-all: build doc
+all: build test doc
