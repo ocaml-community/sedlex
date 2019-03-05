@@ -1,3 +1,11 @@
+2.0
+     * GPR#70: Switch to dune, opam v2
+     * GPR#60: Breaking change: switch from int codepoints to Uchar.t
+       codepoints
+     * GPR#59: Track lexing position
+
+-------------------------------------------------------------------------------
+
 1.99.4
      * GPR#47: Switch to ocaml-migrate-parsetree (contributed by Adrien Guatto)
      * GPR#42: Added 'Rep' (repeat operator) (contributed by jpathy)
@@ -16,7 +24,7 @@
      * First version of sedlex.  The history below refers to ulex, the ancestor
        or sedlex implemented with Camlp4.
 
---------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 1.1
      * Generate (more) globally unique identifiers to avoid conflicts when open'ing another module

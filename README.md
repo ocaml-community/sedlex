@@ -10,6 +10,9 @@ sedlex was originally written by Alain Frisch
 <alain.frisch@lexifi.com> and is now maintained as part of the
 ocaml-community repositories on github.
 
+## API
+The API is documented [here](https://ocaml-community.github.io/sedlex).
+
 ## Overview
 
 sedlex is a lexer generator for OCaml, similar to ocamllex, but
