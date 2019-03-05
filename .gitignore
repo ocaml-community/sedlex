@@ -1,0 +1,14 @@
+*.annot
+*.cmo
+*.cma
+*.cmi
+*.a
+*.o
+*.cmx
+*.cmxs
+*.cmxa
+*.exe
+*.install
+*.merlin
+*.dune-keep
+_build
