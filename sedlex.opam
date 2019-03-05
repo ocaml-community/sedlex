@@ -1,7 +1,10 @@
 opam-version: "2.0"
 name: "sedlex"
 synopsis: "An OCaml lexer generator for Unicode"
-version: "1.99.5"
+description: "
+sedlex is a lexer generator for OCaml, similar to ocamllex, but supporting Unicode. Contrary to ocamllex, lexer specifications for sedlex are embedded in regular OCaml source files.
+"
+version: "2.0"
 license: "MIT"
 maintainer: "Alain Frisch <alain.frisch@lexifi.com>"
 authors: [
