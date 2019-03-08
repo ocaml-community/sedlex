@@ -179,7 +179,7 @@ The quick way:
 
 
 Otherwise, the first thing to do is to compile and install sedlex.
-You need a recent version of OCaml and jbuilder.
+You need a recent version of OCaml and [dune](https://dune.build/).
 
 ```
   make
@@ -232,4 +232,4 @@ The `examples/` subdirectory contains several samples of sedlex in use.
 - Peter Zotov:
   - improvements to the build system
   - switched parts of ppx_sedlex to using concrete syntax (with ppx_metaquot)
-- Steffen Smolka: port to jbuilder
+- Steffen Smolka: port to dune
