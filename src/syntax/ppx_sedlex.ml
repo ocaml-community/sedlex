@@ -240,13 +240,29 @@ let gen_state lexbuf auto i (trans, final) =
     | Some _ when Array.length trans = 0 -> []
     | Some i -> ret [%expr Sedlexing.mark [%e evar lexbuf] [%e int i]; [%e body ()]]
 
+let gen_recflag auto =
+  (* The generated function is not recursive if the transitions end
+     in states with no further transitions. *)
+  try
+    Array.iter
+      (fun (trans_i, _) ->
+        Array.iter
+          (fun (_, j) ->
+            let (trans_j, _) = auto.(j) in
+            if Array.length trans_j > 0 then raise Exit)
+          trans_i)
+      auto;
+    Nonrecursive
+  with
+    Exit -> Recursive
+
 let gen_definition lexbuf l error =
   let brs = Array.of_list l in
   let auto = Sedlex.compile (Array.map fst brs) in
   let cases = Array.to_list (Array.mapi (fun i (_, e) -> Exp.case (pint i) e) brs) in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  Exp.let_ Recursive states
+  Exp.let_ (gen_recflag auto) states
     (Exp.sequence
        [%expr Sedlexing.start [%e evar lexbuf]]
        (Exp.match_ (appfun (state_fun 0) [evar lexbuf])
