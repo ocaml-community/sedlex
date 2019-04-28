@@ -5,11 +5,25 @@
 exception InvalidCodepoint of int
 exception MalFormed
 
+let chunk_size = 512
 
 let gen_of_channel chan =
-  let f () =
-    try Some (input_char chan)
-    with End_of_file -> None
+  let buf = Bytes.create chunk_size in
+  let cached = ref (-1) in
+  let position = ref (-1) in
+  let rec f () =
+    match !position, !cached  with
+      | _, 0 ->
+          None
+      | len, c when len = c ->
+          begin
+            position := 0;
+            cached := input chan buf 0 chunk_size
+          end;
+          f ()
+      | len, _ ->
+          position := len+1;
+          Some (Bytes.get buf len)
   in
   f
 
@@ -50,8 +64,6 @@ type lexbuf = {
 
   mutable finished: bool;
 }
-
-let chunk_size = 512
 
 let empty_lexbuf = {
   refill = (fun _ _ _ -> assert false);
