@@ -1,6 +1,6 @@
 (executables
- (names tokenizer complement subtraction repeat performance)
- (libraries sedlex)
+ (names tokenizer regressions complement subtraction repeat performance)
+ (libraries sedlex sedlex_ppx)
  (preprocess
   (pps sedlex.ppx))
   (flags :standard -w +39))
@@ -9,6 +9,13 @@
  (name runtest)
  (deps
   (:< tokenizer.exe))
+ (action
+  (run %{<})))
+
+(alias
+ (name runtest)
+ (deps
+  (:< regressions.exe))
  (action
   (run %{<})))
 

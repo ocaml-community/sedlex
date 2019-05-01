@@ -1,0 +1,12 @@
+The files located in this directory are taken verbatim from the Unicode
+Character Database. Their use, reproduction, and distribution are permitted
+under the terms in http://www.unicode.org/copyright.html
+
+Update instructions:
+* Build with old data files
+* Fetch new data files at https://www.unicode.org/Public/<version>
+* Copy _build/default/src/syntax/unicode.ml to examples/unicode_old.ml
+* Edit examples/regressions.ml to update test_versions.
+* Empty regressions in examples/regressions.ml
+* Run tests
+* Check manually for regression segements and update accordingly

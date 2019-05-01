@@ -94,7 +94,7 @@ val loc: lexbuf -> int * int
         lexbuf)]. *)
 
 val lexeme_length: lexbuf -> int
-    (** [Sedlexing.loc lexbuf] returns the difference
+    (** [Sedlexing.lexeme_length lexbuf] returns the difference
         [(Sedlexing.lexeme_end lexbuf) - (Sedlexing.lexeme_start
         lexbuf)], that is, the length (in code points) of the matched
         string. *)

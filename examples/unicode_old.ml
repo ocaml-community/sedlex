@@ -1,3 +1,5 @@
+let version = "6.3.0"
+
 module Categories = struct
 
   let cc = [0000, 0x1f; 0x7f, 0x9f]
@@ -820,6 +822,38 @@ module Categories = struct
     [0x20, 0x20; 0xa0, 0xa0; 0x1680, 0x1680; 0x2000, 0x200a; 0x202f, 0x202f;
      0x205f, 0x205f; 0x3000, 0x3000]
 
+  let list = [
+    ("cc", cc);
+    ("cf", cf);
+    ("cn", cn);
+    ("co", co);
+    ("cs", cs);
+    ("ll", ll);
+    ("lm", lm);
+    ("lo", lo);
+    ("lt", lt);
+    ("lu", lu);
+    ("mc", mc);
+    ("me", me);
+    ("mn", mn);
+    ("nd", nd);
+    ("nl", nl);
+    ("no", no);
+    ("pc", pc);
+    ("pd", pd);
+    ("pe", pe);
+    ("pf", pf);
+    ("pi", pi);
+    ("po", po);
+    ("ps", ps);
+    ("sc", sc);
+    ("sk", sk);
+    ("sm", sm);
+    ("so", so);
+    ("zl", zl);
+    ("zp", zp);
+    ("zs", zs)
+  ]
 end
 
 module Properties = struct
@@ -1866,4 +1900,22 @@ module Properties = struct
      0x1eea5, 0x1eea9; 0x1eeab, 0x1eebb; 0x20000, 0x2a6d6; 0x2a700, 0x2b734;
      0x2b740, 0x2b81d; 0x2f800, 0x2fa1d]
 
+
+  let list = [
+    ("alphabetic", alphabetic);
+    ("ascii_hex_digit", ascii_hex_digit);
+    ("hex_digit", hex_digit);
+    ("id_continue", id_continue);
+    ("id_start", id_start);
+    ("lowercase", lowercase);
+    ("math", math);
+    ("other_alphabetic", other_alphabetic);
+    ("other_lowercase", other_lowercase);
+    ("other_math", other_math);
+    ("other_uppercase", other_uppercase);
+    ("uppercase", uppercase);
+    ("white_space", white_space);
+    ("xid_continue", xid_continue);
+    ("xid_start", xid_start)
+  ]
 end

@@ -1,0 +1,10 @@
+(executable
+ (name gen_unicode)
+ (libraries str))
+
+(rule
+  (targets gen_unicode.ml)
+  (deps gen_unicode.ml.inc
+        (glob_files data/*.txt))
+  (action (run cp gen_unicode.ml.inc gen_unicode.ml)))
+

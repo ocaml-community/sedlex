@@ -7,3 +7,8 @@
  (preprocess
   (pps ppx_tools_versioned.metaquot_405))
  (flags (:standard -w -9)))
+
+(rule
+ (targets unicode.ml)
+ (deps    (:gen ../generator/gen_unicode.exe))
+ (action  (run %{gen} %{targets})))
