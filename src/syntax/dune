@@ -10,5 +10,9 @@
 
 (rule
  (targets unicode.ml)
- (deps    (:gen ../generator/gen_unicode.exe))
+ (mode promote-until-clean)
+ (deps    (:gen ../generator/gen_unicode.exe)
+          ../generator/data/DerivedCoreProperties.txt
+          ../generator/data/DerivedGeneralCategory.txt
+          ../generator/data/PropList.txt)
  (action  (run %{gen} %{targets})))

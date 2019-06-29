@@ -4,7 +4,6 @@
 
 (rule
   (targets gen_unicode.ml)
-  (deps gen_unicode.ml.inc
-        (glob_files data/*.txt))
+  (deps gen_unicode.ml.inc)
   (action (run cp gen_unicode.ml.inc gen_unicode.ml)))
 
