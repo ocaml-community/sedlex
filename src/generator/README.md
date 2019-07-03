@@ -18,7 +18,6 @@ can be easily commited when it is updated.
 To update the supported version, update the URL at `src/generator/data/base_url`. Make sure to not include a leading
 new line so that it is properly read in `src/generator/data/dune`.
 
-Finally, place a copy of the old `unicode.ml` at `examples/unicode-old.ml` and update `test_versions` and `regressions`
-in `examples/regressions.ml`.
+Finally, place a copy of the old `unicode.ml` at `examples/unicode_old.ml` and update `test_versions` and `regressions` in `examples/regressions.ml`.
 
 See: [dune documentation](https://dune.readthedocs.io/en/latest/dune-files.html#modes) for more information.
