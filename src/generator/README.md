@@ -15,9 +15,11 @@ data and re-generate `unicode.ml`.
 However, each development build re-generates a `unicode.ml` file which is placed into the source tree and, thus,
 can be easily commited when it is updated.
 
+See: [dune documentation](https://dune.readthedocs.io/en/latest/dune-files.html#modes) for more information.
+
+## Update to new Unicode versions
+
 To update the supported version, update the URL at `src/generator/data/base_url`. Make sure to not include a leading
 new line so that it is properly read in `src/generator/data/dune`.
 
 Finally, place a copy of the old `unicode.ml` at `examples/unicode_old.ml` and update `test_versions` and `regressions` in `examples/regressions.ml`.
-
-See: [dune documentation](https://dune.readthedocs.io/en/latest/dune-files.html#modes) for more information.
