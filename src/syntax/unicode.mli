@@ -1,3 +1,7 @@
+(* Version is automatically generated from unicode data at
+ * src/generator/data *)
+val version : string
+
 module Categories : sig
 
   val cc : Sedlex_cset.t
@@ -31,6 +35,7 @@ module Categories : sig
   val zp : Sedlex_cset.t
   val zs : Sedlex_cset.t
 
+  val list : (string * Sedlex_cset.t) list
 end
 
 module Properties : sig
@@ -51,4 +56,5 @@ module Properties : sig
   val xid_continue     : Sedlex_cset.t
   val xid_start        : Sedlex_cset.t
 
+  val list : (string * Sedlex_cset.t) list
 end

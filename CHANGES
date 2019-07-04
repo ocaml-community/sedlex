@@ -3,6 +3,7 @@
      * GPR#60: Breaking change: switch from int codepoints to Uchar.t
        codepoints
      * GPR#59: Track lexing position
+     * GPR#78: Auto-generate unicode data
 
 -------------------------------------------------------------------------------
 

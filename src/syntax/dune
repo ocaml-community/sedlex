@@ -7,3 +7,12 @@
  (preprocess
   (pps ppx_tools_versioned.metaquot_405))
  (flags (:standard -w -9)))
+
+(rule
+ (targets unicode.ml)
+ (mode promote-until-clean)
+ (deps    (:gen ../generator/gen_unicode.exe)
+          ../generator/data/DerivedCoreProperties.txt
+          ../generator/data/DerivedGeneralCategory.txt
+          ../generator/data/PropList.txt)
+ (action  (run %{gen} %{targets})))

@@ -10,9 +10,11 @@
 *.exe
 *.install
 *.merlin
+.*sw*
 _build
 libdoc
 src/syntax/ppx_sedlex
+src/generator/data/*.txt
 examples/complement
 examples/tokenizer
 examples/subtraction
