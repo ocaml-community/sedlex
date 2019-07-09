@@ -1,9 +1,11 @@
+2.1
+     * GPR#78: Auto-generate unicode data
+
 2.0
      * GPR#70: Switch to dune, opam v2
      * GPR#60: Breaking change: switch from int codepoints to Uchar.t
        codepoints
      * GPR#59: Track lexing position
-     * GPR#78: Auto-generate unicode data
 
 -------------------------------------------------------------------------------
 
