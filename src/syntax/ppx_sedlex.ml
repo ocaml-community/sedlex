@@ -173,7 +173,10 @@ let call_state lexbuf auto state =
   let (trans, final) = auto.(state) in
   if Array.length trans = 0
   then match best_final final with
-  | Some i -> int i
+  | Some i ->
+    [%expr
+      Sedlexing.mark [%e evar lexbuf] [%e int i];
+      Sedlexing.backtrack [%e evar lexbuf]]
   | None -> assert false
   else appfun (state_fun state) [evar lexbuf]
 
