@@ -1,3 +1,6 @@
+1.99.5
+     * Update to work with ppx_tools_versioned >= 5.2.1
+
 1.99.4
      * GPR#47: Switch to ocaml-migrate-parsetree (contributed by Adrien Guatto)
      * GPR#42: Added 'Rep' (repeat operator) (contributed by jpathy)

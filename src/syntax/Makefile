@@ -8,7 +8,7 @@ SRCS=sedlex_cset.mli sedlex_cset.ml unicode63.mli unicode63.ml sedlex.mli sedlex
 
 OCAMLC=ocamlfind ocamlc
 OCAMLOPT=ocamlfind ocamlopt
-PACKAGES=-package ppx_tools_versioned.metaquot_405 -package ocaml-migrate-parsetree
+PACKAGES=-package ppx_tools_versioned.metaquot_405 -package ocaml-migrate-parsetree -package ppx_tools_versioned
 OCAMLFLAGS=$(PACKAGES) -linkall -w +A-4-9-42 -annot
 
 all: ppx_sedlex$(EXE) sedlex.cma
