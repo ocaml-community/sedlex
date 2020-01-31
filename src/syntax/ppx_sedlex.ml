@@ -4,15 +4,15 @@
 
 open Longident
 open Migrate_parsetree
-open Ast_405
+open Ast_408
 open Parsetree
 open Asttypes
 open Ast_helper
-open Ast_convenience_405
+open Ast_convenience_408
 
-module Ast_mapper_class = Ast_mapper_class_405
+module Ast_mapper_class = Ast_mapper_class_408
 
-let ocaml_version = Versions.ocaml_405
+let ocaml_version = Versions.ocaml_408
 
 module Cset = Sedlex_cset
 
