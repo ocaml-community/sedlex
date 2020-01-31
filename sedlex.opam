@@ -26,7 +26,7 @@ build: [
 depends: [
   "ocaml" {>= "4.02.3"}
   "dune" {>= "1.8"}
-  "ppx_tools_versioned"
+  "ppx_tools_versioned" {>= "5.2.3"}
   "ocaml-migrate-parsetree"
   "gen"
   "uchar"
