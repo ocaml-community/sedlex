@@ -2,10 +2,10 @@
  (name sedlex_ppx)
  (public_name sedlex.ppx)
  (kind ppx_rewriter)
- (libraries ppx_tools_versioned.metaquot_405 ocaml-migrate-parsetree sedlex)
+ (libraries ppx_tools_versioned.metaquot_408 ocaml-migrate-parsetree sedlex)
  (ppx_runtime_libraries sedlex)
  (preprocess
-  (pps ppx_tools_versioned.metaquot_405))
+  (pps ppx_tools_versioned.metaquot_408))
  (flags (:standard -w -9)))
 
 (rule
