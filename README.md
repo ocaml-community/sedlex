@@ -221,6 +221,14 @@ source file through -ppx rewriter ppx_sedlex. Moreover, you need to
 link the application with the runtime support library for sedlex
 (sedlexing.cma / sedlexing.cmxa).
 
+### With utop
+
+Once sedlex is installed as per above, simply type
+
+```
+#require "sedlex.ppx";;
+```
+
 ## Examples
 
 The `examples/` subdirectory contains several samples of sedlex in use.
