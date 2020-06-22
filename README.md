@@ -199,13 +199,13 @@ Installation (after "make"):
 Compilation of OCaml files with lexer specifications:
 
 ```
-  ocamlfind ocamlc -c -package sedlex my_file.ml
+  ocamlfind ocamlc -c -package sedlex.ppx my_file.ml
 ```
 
 When linking, you must also include the sedlex package:
 
 ```
-  ocamlfind ocamlc -o my_prog -linkpkg -package sedlex my_file.cmo
+  ocamlfind ocamlc -o my_prog -linkpkg -package sedlex.ppx my_file.cmo
 ```
 
 
@@ -220,6 +220,14 @@ You can use sedlex without findlib. To compile, you need to run the
 source file through -ppx rewriter ppx_sedlex. Moreover, you need to
 link the application with the runtime support library for sedlex
 (sedlexing.cma / sedlexing.cmxa).
+
+### With utop
+
+Once sedlex is installed as per above, simply type
+
+```
+#require "sedlex.ppx";;
+```
 
 ## Examples
 
