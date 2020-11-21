@@ -2,17 +2,20 @@
  (name sedlex_ppx)
  (public_name sedlex.ppx)
  (kind ppx_rewriter)
- (libraries ppx_tools_versioned.metaquot_408 ocaml-migrate-parsetree sedlex)
+ (libraries ppxlib sedlex)
  (ppx_runtime_libraries sedlex)
  (preprocess
-  (pps ppx_tools_versioned.metaquot_408))
- (flags (:standard -w -9)))
+  (pps ppxlib.metaquot))
+ (flags
+  (:standard -w -9)))
 
 (rule
  (targets unicode.ml)
  (mode promote-until-clean)
- (deps    (:gen ../generator/gen_unicode.exe)
-          ../generator/data/DerivedCoreProperties.txt
-          ../generator/data/DerivedGeneralCategory.txt
-          ../generator/data/PropList.txt)
- (action  (run %{gen} %{targets})))
+ (deps
+  (:gen ../generator/gen_unicode.exe)
+  ../generator/data/DerivedCoreProperties.txt
+  ../generator/data/DerivedGeneralCategory.txt
+  ../generator/data/PropList.txt)
+ (action
+  (run %{gen} %{targets})))

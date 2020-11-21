@@ -2,21 +2,21 @@
 (* See the attached LICENSE file.                                         *)
 (* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
 
-open Longident
-open Migrate_parsetree
-open Ast_408
-open Parsetree
-open Asttypes
-open Ast_helper
-open Ast_convenience_408
+open Ppxlib
+open Ast_builder.Default
 
-module Ast_mapper_class = Ast_mapper_class_408
-
-let ocaml_version = Versions.ocaml_408
+(* let ocaml_version = Versions.ocaml_408 *)
 
 module Cset = Sedlex_cset
 
 (* Decision tree for partitions *)
+
+let default_loc = Location.none
+
+let lident_loc ~loc s = {
+  loc;
+  txt= lident s
+}
 
 type decision_tree =
   | Lte of int * decision_tree * decision_tree
@@ -80,8 +80,13 @@ let decision_table p =
 
 (* Helpers to build AST *)
 
-let appfun s l = app (evar s) l
-let glb_value name def = Str.value Nonrecursive [Vb.mk (pvar name) def]
+let appfun s l =
+  let loc = default_loc in
+  eapply ~loc (evar ~loc s) l
+  
+let glb_value name def =
+  let loc = default_loc in
+  pstr_value ~loc Nonrecursive [value_binding ~loc ~pat:(pvar ~loc name) ~expr:def]
 
 (* Named regexps *)
 
@@ -125,7 +130,7 @@ let table (name, v) =
   let n = Array.length v in
   let s = Bytes.create n in
   for i = 0 to n - 1 do Bytes.set s i (Char.chr v.(i)) done;
-  glb_value name (str (Bytes.to_string s))
+  glb_value name (estring ~loc:default_loc (Bytes.to_string s))
 
 (* Partition (function: codepoint -> next state) *)
 
@@ -144,19 +149,26 @@ let partition_name x =
 (* We duplicate the body for the EOF (-1) case rather than creating
    an interior utility function. *)
 let partition (name, p) =
+  let loc = default_loc in
   let rec gen_tree = function
     | Lte (i, yes, no) ->
-        [%expr if c <= [%e int i] then [%e gen_tree yes] else [%e gen_tree no]]
-    | Return i -> int i
+        [%expr if c <= [%e eint ~loc i] then [%e gen_tree yes] else [%e gen_tree no]]
+    | Return i -> eint ~loc:default_loc i
     | Table (offset, t) ->
-              let c = if offset = 0 then [%expr c] else [%expr c - [%e int offset]] in
-        [%expr Char.code (String.get [%e evar (table_name t)] [%e c]) - 1]
+              let c = if offset = 0 then [%expr c] else [%expr c - [%e eint ~loc offset]] in
+        [%expr Char.code (String.get [%e evar ~loc (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (decision_table p) in
-  glb_value name (func [(pconstr "Some" [pvar "uc"],
-                         [%expr let c = Uchar.to_int uc in [%e body]]);
-                        (pconstr "None" [],
-                         [%expr let c = (-1) in [%e body]])])
+  glb_value name
+    (pexp_function ~loc [
+      case 
+        ~lhs:(ppat_construct ~loc (lident_loc ~loc "Some") (Some (pvar ~loc "uc")))
+        ~guard:None
+        ~rhs:[%expr let c = Uchar.to_int uc in [%e body]];
+      case 
+        ~lhs:(ppat_construct ~loc (lident_loc ~loc "None") None)
+        ~guard:None
+        ~rhs:[%expr let c = (-1) in [%e body]]])
 
 (* Code generation for the automata *)
 
@@ -173,24 +185,25 @@ let call_state lexbuf auto state =
   let (trans, final) = auto.(state) in
   if Array.length trans = 0
   then match best_final final with
-  | Some i -> int i
+  | Some i -> eint ~loc:default_loc i
   | None -> assert false
-  else appfun (state_fun state) [evar lexbuf]
+  else appfun (state_fun state) [evar ~loc:default_loc lexbuf]
 
 let gen_state lexbuf auto i (trans, final) =
+  let loc = default_loc in
   let partition = Array.map fst trans in
-  let cases = Array.mapi (fun i (_, j) -> Exp.case(pint i) (call_state lexbuf auto j)) trans in
+  let cases = Array.mapi (fun i (_, j) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:(call_state lexbuf auto j)) trans in
   let cases = Array.to_list cases in
   let body () =
-    Exp.match_
-      (appfun (partition_name partition) [[%expr Sedlexing.next [%e evar lexbuf]]])
-      (cases @ [Exp.case [%pat? _] [%expr Sedlexing.backtrack [%e evar lexbuf]]])
+    pexp_match ~loc
+      (appfun (partition_name partition) [[%expr Sedlexing.next [%e evar ~loc lexbuf]]])
+      (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]]])
   in
-  let ret body = [ Vb.mk (pvar (state_fun i)) (func [pvar lexbuf, body]) ] in
+  let ret body = [ value_binding ~loc ~pat:(pvar ~loc (state_fun i)) ~expr:(pexp_function ~loc [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]) ] in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret [%expr Sedlexing.mark [%e evar lexbuf] [%e int i]; [%e body ()]]
+    | Some i -> ret [%expr Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i]; [%e body ()]]
 
 let gen_recflag auto =
   (* The generated function is not recursive if the transitions end
@@ -209,16 +222,17 @@ let gen_recflag auto =
     Exit -> Recursive
 
 let gen_definition lexbuf l error =
+  let loc = default_loc in
   let brs = Array.of_list l in
   let auto = Sedlex.compile (Array.map fst brs) in
-  let cases = Array.to_list (Array.mapi (fun i (_, e) -> Exp.case (pint i) e) brs) in
+  let cases = Array.to_list (Array.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) brs) in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  Exp.let_ (gen_recflag auto) states
-    (Exp.sequence
-       [%expr Sedlexing.start [%e evar lexbuf]]
-       (Exp.match_ (appfun (state_fun 0) [evar lexbuf])
-          (cases @ [Exp.case (Pat.any ()) error])
+  pexp_let ~loc (gen_recflag auto) states
+    (pexp_sequence ~loc
+       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
+       (pexp_match ~loc (appfun (state_fun 0) [evar ~loc lexbuf])
+          (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])
        )
     )
 
@@ -240,7 +254,7 @@ let regexp_for_string s =
   in aux 0
 
 let err loc s =
-  raise (Location.Error (Location.error ~loc ("Sedlex: " ^ s)))
+  raise (Location.Error (Location.Error.createf ~loc "Sedlex: %s" s))
 
 let rec repeat r = function
   | 0, 0 -> Sedlex.eps
@@ -272,7 +286,7 @@ let regexp_of_pattern env =
     | Ppat_construct
         ({txt = Lident "Rep"},
          Some {ppat_desc=Ppat_tuple[p0; {ppat_desc=Ppat_constant (i1 as i2)|Ppat_interval(i1, i2)}]}) ->
-         begin match Constant.of_constant i1, Constant.of_constant i2 with
+         begin match i1, i2 with
          | Pconst_integer(i1,_), Pconst_integer(i2,_) ->
              let i1 = int_of_string i1 in
              let i2 = int_of_string i2 in
@@ -303,11 +317,11 @@ let regexp_of_pattern env =
     | Ppat_construct ({txt = Lident "Chars"}, arg) ->
         let const = match arg with
           | Some {ppat_desc=Ppat_constant const} ->
-              Some (Constant.of_constant const)
+              Some (const)
           | _ -> None
         in
         begin match const with
-        | Some (Pconst_string(s,_))->
+        | Some (Pconst_string(s,_, _))->
             let c = ref Cset.empty in
             for i = 0 to String.length s - 1 do
               c := Cset.union !c (Cset.singleton (Char.code s.[i]))
@@ -316,15 +330,15 @@ let regexp_of_pattern env =
         | _ -> err p.ppat_loc "the Chars operator requires a string argument"
         end
     | Ppat_interval (i_start, i_end) ->
-        begin match Constant.of_constant i_start, Constant.of_constant i_end with
+        begin match  i_start, i_end with
           | Pconst_char c1, Pconst_char c2 -> Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
           | Pconst_integer(i1,_), Pconst_integer(i2,_) ->
               Sedlex.chars (Cset.interval (codepoint (int_of_string i1)) (codepoint (int_of_string i2)))
           | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end
     | Ppat_constant (const) ->
-        begin match Constant.of_constant const with
-          | Pconst_string (s, _) -> regexp_for_string s
+        begin match const with
+          | Pconst_string (s, _, _) -> regexp_for_string s
           | Pconst_char c -> regexp_for_char c
           | Pconst_integer(i,_) -> Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
           | _ -> err p.ppat_loc "this pattern is not a valid regexp"
@@ -340,16 +354,20 @@ let regexp_of_pattern env =
   aux
 
 
-let mapper cookies =
+let previous = ref []
+let regexps = ref []
+let should_set_cookies = ref false
+  
+let mapper =
   object(this)
-    inherit Ast_mapper_class.mapper as super
+    inherit Ast_traverse.map as super
 
     val env = builtin_regexps
 
     method define_regexp name p =
       {< env = StringMap.add name (regexp_of_pattern env p) env >}
 
-    method! expr e =
+    method! expression e =
       match e with
       | [%expr [%sedlex [%e? {pexp_desc=Pexp_match (lexbuf, cases)}]]] ->
             let lexbuf =
@@ -361,7 +379,7 @@ let mapper cookies =
             let cases = List.rev cases in
             let error =
               match List.hd cases with
-              | {pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None} -> super # expr e
+              | {pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None} -> super # expression e
               | {pc_lhs = p} ->
                 err p.ppat_loc "the last branch must be a catch-all error case"
             in
@@ -369,17 +387,17 @@ let mapper cookies =
             let cases =
               List.map
                 (function
-                  | {pc_lhs = p; pc_rhs = e; pc_guard = None} -> regexp_of_pattern env p, super # expr e
+                  | {pc_lhs = p; pc_rhs = e; pc_guard = None} -> regexp_of_pattern env p, super # expression e
                   | {pc_guard = Some e} ->
                     err e.pexp_loc "'when' guards are not supported"
                 ) cases
             in
             gen_definition lexbuf cases error
       | [%expr let [%p? {ppat_desc=Ppat_var{txt=name}}] = [%sedlex.regexp? [%p? p]] in [%e? body]] ->
-          (this # define_regexp name p) # expr body
+          (this # define_regexp name p) # expression body
       | [%expr [%sedlex [%e? _]]] ->
         err e.pexp_loc "the %sedlex extension is only recognized on match expressions"
-      | _ -> super # expr e
+      | _ -> super # expression e
 
 
     val toplevel = true
@@ -402,24 +420,39 @@ let mapper cookies =
     method! structure l =
       if toplevel then
         let sub = {< toplevel = false >} in
-        let previous =
-          match Driver.get_cookie cookies "sedlex.regexps" ocaml_version with
-          | Some {pexp_desc = Pexp_extension (_, PStr l)} -> l
-          | Some _ -> assert false
-          | None -> []
-        in
-        let l, regexps = sub # structure_with_regexps (previous @ l) in
+        let l, regexps' = sub # structure_with_regexps (!previous @ l) in
         let parts = List.map partition (get_partitions ()) in
         let tables = List.map table (get_tables ()) in
-        Driver.set_cookie cookies "sedlex.regexps" ocaml_version (Exp.extension (Location.mknoloc "regexps", PStr regexps));
+        regexps := regexps';
+        should_set_cookies := true;
         tables @ parts @ l
       else
         fst (this # structure_with_regexps l)
 
  end
 
+let pre_handler cookies =
+  previous := 
+    match Driver.Cookies.get cookies "sedlex.regexps" Ast_pattern.__ with
+    | Some {pexp_desc = Pexp_extension (_, PStr l)} -> l
+    | Some _ -> assert false
+    | None -> [] 
+  
+let post_handler cookies =
+  if !should_set_cookies then
+    let loc = default_loc in
+    Driver.Cookies.set cookies "sedlex.regexps" (pexp_extension ~loc ( {loc; txt="regexps"}, PStr !regexps))
+ 
+
+let extensions =
+  [Extension.declare
+    "sedlex"
+    Extension.Context.expression
+    Ast_pattern.(single_expr_payload __)
+    (fun ~loc:_ ~path:_ expr -> mapper # expression expr);
+  ]
+ 
 let () =
-  Driver.register
-    ~name:"sedlex"
-    ocaml_version
-    (fun _ cookies -> Ast_mapper_class.to_mapper (mapper cookies))
+  Driver.Cookies.add_handler pre_handler;
+  Driver.Cookies.add_post_handler post_handler;
+  Driver.register_transformation "sedlex"  ~impl:(mapper # structure)
