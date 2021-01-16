@@ -7,7 +7,7 @@ Unicode. Unlike ocamllex, sedlex allows lexer specifications within regular
 OCaml source files. Lexing specific constructs are provided via a ppx syntax
 extension.
 "
-version: "2.2"
+version: "2.3"
 license: "MIT"
 doc: "https://ocaml-community.github.io/sedlex/index.html"
 maintainer: "Alain Frisch <alain.frisch@lexifi.com>"

@@ -1,3 +1,6 @@
+2.3
+    * Switch to ppxlib
+
 2.2
      * Support for OCaml 4.08
 
