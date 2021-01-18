@@ -30,6 +30,3 @@ depends: [
   "gen"
   "uchar"
 ]
-conflicts: [
-  "wcs-lib" {= "2017-05-26.03" | = "2017-05-26.04"}
-]
