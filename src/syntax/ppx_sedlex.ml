@@ -23,6 +23,17 @@ type decision_tree =
   | Table of int * int array
   | Return of int
 
+let rec simplify_decision_tree ( x : decision_tree) = 
+  match x with 
+  | Table _ | Return _ -> x 
+  | Lte (_, (Return a as l), Return b) when a = b -> l
+  | Lte (i, l, r) -> 
+    let l = simplify_decision_tree l in 
+    let r = simplify_decision_tree r in 
+    match l, r with 
+    | Return a, Return b when a = b -> l
+    | _ -> Lte (i, l,r)  
+
 let decision l =
   let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
@@ -158,7 +169,7 @@ let partition (name, p) =
               let c = if offset = 0 then [%expr c] else [%expr c - [%e eint ~loc offset]] in
         [%expr Char.code (String.unsafe_get [%e evar ~loc (table_name t)] [%e c]) - 1]
   in
-  let body = gen_tree (decision_table p) in
+  let body = gen_tree (simplify_decision_tree (decision_table p)) in
   glb_value name
     [%expr fun c -> 
       [%e body]
