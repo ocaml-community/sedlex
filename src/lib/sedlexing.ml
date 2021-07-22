@@ -159,6 +159,15 @@ let next lexbuf =
     Some ret
   end
 
+let next_int lexbuf : int =
+  if (not lexbuf.finished) && (lexbuf.pos = lexbuf.len) then refill lexbuf;
+  if lexbuf.finished && (lexbuf.pos = lexbuf.len) then -1
+  else begin
+    let ret = lexbuf.buf.(lexbuf.pos) in
+    lexbuf.pos <- lexbuf.pos + 1;
+    if ret = (Uchar.of_int 10) then new_line lexbuf;
+    Uchar.to_int ret
+  end  
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_bol <- lexbuf.curr_bol;

@@ -160,7 +160,10 @@ let partition (name, p) =
   in
   let body = gen_tree (decision_table p) in
   glb_value name
-    (pexp_function ~loc [
+    [%expr fun c -> 
+      [%e body]
+    ]
+    (* pexp_function ~loc [
       case 
         ~lhs:(ppat_construct ~loc (lident_loc ~loc "Some") (Some (pvar ~loc "uc")))
         ~guard:None
@@ -168,7 +171,8 @@ let partition (name, p) =
       case 
         ~lhs:(ppat_construct ~loc (lident_loc ~loc "None") None)
         ~guard:None
-        ~rhs:[%expr let c = (-1) in [%e body]]])
+        ~rhs:[%expr let c = (-1) in [%e body]]]
+        *) 
 
 (* Code generation for the automata *)
 
@@ -196,7 +200,7 @@ let gen_state lexbuf auto i (trans, final) =
   let cases = Array.to_list cases in
   let body () =
     pexp_match ~loc
-      (appfun (partition_name partition) [[%expr Sedlexing.next [%e evar ~loc lexbuf]]])
+      (appfun (partition_name partition) [[%expr Sedlexing.next_int [%e evar ~loc lexbuf]]])
       (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]]])
   in
   let ret body = [ value_binding ~loc ~pat:(pvar ~loc (state_fun i)) ~expr:(pexp_function ~loc [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]) ] in
