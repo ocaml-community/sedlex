@@ -156,7 +156,7 @@ let partition (name, p) =
     | Return i -> eint ~loc:default_loc i
     | Table (offset, t) ->
               let c = if offset = 0 then [%expr c] else [%expr c - [%e eint ~loc offset]] in
-        [%expr Char.code (String.get [%e evar ~loc (table_name t)] [%e c]) - 1]
+        [%expr Char.code (String.unsafe_get [%e evar ~loc (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (decision_table p) in
   glb_value name
