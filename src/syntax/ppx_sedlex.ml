@@ -174,16 +174,6 @@ let partition (name, p) =
     [%expr fun c -> 
       [%e body]
     ]
-    (* pexp_function ~loc [
-      case 
-        ~lhs:(ppat_construct ~loc (lident_loc ~loc "Some") (Some (pvar ~loc "uc")))
-        ~guard:None
-        ~rhs:[%expr let c = Uchar.to_int uc in [%e body]];
-      case 
-        ~lhs:(ppat_construct ~loc (lident_loc ~loc "None") None)
-        ~guard:None
-        ~rhs:[%expr let c = (-1) in [%e body]]]
-        *) 
 
 (* Code generation for the automata *)
 
