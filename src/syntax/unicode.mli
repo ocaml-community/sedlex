@@ -3,7 +3,6 @@
 val version : string
 
 module Categories : sig
-
   val cc : Sedlex_cset.t
   val cf : Sedlex_cset.t
   val cn : Sedlex_cset.t
@@ -34,27 +33,24 @@ module Categories : sig
   val zl : Sedlex_cset.t
   val zp : Sedlex_cset.t
   val zs : Sedlex_cset.t
-
   val list : (string * Sedlex_cset.t) list
 end
 
 module Properties : sig
-
-  val alphabetic       : Sedlex_cset.t
-  val ascii_hex_digit  : Sedlex_cset.t
-  val hex_digit        : Sedlex_cset.t
-  val id_continue      : Sedlex_cset.t
-  val id_start         : Sedlex_cset.t
-  val lowercase        : Sedlex_cset.t
-  val math             : Sedlex_cset.t
+  val alphabetic : Sedlex_cset.t
+  val ascii_hex_digit : Sedlex_cset.t
+  val hex_digit : Sedlex_cset.t
+  val id_continue : Sedlex_cset.t
+  val id_start : Sedlex_cset.t
+  val lowercase : Sedlex_cset.t
+  val math : Sedlex_cset.t
   val other_alphabetic : Sedlex_cset.t
-  val other_lowercase  : Sedlex_cset.t
-  val other_math       : Sedlex_cset.t
-  val other_uppercase  : Sedlex_cset.t
-  val uppercase        : Sedlex_cset.t
-  val white_space      : Sedlex_cset.t
-  val xid_continue     : Sedlex_cset.t
-  val xid_start        : Sedlex_cset.t
-
+  val other_lowercase : Sedlex_cset.t
+  val other_math : Sedlex_cset.t
+  val other_uppercase : Sedlex_cset.t
+  val uppercase : Sedlex_cset.t
+  val white_space : Sedlex_cset.t
+  val xid_continue : Sedlex_cset.t
+  val xid_start : Sedlex_cset.t
   val list : (string * Sedlex_cset.t) list
 end

@@ -3,7 +3,7 @@
  (libraries str))
 
 (rule
-  (targets gen_unicode.ml)
-  (deps gen_unicode.ml.inc)
-  (action (run cp gen_unicode.ml.inc gen_unicode.ml)))
-
+ (targets gen_unicode.ml)
+ (deps gen_unicode.ml.inc)
+ (action
+  (run cp gen_unicode.ml.inc gen_unicode.ml)))
