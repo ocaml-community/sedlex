@@ -17,7 +17,7 @@ homepage: "https://github.com/ocaml-community/sedlex"
 bug-reports: "https://github.com/ocaml-community/sedlex/issues"
 depends: [
   "dune" {>= "2.8"}
-  "ppxlib"
+  "ppxlib" {>= "0.18.0"}
   "gen"
   "uchar"
   "odoc" {with-doc}

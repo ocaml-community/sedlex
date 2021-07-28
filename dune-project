@@ -19,6 +19,6 @@ OCaml source files. Lexing specific constructs are provided via a ppx syntax
 extension.")
  (depends
    dune
-   ppxlib
+   (ppxlib (>= 0.18.0))
    gen
    uchar))
