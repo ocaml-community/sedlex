@@ -22,7 +22,7 @@
     Of course, you'll probably want to define functions like [lexeme] to
     be used in the lexers semantic actions.  *)
 
-type lexbuf
+type lexbuf = Sedlexing_internal.lexbuf
       (** The type of lexer buffers. A lexer buffer is the argument passed
           to the scanning functions defined by the generated lexers.
           The lexer buffer holds the internal information for the

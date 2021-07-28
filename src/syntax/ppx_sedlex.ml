@@ -201,14 +201,14 @@ let gen_state lexbuf auto i (trans, final) =
   let cases = Array.to_list cases in
   let body () =
     pexp_match ~loc
-      (appfun (partition_name partition) [[%expr Sedlexing.next_int [%e evar ~loc lexbuf]]])
-      (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]]])
+      (appfun (partition_name partition) [[%expr Sedlexing_internal.next_int [%e evar ~loc lexbuf]]])
+      (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing_internal.backtrack [%e evar ~loc lexbuf]]])
   in
   let ret body = [ value_binding ~loc ~pat:(pvar ~loc (state_fun i)) ~expr:(pexp_function ~loc [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]) ] in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret [%expr Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i]; [%e body ()]]
+    | Some i -> ret [%expr Sedlexing_internal.mark [%e evar ~loc lexbuf] [%e eint ~loc i]; [%e body ()]]
 
 let gen_recflag auto =
   (* The generated function is not recursive if the transitions end
@@ -235,7 +235,7 @@ let gen_definition lexbuf l error =
   let states = List.flatten (Array.to_list states) in
   pexp_let ~loc (gen_recflag auto) states
     (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
+       [%expr Sedlexing_internal.start [%e evar ~loc lexbuf]]
        (pexp_match ~loc (appfun (state_fun 0) [evar ~loc lexbuf])
           (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])
        )
