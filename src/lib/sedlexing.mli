@@ -151,7 +151,7 @@ val next: lexbuf -> Uchar.t option
     is exhausted, the function returns [None].
     If a ['\n'] is encountered, the tracked line number is incremented. *)
 
-val next_int : lexbuf -> int
+val unsafe_next_int : lexbuf -> int
 (** [next lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns -1.

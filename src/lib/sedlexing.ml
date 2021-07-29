@@ -159,7 +159,7 @@ let next lexbuf =
     Some ret
   end
 
-let next_int lexbuf : int =
+let unsafe_next_int lexbuf : int =
   if (not lexbuf.finished) && (lexbuf.pos = lexbuf.len) then refill lexbuf;
   if lexbuf.finished && (lexbuf.pos = lexbuf.len) then -1
   else begin
