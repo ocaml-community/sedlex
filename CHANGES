@@ -2,6 +2,7 @@
     * Update `dune` support to `2.8`, add auto-generated `opam` files.
     * Add internal APIs to allow shared private APIs between the main module and the ppx rewriter
     * Optimize generated code, thanks to @bobzhang 
+    * Update unicode version to 13.0.0
 
 2.3
     * Switch to ppxlib

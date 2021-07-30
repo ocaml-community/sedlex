@@ -1,24 +1,9 @@
 (* This test that unicode_old.ml is a strict sub-set of 
  * new unicode.ml. *)
 
-let test_versions = ("6.3.0","12.1.0")
+let test_versions = ("12.1.0","13.0.0")
 
-let regressions = [
-  ("lo",[(0x13a0,0x13f4);
-         (0x10d0,0x10fa);
-         (0x10fd,0x10ff);
-         (0x1885,0x1886)]);
-  ("mc",[(0x19b0,0x19c0);
-         (0x19c8,0x19c9);
-         (0x1baa,0x1baa);
-         (0x1bac,0x1bad);
-         (0x1cf2,0x1cf3);
-         (0xa9bd,0xa9c0)]);
-  ("po",[(0x166d,0x166e)]);
-  ("other_alphabetic", [(0x19b0,0x19c0);
-                        (0x19c8,0x19c9);
-                        (0x1cf2,0x1cf3)])
-]
+let regressions = []
 
 let interval s e =
   Array.to_list
