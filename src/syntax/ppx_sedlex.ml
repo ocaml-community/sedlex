@@ -23,6 +23,17 @@ type decision_tree =
   | Table of int * int array
   | Return of int
 
+let rec simplify_decision_tree ( x : decision_tree) = 
+  match x with 
+  | Table _ | Return _ -> x 
+  | Lte (_, (Return a as l), Return b) when a = b -> l
+  | Lte (i, l, r) -> 
+    let l = simplify_decision_tree l in 
+    let r = simplify_decision_tree r in 
+    match l, r with 
+    | Return a, Return b when a = b -> l
+    | _ -> Lte (i, l,r)  
+
 let decision l =
   let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
@@ -156,19 +167,13 @@ let partition (name, p) =
     | Return i -> eint ~loc:default_loc i
     | Table (offset, t) ->
               let c = if offset = 0 then [%expr c] else [%expr c - [%e eint ~loc offset]] in
-        [%expr Char.code (String.get [%e evar ~loc (table_name t)] [%e c]) - 1]
+        [%expr Char.code (String.unsafe_get [%e evar ~loc (table_name t)] [%e c]) - 1]
   in
-  let body = gen_tree (decision_table p) in
+  let body = gen_tree (simplify_decision_tree (decision_table p)) in
   glb_value name
-    (pexp_function ~loc [
-      case 
-        ~lhs:(ppat_construct ~loc (lident_loc ~loc "Some") (Some (pvar ~loc "uc")))
-        ~guard:None
-        ~rhs:[%expr let c = Uchar.to_int uc in [%e body]];
-      case 
-        ~lhs:(ppat_construct ~loc (lident_loc ~loc "None") None)
-        ~guard:None
-        ~rhs:[%expr let c = (-1) in [%e body]]])
+    [%expr fun c -> 
+      [%e body]
+    ]
 
 (* Code generation for the automata *)
 
@@ -196,14 +201,14 @@ let gen_state lexbuf auto i (trans, final) =
   let cases = Array.to_list cases in
   let body () =
     pexp_match ~loc
-      (appfun (partition_name partition) [[%expr Sedlexing.next [%e evar ~loc lexbuf]]])
-      (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]]])
+      (appfun (partition_name partition) [[%expr Sedlexing_internal.next_int [%e evar ~loc lexbuf]]])
+      (cases @ [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr Sedlexing_internal.backtrack [%e evar ~loc lexbuf]]])
   in
   let ret body = [ value_binding ~loc ~pat:(pvar ~loc (state_fun i)) ~expr:(pexp_function ~loc [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]) ] in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i -> ret [%expr Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i]; [%e body ()]]
+    | Some i -> ret [%expr Sedlexing_internal.mark [%e evar ~loc lexbuf] [%e eint ~loc i]; [%e body ()]]
 
 let gen_recflag auto =
   (* The generated function is not recursive if the transitions end
@@ -230,7 +235,7 @@ let gen_definition lexbuf l error =
   let states = List.flatten (Array.to_list states) in
   pexp_let ~loc (gen_recflag auto) states
     (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
+       [%expr Sedlexing_internal.start [%e evar ~loc lexbuf]]
        (pexp_match ~loc (appfun (state_fun 0) [evar ~loc lexbuf])
           (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])
        )
