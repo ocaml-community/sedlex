@@ -2,4 +2,5 @@
  (name sedlex)
  (public_name sedlex)
  (wrapped false)
- (libraries sedlexing_internal))
+ (libraries gen uchar)
+ (flags :standard -w +A-4-9 -safe-string))

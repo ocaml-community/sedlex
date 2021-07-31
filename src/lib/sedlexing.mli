@@ -22,7 +22,7 @@
     Of course, you'll probably want to define functions like [lexeme] to
     be used in the lexers semantic actions.  *)
 
-type lexbuf = Sedlexing_internal.lexbuf
+type lexbuf
       (** The type of lexer buffers. A lexer buffer is the argument passed
           to the scanning functions defined by the generated lexers.
           The lexer buffer holds the internal information for the
@@ -150,6 +150,15 @@ val next: lexbuf -> Uchar.t option
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns [None].
     If a ['\n'] is encountered, the tracked line number is incremented. *)
+
+val __private__next_int : lexbuf -> int
+(** [__private__next_int lexbuf] extracts the next code point from the
+    lexer buffer and increments to current position. If the input stream
+    is exhausted, the function returns -1.
+    If a ['\n'] is encountered, the tracked line number is incremented.
+    
+    This is a private API, it should not be used by code using this module's
+    API and can be removed at any time. *)
 
 val mark: lexbuf -> int -> unit
 (** [mark lexbuf i] stores the integer [i] in the internal

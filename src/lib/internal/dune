@@ -1,5 +1,0 @@
-(library
- (name sedlexing_internal)
- (package sedlex)
- (libraries gen uchar)
- (flags :standard -w +A-4-9 -safe-string))
