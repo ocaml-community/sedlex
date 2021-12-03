@@ -1,7 +1,7 @@
 (* This test that unicode_old.ml is a strict sub-set of 
  * new unicode.ml. *)
 
-let test_versions = ("12.1.0","13.0.0")
+let test_versions = ("13.0.0","14.0.0")
 
 let regressions = []
 

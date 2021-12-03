@@ -1,3 +1,8 @@
+2.5:
+    * Fix exponential compilation time, thanks to @mnxn for reporting in #97
+      and @fangyi-zhou for fixing in #106
+    * Update unicode support for `14.0.0`.
+
 2.4
     * Update `dune` support to `2.8`, add auto-generated `opam` files.
     * Optimize generated code, thanks to @bobzhang 

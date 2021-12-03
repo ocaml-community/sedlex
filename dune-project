@@ -1,5 +1,5 @@
 (lang dune 2.8)
-(version 2.4)
+(version 2.5)
 (name sedlex)
 (source (github ocaml-community/sedlex))
 (license MIT)
