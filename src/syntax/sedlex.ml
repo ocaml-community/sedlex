@@ -38,7 +38,7 @@ let alt r1 r2 succ =
   | Some c1, Some c2 -> chars (Cset.union c1 c2) succ
   | _ ->
     let n = new_node () in
-    n.eps <- [r1 succ; r2 succ];
+    n.eps <- [nr1; nr2];
     n
 
 let rep r succ =
