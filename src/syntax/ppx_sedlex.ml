@@ -175,6 +175,8 @@ let partition (name, p) =
       [%e body]
     ]
 
+(* Alias offset *)
+
 (* Code generation for the automata *)
 
 let best_final final =
@@ -196,8 +198,8 @@ let call_state lexbuf auto state =
 
 let gen_state lexbuf auto i (trans, final) =
   let loc = default_loc in
-  let partition = Array.map fst trans in
-  let cases = Array.mapi (fun i (_, j) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:(call_state lexbuf auto j)) trans in
+  let partition = Array.map (fun (c, _, _) -> c) trans in
+  let cases = Array.mapi (fun i (_, j, _acts) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:(call_state lexbuf auto j)) trans in
   let cases = Array.to_list cases in
   let body () =
     pexp_match ~loc
@@ -217,7 +219,7 @@ let gen_recflag auto =
     Array.iter
       (fun (trans_i, _) ->
         Array.iter
-          (fun (_, j) ->
+          (fun (_, j, _) ->
             let (trans_j, _) = auto.(j) in
             if Array.length trans_j > 0 then raise Exit)
           trans_i)
@@ -353,11 +355,16 @@ let regexp_of_pattern env =
         with Not_found ->
           err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
+    | Ppat_alias (pat, {txt=label}) ->
+       let begin_offset_slot_var = "__" ^ label ^ "_begin_offset" in
+       let end_offset_slot_var = "__" ^ label ^"_end_offset" in
+       aux pat
+       |> Sedlex.set_post_action (`save_offset end_offset_slot_var)
+       |> Sedlex.set_pre_action (`save_offset begin_offset_slot_var)
     | _ ->
-      err p.ppat_loc "this pattern is not a valid regexp"
+       err p.ppat_loc "this pattern is not a valid regexp"
   in
   aux
-
 
 let previous = ref []
 let regexps = ref []

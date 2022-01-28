@@ -8,18 +8,29 @@ module Cset = Sedlex_cset
 
 type node = {
   id : int;
+  mutable action : node_action list;
   mutable eps : node list;
   mutable trans : (Cset.t * node) list;
 }
+and node_action = [`save_offset of string]
 
 (* Compilation regexp -> NFA *)
 
 type regexp = node -> node
 
+let set_pre_action act re succ =
+  let init = re succ in
+  init.action <- act :: init.action;
+  init
+
+let set_post_action act re succ =
+  succ.action <- act :: succ.action;
+  re succ
+
 let cur_id = ref 0
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = [] }
+  { id = !cur_id; action = []; eps = []; trans = [] }
 
 let seq r1 r2 succ = r1 (r2 succ)
 
@@ -94,8 +105,8 @@ let transition (state : state) =
   (* Merge transition with the same target *)
   let rec norm = function
     | (c1, n1)::((c2, n2)::q as l) ->
-	if n1 == n2 then norm ((Cset.union c1 c2, n1)::q)
-	else (c1, n1)::(norm l)
+      if n1 == n2 then norm ((Cset.union c1 c2, n1)::q)
+      else (c1, n1)::(norm l)
     | l -> l in
   let t = List.concat (List.map (fun n -> n.trans) state) in
   let t = norm (List.sort (fun (_, n1) (_, n2) -> n1.id - n2.id) t) in
@@ -133,7 +144,10 @@ let compile rs =
       incr counter;
       Hashtbl.add states state i;
       let trans = transition state in
-      let trans = Array.map (fun (p, t) -> (p, aux t)) trans in
+      let trans =
+        Array.map
+          (fun (p, t) -> (p, aux t, List.concat_map (fun n -> n.action) t))
+          trans in
       let finals = Array.map (fun (_, f) -> List.memq f state) rs in
       Hashtbl.add states_def i (trans, finals);
       i

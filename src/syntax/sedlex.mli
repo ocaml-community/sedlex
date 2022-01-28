@@ -4,6 +4,11 @@
 
 type regexp
 
+type node_action = [`save_offset of string]
+
+val set_pre_action: node_action -> regexp -> regexp
+val set_post_action: node_action -> regexp -> regexp
+
 val chars: Sedlex_cset.t -> regexp
 val seq: regexp -> regexp -> regexp
 val alt: regexp -> regexp -> regexp
@@ -21,4 +26,4 @@ val intersection: regexp -> regexp -> regexp option
    (* If each argument is a single [chars] regexp, returns a regexp
       which matches the intersection set.  Otherwise returns [None]. *)
 
-val compile: regexp array -> ((Sedlex_cset.t * int) array * bool array) array
+val compile: regexp array -> ((Sedlex_cset.t * int * node_action list) array * bool array) array
