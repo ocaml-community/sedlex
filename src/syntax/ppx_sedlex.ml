@@ -284,13 +284,15 @@ let regexp_of_pattern env =
         List.fold_left (fun r p -> Sedlex.seq r (aux p))
           (aux p)
           pl
-    | Ppat_construct ({txt = Lident "Star"}, Some p) ->
+    | Ppat_construct (_, Some (_ :: _, _)) ->
+        err p.ppat_loc "Explicit binders for type variables not supported"
+    | Ppat_construct ({txt = Lident "Star"}, Some ([], p)) ->
         Sedlex.rep (aux p)
-    | Ppat_construct ({txt = Lident "Plus"}, Some p) ->
+    | Ppat_construct ({txt = Lident "Plus"}, Some ([], p)) ->
         Sedlex.plus (aux p)
     | Ppat_construct
         ({txt = Lident "Rep"},
-         Some {ppat_desc=Ppat_tuple[p0; {ppat_desc=Ppat_constant (i1 as i2)|Ppat_interval(i1, i2)}]}) ->
+         Some ([], {ppat_desc=Ppat_tuple[p0; {ppat_desc=Ppat_constant (i1 as i2)|Ppat_interval(i1, i2)}]})) ->
          begin match i1, i2 with
          | Pconst_integer(i1,_), Pconst_integer(i2,_) ->
              let i1 = int_of_string i1 in
@@ -302,11 +304,11 @@ let regexp_of_pattern env =
          end
     | Ppat_construct ({txt = Lident "Rep"}, _) ->
         err p.ppat_loc "the Rep operator takes 2 arguments"
-    | Ppat_construct ({txt = Lident "Opt"}, Some p) ->
+    | Ppat_construct ({txt = Lident "Opt"}, Some ([], p)) ->
         Sedlex.alt Sedlex.eps (aux p)
     | Ppat_construct ({txt = Lident "Compl"}, arg) ->
         begin match arg with
-        | Some p0 ->
+        | Some ([], p0) ->
             begin match Sedlex.compl (aux p0) with
             | Some r -> r
             | None ->
@@ -316,12 +318,12 @@ let regexp_of_pattern env =
         | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
     | Ppat_construct ({ txt = Lident "Sub" }, arg) ->
-        char_pair_op Sedlex.subtract "Sub" p arg
+        char_pair_op Sedlex.subtract "Sub" p (Option.map (fun ([], arg) -> arg) arg)
     | Ppat_construct ({ txt = Lident "Intersect" }, arg) ->
-        char_pair_op Sedlex.intersection "Intersect" p arg
+        char_pair_op Sedlex.intersection "Intersect" p (Option.map (fun ([], arg) -> arg) arg)
     | Ppat_construct ({txt = Lident "Chars"}, arg) ->
         let const = match arg with
-          | Some {ppat_desc=Ppat_constant const} ->
+          | Some ([], {ppat_desc=Ppat_constant const}) ->
               Some (const)
           | _ -> None
         in
