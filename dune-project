@@ -1,5 +1,5 @@
 (lang dune 2.8)
-(version 2.5)
+(version 2.6)
 (name sedlex)
 (source (github ocaml-community/sedlex))
 (license MIT)
@@ -20,6 +20,6 @@ extension.")
  (depends
    (ocaml (>= 4.04))
    dune
-   (ppxlib (>= 0.18.0))
+   (ppxlib (>= 0.26.0))
    gen
    uchar))

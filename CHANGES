@@ -1,3 +1,6 @@
+2.6:
+    * Adapted to ppxlib `0.26`, thanks to @pitag-ha
+
 2.5:
     * Fix exponential compilation time, thanks to @mnxn for reporting in #97
       and @fangyi-zhou for fixing in #106

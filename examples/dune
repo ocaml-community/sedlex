@@ -3,7 +3,7 @@
  (libraries sedlex sedlex_ppx)
  (preprocess
   (pps sedlex.ppx))
-  (flags :standard -w +39))
+ (flags :standard -w +39))
 
 (rule
  (alias runtest)

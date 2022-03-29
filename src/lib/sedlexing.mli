@@ -22,54 +22,54 @@
     Of course, you'll probably want to define functions like [lexeme] to
     be used in the lexers semantic actions.  *)
 
-type lexbuf
-      (** The type of lexer buffers. A lexer buffer is the argument passed
+(** The type of lexer buffers. A lexer buffer is the argument passed
           to the scanning functions defined by the generated lexers.
           The lexer buffer holds the internal information for the
           scanners, including the code points of the token currently scanned,
           its position from the beginning of the input stream,
           and the current position of the lexer. *)
+type lexbuf
 
-exception InvalidCodepoint of int
-    (** Raised by some functions to signal that some code point is not
+(** Raised by some functions to signal that some code point is not
         compatible with a specified encoding. *)
+exception InvalidCodepoint of int
 
-exception MalFormed
-    (** Raised by functions in the [Utf8] and [Utf16] modules to report
+(** Raised by functions in the [Utf8] and [Utf16] modules to report
         strings which do not comply to the encoding. *)
+exception MalFormed
 
 (** {6 Creating generic lexbufs} *)
 
-val create: (Uchar.t array -> int -> int -> int) -> lexbuf
-    (** Create a generic lexer buffer.  When the lexer needs more
+(** Create a generic lexer buffer.  When the lexer needs more
         characters, it will call the given function, giving it an array of
         Uchars [a], a position [pos] and a code point count [n].  The
         function should put [n] code points or less in [a], starting at
         position [pos], and return the number of characters provided. A
         return value of 0 means end of input. *)
+val create : (Uchar.t array -> int -> int -> int) -> lexbuf
 
-val set_position: lexbuf -> Lexing.position -> unit
-    (** set the initial tracked input position for [lexbuf].
+(** set the initial tracked input position for [lexbuf].
         If set to [Lexing.dummy_pos], Sedlexing will not track position
         information for you. *)
+val set_position : lexbuf -> Lexing.position -> unit
 
-val set_filename: lexbuf -> string -> unit
-    (** [set_filename lexbuf file] sets the filename to [file] in
+(** [set_filename lexbuf file] sets the filename to [file] in
         [lexbuf]. It also sets the {!Lexing.pos_fname} field in
         returned {!Lexing.position} records. *)
+val set_filename : lexbuf -> string -> unit
 
-val from_gen: Uchar.t Gen.t -> lexbuf
-    (** Create a lexbuf from a stream of Unicode code points. *)
+(** Create a lexbuf from a stream of Unicode code points. *)
+val from_gen : Uchar.t Gen.t -> lexbuf
 
-val from_stream: Uchar.t Stream.t -> lexbuf
-    [@@ocaml.deprecated "Use [Sedlexing.from_gen] instead."]
-    (** Create a lexbuf from a stream of Unicode code points. *)
+(** Create a lexbuf from a stream of Unicode code points. *)
+val from_stream : Uchar.t Stream.t -> lexbuf
+  [@@ocaml.deprecated "Use [Sedlexing.from_gen] instead."]
 
-val from_int_array: int array -> lexbuf
-    (** Create a lexbuf from an array of Unicode code points. *)
+(** Create a lexbuf from an array of Unicode code points. *)
+val from_int_array : int array -> lexbuf
 
-val from_uchar_array: Uchar.t array -> lexbuf
-    (** Create a lexbuf from an array of Unicode code points. *)
+(** Create a lexbuf from an array of Unicode code points. *)
+val from_uchar_array : Uchar.t array -> lexbuf
 
 (** {6 Interface for lexers semantic actions} *)
 
@@ -77,57 +77,57 @@ val from_uchar_array: Uchar.t array -> lexbuf
     lexer definitions.  They give access to the character string matched
     by the regular expression associated with the semantic action. *)
 
-val lexeme_start: lexbuf -> int
-    (** [Sedlexing.lexeme_start lexbuf] returns the offset in the
+(** [Sedlexing.lexeme_start lexbuf] returns the offset in the
         input stream of the first code point of the matched string.
         The first code point of the stream has offset 0. *)
+val lexeme_start : lexbuf -> int
 
-val lexeme_end: lexbuf -> int
-    (** [Sedlexing.lexeme_end lexbuf] returns the offset in the input
+(** [Sedlexing.lexeme_end lexbuf] returns the offset in the input
         stream of the character following the last code point of the
         matched string. The first character of the stream has offset
         0. *)
+val lexeme_end : lexbuf -> int
 
-val loc: lexbuf -> int * int
-    (** [Sedlexing.loc lexbuf] returns the pair
+(** [Sedlexing.loc lexbuf] returns the pair
         [(Sedlexing.lexeme_start lexbuf,Sedlexing.lexeme_end
         lexbuf)]. *)
+val loc : lexbuf -> int * int
 
-val lexeme_length: lexbuf -> int
-    (** [Sedlexing.lexeme_length lexbuf] returns the difference
+(** [Sedlexing.lexeme_length lexbuf] returns the difference
         [(Sedlexing.lexeme_end lexbuf) - (Sedlexing.lexeme_start
         lexbuf)], that is, the length (in code points) of the matched
         string. *)
+val lexeme_length : lexbuf -> int
 
-val lexing_positions : lexbuf -> Lexing.position*Lexing.position
-    (** [Sedlexing.lexing_positions lexbuf] returns the start and end
+(** [Sedlexing.lexing_positions lexbuf] returns the start and end
         positions of the current token, using a record of type
         [Lexing.position]. This is intended for consumption
         by parsers like those generated by [Menhir]. *)
+val lexing_positions : lexbuf -> Lexing.position * Lexing.position
 
-val new_line: lexbuf -> unit
-    (** [Sedlexing.new_line lexbuf] increments the line count and
+(** [Sedlexing.new_line lexbuf] increments the line count and
         sets the beginning of line to the current position, as though
         a newline character had been encountered in the input. *)
+val new_line : lexbuf -> unit
 
-val lexeme: lexbuf -> Uchar.t array
-    (** [Sedlexing.lexeme lexbuf] returns the string matched by the
+(** [Sedlexing.lexeme lexbuf] returns the string matched by the
         regular expression as an array of Unicode code point. *)
+val lexeme : lexbuf -> Uchar.t array
 
-val lexeme_char: lexbuf -> int -> Uchar.t
-    (** [Sedlexing.lexeme_char lexbuf pos] returns code point number [pos] in
+(** [Sedlexing.lexeme_char lexbuf pos] returns code point number [pos] in
         the matched string. *)
+val lexeme_char : lexbuf -> int -> Uchar.t
 
-val sub_lexeme: lexbuf -> int -> int -> Uchar.t array
 (** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
+val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
 
-val rollback: lexbuf -> unit
 (** [Sedlexing.rollback lexbuf] puts [lexbuf] back in its configuration before
     the last lexeme was matched. It is then possible to use another
     lexer to parse the same characters again. The other functions
     above in this section should not be used in the semantic action
     after a call to [Sedlexing.rollback]. *)
+val rollback : lexbuf -> unit
 
 (** {6 Internal interface} *)
 
@@ -137,21 +137,20 @@ val rollback: lexbuf -> unit
     an integer. They also store a "backtrack" position.
  *)
 
-val start: lexbuf -> unit
 (** [start t] informs the lexer buffer that any
     code points until the current position can be discarded.
     The current position become the "start" position as returned
     by [Sedlexing.lexeme_start]. Moreover, the internal slot is set to
     [-1] and the backtrack position is set to the current position.
  *)
+val start : lexbuf -> unit
 
-val next: lexbuf -> Uchar.t option
 (** [next lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns [None].
     If a ['\n'] is encountered, the tracked line number is incremented. *)
+val next : lexbuf -> Uchar.t option
 
-val __private__next_int : lexbuf -> int
 (** [__private__next_int lexbuf] extracts the next code point from the
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns -1.
@@ -159,86 +158,87 @@ val __private__next_int : lexbuf -> int
     
     This is a private API, it should not be used by code using this module's
     API and can be removed at any time. *)
+val __private__next_int : lexbuf -> int
 
-val mark: lexbuf -> int -> unit
 (** [mark lexbuf i] stores the integer [i] in the internal
     slot. The backtrack position is set to the current position. *)
+val mark : lexbuf -> int -> unit
 
-val backtrack: lexbuf -> int
 (** [backtrack lexbuf] returns the value stored in the
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
+val backtrack : lexbuf -> int
 
-val with_tokenizer: (lexbuf -> 'token) -> lexbuf -> (unit -> 'token * Lexing.position * Lexing.position)
 (** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf,
     returns a generator of tokens annotated with positions.
     This generator can be used with the Menir parser generator's
     incremental API. *)
+val with_tokenizer :
+  (lexbuf -> 'token) ->
+  lexbuf ->
+  unit ->
+  'token * Lexing.position * Lexing.position
 
 (** {6 Support for common encodings} *)
 
-module Latin1: sig
-  val from_gen: char Gen.t -> lexbuf
-      (** Create a lexbuf from a Latin1 encoded stream (ie a stream
+module Latin1 : sig
+  (** Create a lexbuf from a Latin1 encoded stream (ie a stream
           of Unicode code points in the range [0..255]) *)
+  val from_gen : char Gen.t -> lexbuf
 
-  val from_stream: char Stream.t -> lexbuf
-      [@@ocaml.deprecated "Use [Sedlexing.Latin1.from_gen] instead."]
-      (** Create a lexbuf from a Latin1 encoded stream (ie a stream
+  (** Create a lexbuf from a Latin1 encoded stream (ie a stream
           of Unicode code points in the range [0..255]) *)
+  val from_stream : char Stream.t -> lexbuf
+    [@@ocaml.deprecated "Use [Sedlexing.Latin1.from_gen] instead."]
 
-  val from_channel: in_channel -> lexbuf
-      (** Create a lexbuf from a Latin1 encoded input channel.
+  (** Create a lexbuf from a Latin1 encoded input channel.
           The client is responsible for closing the channel. *)
+  val from_channel : in_channel -> lexbuf
 
-  val from_string: string -> lexbuf
-      (** Create a lexbuf from a Latin1 encoded string. *)
+  (** Create a lexbuf from a Latin1 encoded string. *)
+  val from_string : string -> lexbuf
 
-
-  val lexeme: lexbuf -> string
-      (** As [Sedlexing.lexeme] with a result encoded in Latin1.  This
+  (** As [Sedlexing.lexeme] with a result encoded in Latin1.  This
           function throws an exception [InvalidCodepoint] if it is not
           possible to encode the result in Latin1. *)
+  val lexeme : lexbuf -> string
 
-  val sub_lexeme: lexbuf -> int -> int -> string
-      (** As [Sedlexing.sub_lexeme] with a result encoded in Latin1.
+  (** As [Sedlexing.sub_lexeme] with a result encoded in Latin1.
           This function throws an exception [InvalidCodepoint] if it
           is not possible to encode the result in Latin1. *)
+  val sub_lexeme : lexbuf -> int -> int -> string
 
-  val lexeme_char: lexbuf -> int -> char
-      (** As [Sedlexing.lexeme_char] with a result encoded in Latin1.
+  (** As [Sedlexing.lexeme_char] with a result encoded in Latin1.
           This function throws an exception [InvalidCodepoint] if it
           is not possible to encode the result in Latin1. *)
+  val lexeme_char : lexbuf -> int -> char
 end
 
+module Utf8 : sig
+  (** Create a lexbuf from a UTF-8 encoded stream. *)
+  val from_gen : char Gen.t -> lexbuf
 
-module Utf8: sig
-  val from_gen: char Gen.t -> lexbuf
-      (** Create a lexbuf from a UTF-8 encoded stream. *)
+  (** Create a lexbuf from a UTF-8 encoded stream. *)
+  val from_stream : char Stream.t -> lexbuf
+    [@@ocaml.deprecated "Use [Sedlexing.Utf8.from_gen] instead."]
 
-  val from_stream: char Stream.t -> lexbuf
-      [@@ocaml.deprecated "Use [Sedlexing.Utf8.from_gen] instead."]
-      (** Create a lexbuf from a UTF-8 encoded stream. *)
+  (** Create a lexbuf from a UTF-8 encoded input channel. *)
+  val from_channel : in_channel -> lexbuf
 
-  val from_channel: in_channel -> lexbuf
-      (** Create a lexbuf from a UTF-8 encoded input channel. *)
+  (** Create a lexbuf from a UTF-8 encoded string. *)
+  val from_string : string -> lexbuf
 
-  val from_string: string -> lexbuf
-      (** Create a lexbuf from a UTF-8 encoded string. *)
+  (** As [Sedlexing.lexeme] with a result encoded in UTF-8. *)
+  val lexeme : lexbuf -> string
 
-  val lexeme: lexbuf -> string
-   (** As [Sedlexing.lexeme] with a result encoded in UTF-8. *)
-
-  val sub_lexeme: lexbuf -> int -> int -> string
-      (** As [Sedlexing.sub_lexeme] with a result encoded in UTF-8. *)
+  (** As [Sedlexing.sub_lexeme] with a result encoded in UTF-8. *)
+  val sub_lexeme : lexbuf -> int -> int -> string
 end
 
-
-module Utf16: sig
+module Utf16 : sig
   type byte_order = Little_endian | Big_endian
 
-  val from_gen: char Gen.t -> byte_order option -> lexbuf
-      (** [Utf16.from_gen s opt_bo] creates a lexbuf from an UTF-16
+  (** [Utf16.from_gen s opt_bo] creates a lexbuf from an UTF-16
           encoded stream. If [opt_bo] matches with [None] the function
           expects a BOM (Byte Order Mark), and takes the byte order as
           [Utf16.Big_endian] if it cannot find one. When [opt_bo]
@@ -246,24 +246,25 @@ module Utf16: sig
           case a leading BOM is kept in the stream - the lexer has to
           ignore it and a `wrong' BOM ([0xfffe]) will raise
           Utf16.InvalidCodepoint.  *)
+  val from_gen : char Gen.t -> byte_order option -> lexbuf
 
-  val from_stream: char Stream.t -> byte_order option -> lexbuf
-      [@@ocaml.deprecated "Use [Sedlexing.Utf16.from_gen] instead."]
-      (** Works as [Utf16.from_gen] with a [stream]. *)
+  (** Works as [Utf16.from_gen] with a [stream]. *)
+  val from_stream : char Stream.t -> byte_order option -> lexbuf
+    [@@ocaml.deprecated "Use [Sedlexing.Utf16.from_gen] instead."]
 
-  val from_channel: in_channel -> byte_order option-> lexbuf
-      (** Works as [Utf16.from_gen] with an [in_channel]. *)
+  (** Works as [Utf16.from_gen] with an [in_channel]. *)
+  val from_channel : in_channel -> byte_order option -> lexbuf
 
-  val from_string: string -> byte_order option -> lexbuf
-      (** Works as [Utf16.from_gen] with a [string]. *)
+  (** Works as [Utf16.from_gen] with a [string]. *)
+  val from_string : string -> byte_order option -> lexbuf
 
-  val lexeme: lexbuf -> byte_order -> bool -> string
-      (** [utf16_lexeme lb bo bom] as [Sedlexing.lexeme] with a result
+  (** [utf16_lexeme lb bo bom] as [Sedlexing.lexeme] with a result
           encoded in UTF-16 in byte_order [bo] and starting with a BOM
           if [bom = true].  *)
+  val lexeme : lexbuf -> byte_order -> bool -> string
 
-  val sub_lexeme: lexbuf -> int -> int -> byte_order -> bool -> string
-      (** [sub_lexeme lb pos len bo bom] as
+  (** [sub_lexeme lb pos len bo bom] as
           [Sedlexing.sub_lexeme] with a result encoded in UTF-16 with
           byte order [bo] and starting with a BOM if [bom=true] *)
+  val sub_lexeme : lexbuf -> int -> int -> byte_order -> bool -> string
 end
