@@ -1,3 +1,7 @@
+3.0:
+    * Dropped `Stream` api which was removed in `4.14.0` ahead of the `5.0`
+      release.
+
 2.6:
     * Adapted to ppxlib `0.26`, thanks to @pitag-ha
 

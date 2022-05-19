@@ -11,11 +11,6 @@ let gen_of_channel chan =
 
 let ( >>= ) o f = match o with Some x -> f x | None -> None
 
-(* For legacy purposes. *)
-let gen_of_stream stream =
-  let f () = try Some (Stream.next stream) with Stream.Failure -> None in
-  f
-
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
@@ -95,7 +90,6 @@ let fill_buf_from_gen f gen buf pos len =
   aux 0
 
 let from_gen s = create (fill_buf_from_gen (fun id -> id) s)
-let from_stream s = from_gen @@ gen_of_stream s
 
 let from_int_array a =
   let len = Array.length a in
@@ -224,7 +218,6 @@ let with_tokenizer lexer' lexbuf =
 
 module Latin1 = struct
   let from_gen s = create (fill_buf_from_gen Uchar.of_char s)
-  let from_stream s = from_gen @@ gen_of_stream s
 
   let from_string s =
     let len = String.length s in
@@ -403,7 +396,6 @@ module Utf8 = struct
   let from_gen s =
     create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
 
-  let from_stream s = from_gen @@ gen_of_stream s
   let from_string s = from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
@@ -520,7 +512,6 @@ module Utf16 = struct
   end
 
   let from_gen s opt_bo = from_gen (Helper.gen_from_char_gen opt_bo s)
-  let from_stream s = from_gen @@ gen_of_stream s
   let from_channel ic opt_bo = from_gen (gen_of_channel ic) opt_bo
 
   let from_string s opt_bo =

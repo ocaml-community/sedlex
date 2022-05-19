@@ -61,10 +61,6 @@ val set_filename : lexbuf -> string -> unit
 (** Create a lexbuf from a stream of Unicode code points. *)
 val from_gen : Uchar.t Gen.t -> lexbuf
 
-(** Create a lexbuf from a stream of Unicode code points. *)
-val from_stream : Uchar.t Stream.t -> lexbuf
-  [@@ocaml.deprecated "Use [Sedlexing.from_gen] instead."]
-
 (** Create a lexbuf from an array of Unicode code points. *)
 val from_int_array : int array -> lexbuf
 
@@ -186,11 +182,6 @@ module Latin1 : sig
           of Unicode code points in the range [0..255]) *)
   val from_gen : char Gen.t -> lexbuf
 
-  (** Create a lexbuf from a Latin1 encoded stream (ie a stream
-          of Unicode code points in the range [0..255]) *)
-  val from_stream : char Stream.t -> lexbuf
-    [@@ocaml.deprecated "Use [Sedlexing.Latin1.from_gen] instead."]
-
   (** Create a lexbuf from a Latin1 encoded input channel.
           The client is responsible for closing the channel. *)
   val from_channel : in_channel -> lexbuf
@@ -218,10 +209,6 @@ module Utf8 : sig
   (** Create a lexbuf from a UTF-8 encoded stream. *)
   val from_gen : char Gen.t -> lexbuf
 
-  (** Create a lexbuf from a UTF-8 encoded stream. *)
-  val from_stream : char Stream.t -> lexbuf
-    [@@ocaml.deprecated "Use [Sedlexing.Utf8.from_gen] instead."]
-
   (** Create a lexbuf from a UTF-8 encoded input channel. *)
   val from_channel : in_channel -> lexbuf
 
@@ -247,10 +234,6 @@ module Utf16 : sig
           ignore it and a `wrong' BOM ([0xfffe]) will raise
           Utf16.InvalidCodepoint.  *)
   val from_gen : char Gen.t -> byte_order option -> lexbuf
-
-  (** Works as [Utf16.from_gen] with a [stream]. *)
-  val from_stream : char Stream.t -> byte_order option -> lexbuf
-    [@@ocaml.deprecated "Use [Sedlexing.Utf16.from_gen] instead."]
 
   (** Works as [Utf16.from_gen] with an [in_channel]. *)
   val from_channel : in_channel -> byte_order option -> lexbuf
