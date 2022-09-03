@@ -209,16 +209,18 @@ let gen_state lexbuf auto i (trans, final) =
   in
   let cases = Array.to_list cases in
   let body () =
-    pexp_match ~loc
-      (appfun (partition_name partition)
-         [[%expr Sedlexing.__private__next_int [%e evar ~loc lexbuf]]])
-      (cases
-      @ [
-          case
-            ~lhs:[%pat? _]
-            ~guard:None
-            ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]];
-        ])
+    pexp_sequence ~loc
+      [%expr Sedlexing.track [%e evar ~loc lexbuf] [%e eint ~loc i]]
+      (pexp_match ~loc
+         (appfun (partition_name partition)
+            [[%expr Sedlexing.__private__next_int [%e evar ~loc lexbuf]]])
+         (cases
+         @ [
+             case
+               ~lhs:[%pat? _]
+               ~guard:None
+               ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]];
+           ]))
   in
   let ret body =
     [
@@ -296,7 +298,7 @@ let rec repeat r = function
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
-let regexp_of_pattern env =
+let regexp_of_pattern allow_alias env =
   let rec char_pair_op func name p tuple =
     (* Construct something like Sub(a,b) *)
     match tuple with
@@ -311,12 +313,15 @@ let regexp_of_pattern env =
       | _ ->
           err p.ppat_loc @@ "the " ^ name
           ^ " operator requires two arguments, like " ^ name ^ "(a,b)"
-  and aux p =
+  and aux ?(allow_alias = false) p =
     (* interpret one pattern node *)
     match p.ppat_desc with
-      | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
+      | Ppat_or (p1, p2) ->
+          Sedlex.alt (aux ~allow_alias p1) (aux ~allow_alias p2)
       | Ppat_tuple (p :: pl) ->
-          List.fold_left (fun r p -> Sedlex.seq r (aux p)) (aux p) pl
+          List.fold_left
+            (fun r p -> Sedlex.seq r (aux ~allow_alias p))
+            (aux ~allow_alias p) pl
       | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
           Sedlex.rep (aux p)
       | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
@@ -406,9 +411,11 @@ let regexp_of_pattern env =
           with Not_found ->
             err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
+      | Ppat_alias (p, { txt = x }) when allow_alias ->
+          Sedlex.alias (aux ~allow_alias p) x
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
-  aux
+  aux ~allow_alias
 
 let previous = ref []
 let regexps = ref []
@@ -420,7 +427,7 @@ let mapper =
     val env = builtin_regexps
 
     method define_regexp name p =
-      {<env = StringMap.add name (regexp_of_pattern env p) env>}
+      {<env = StringMap.add name (regexp_of_pattern false env p) env>}
 
     method! expression e =
       match e with
@@ -446,7 +453,7 @@ let mapper =
               List.map
                 (function
                   | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-                      (regexp_of_pattern env p, super#expression e)
+                      (regexp_of_pattern true env p, super#expression e)
                   | { pc_guard = Some e } ->
                       err e.pexp_loc "'when' guards are not supported")
                 cases

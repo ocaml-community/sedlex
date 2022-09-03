@@ -11,6 +11,7 @@ val rep : regexp -> regexp
 val plus : regexp -> regexp
 val eps : regexp
 val compl : regexp -> regexp option
+val alias : regexp -> string -> regexp
 
 (* If the argument is a single [chars] regexp, returns a regexp
    which matches the complement set.  Otherwise returns [None]. *)

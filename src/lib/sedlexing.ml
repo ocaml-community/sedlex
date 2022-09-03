@@ -28,6 +28,8 @@ type lexbuf = {
   (* bol is the index in the input stream but not buffer *)
   mutable curr_line : int;
   (* start from 1, if it is 0, we would not track postion info for you *)
+  mutable path : int list;
+  (* The path of state transformation in the automaton *)
   mutable start_pos : int;
   (* First char we need to keep visible *)
   mutable start_bol : int;
@@ -35,6 +37,7 @@ type lexbuf = {
   mutable marked_pos : int;
   mutable marked_bol : int;
   mutable marked_line : int;
+  mutable marked_path : int list;
   mutable marked_val : int;
   mutable filename : string;
   mutable finished : bool;
@@ -51,12 +54,14 @@ let empty_lexbuf =
     pos = 0;
     curr_bol = 0;
     curr_line = 0;
+    path = [];
     start_pos = 0;
     start_bol = 0;
     start_line = 0;
     marked_pos = 0;
     marked_bol = 0;
     marked_line = 0;
+    marked_path = [];
     marked_val = 0;
     filename = "";
     finished = false;
@@ -158,25 +163,30 @@ let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
+  lexbuf.marked_path <- lexbuf.path;
   lexbuf.marked_val <- i
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
   lexbuf.start_bol <- lexbuf.curr_bol;
   lexbuf.start_line <- lexbuf.curr_line;
+  lexbuf.path <- [];
   mark lexbuf (-1)
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.curr_bol <- lexbuf.marked_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
+  lexbuf.path <- lexbuf.marked_path;
   lexbuf.marked_val
 
 let rollback lexbuf =
   lexbuf.pos <- lexbuf.start_pos;
   lexbuf.curr_bol <- lexbuf.start_bol;
-  lexbuf.curr_line <- lexbuf.start_line
+  lexbuf.curr_line <- lexbuf.start_line;
+  lexbuf.path <- []
 
+let track lexbuf state = lexbuf.path <- state :: lexbuf.path
 let lexeme_start lexbuf = lexbuf.start_pos + lexbuf.offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
 let loc lexbuf = (lexbuf.start_pos + lexbuf.offset, lexbuf.pos + lexbuf.offset)

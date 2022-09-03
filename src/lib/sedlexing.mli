@@ -151,7 +151,7 @@ val next : lexbuf -> Uchar.t option
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns -1.
     If a ['\n'] is encountered, the tracked line number is incremented.
-    
+
     This is a private API, it should not be used by code using this module's
     API and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
@@ -164,6 +164,10 @@ val mark : lexbuf -> int -> unit
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
 val backtrack : lexbuf -> int
+
+(** [track lexbuf state] tracks the path of state transformation
+    within the automaton. *)
+val track : lexbuf -> int -> unit
 
 (** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf,
     returns a generator of tokens annotated with positions.

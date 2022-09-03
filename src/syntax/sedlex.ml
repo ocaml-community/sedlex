@@ -10,6 +10,7 @@ type node = {
   id : int;
   mutable eps : node list;
   mutable trans : (Cset.t * node) list;
+  mutable alias : (string * bool) list;
 }
 
 (* Compilation regexp -> NFA *)
@@ -20,7 +21,16 @@ let cur_id = ref 0
 
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = [] }
+  { id = !cur_id; eps = []; trans = []; alias = [] }
+
+let alias r alias succ =
+  let n = new_node () in
+  let s = new_node () in
+  s.eps <- [succ];
+  succ.alias <- (alias, false) :: succ.alias;
+  n.alias <- [(alias, true)];
+  n.eps <- [r s];
+  n
 
 let seq r1 r2 succ = r1 (r2 succ)
 
