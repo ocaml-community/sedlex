@@ -165,10 +165,6 @@ val mark : lexbuf -> int -> unit
     (the current position is set to the value of the backtrack position). *)
 val backtrack : lexbuf -> int
 
-(** [track lexbuf state] tracks the path of state transformation
-    within the automaton. *)
-val track : lexbuf -> int -> unit
-
 (** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf,
     returns a generator of tokens annotated with positions.
     This generator can be used with the Menir parser generator's

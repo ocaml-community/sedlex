@@ -197,14 +197,22 @@ let best_final final =
   !fin
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
+let matching_result = "__sedlex_matching_result"
+let matching_path = "__sedlex_matching_path"
 
 let call_state lexbuf auto state =
+  let loc = default_loc in
   let trans, final = auto.(state) in
   if Array.length trans = 0 then (
     match best_final final with
-      | Some i -> eint ~loc:default_loc i
+      | Some i -> [%expr [%e eint ~loc i], [%e evar ~loc matching_path]]
       | None -> assert false)
-  else appfun (state_fun state) [evar ~loc:default_loc lexbuf]
+  else
+    appfun (state_fun state)
+      [
+        [%expr [%e eint ~loc state] :: [%e evar ~loc matching_path]];
+        evar ~loc lexbuf;
+      ]
 
 let gen_state lexbuf auto i (trans, final) =
   let loc = default_loc in
@@ -217,26 +225,25 @@ let gen_state lexbuf auto i (trans, final) =
   in
   let cases = Array.to_list cases in
   let body () =
-    pexp_sequence ~loc
-      [%expr Sedlexing.track [%e evar ~loc lexbuf] [%e eint ~loc i]]
-      (pexp_match ~loc
-         (appfun (partition_name partition)
-            [[%expr Sedlexing.__private__next_int [%e evar ~loc lexbuf]]])
-         (cases
-         @ [
-             case
-               ~lhs:[%pat? _]
-               ~guard:None
-               ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]];
-           ]))
+    pexp_match ~loc
+      (appfun (partition_name partition)
+         [[%expr Sedlexing.__private__next_int [%e evar ~loc lexbuf]]])
+      (cases
+      @ [
+          case
+            ~lhs:[%pat? _]
+            ~guard:None
+            ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf], []];
+        ])
   in
   let ret body =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
         ~expr:
-          (pexp_function ~loc
-             [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]);
+          (pexp_fun ~loc Nolabel None (pvar ~loc matching_path)
+             (pexp_function ~loc
+                [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]));
     ]
   in
   match best_final final with
@@ -265,12 +272,20 @@ let gen_recflag auto =
 
 let gen_definition lexbuf l error =
   let loc = default_loc in
-  let brs = Array.of_list (List.map (fun ((p, _), e) -> (p, e)) l) in
-  let auto = Sedlex.compile (Array.map fst brs) in
+  let brs = Array.of_list l in
+  let auto = Sedlex.compile (Array.map (fun ((x, _), _) -> x) brs) in
   let cases =
     Array.to_list
       (Array.mapi
-         (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
+         (fun i ((_, aliases), e) ->
+           let e =
+             if StringSet.is_empty aliases then e
+             else
+               [%expr
+                 let _ = 123 in
+                 [%e e]]
+           in
+           case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
          brs)
   in
   let states = Array.mapi (gen_state lexbuf auto) auto in
@@ -278,9 +293,17 @@ let gen_definition lexbuf l error =
   pexp_let ~loc (gen_recflag auto) states
     (pexp_sequence ~loc
        [%expr Sedlexing.start [%e evar ~loc lexbuf]]
-       (pexp_match ~loc
-          (appfun (state_fun 0) [evar ~loc lexbuf])
-          (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])))
+       (pexp_let ~loc Nonrecursive
+          [
+            value_binding ~loc
+              ~pat:
+                (ppat_tuple ~loc
+                   [pvar ~loc matching_result; pvar ~loc matching_path])
+              ~expr:(appfun (state_fun 0) [[%expr [0]]; evar ~loc lexbuf]);
+          ]
+          (pexp_match ~loc
+             (evar ~loc matching_result)
+             (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))))
 
 (* Lexer specification parser *)
 
