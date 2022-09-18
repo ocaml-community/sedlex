@@ -7,7 +7,8 @@ let rec token buf =
     | number ->
         Printf.printf "Number %s\n" (Sedlexing.Latin1.lexeme buf);
         token buf
-    | letter, Star ('A' .. 'Z' | 'a' .. 'z' | digit) ->
+    | (letter as initial), Star ('A' .. 'Z' | 'a' .. 'z' | digit) ->
+        Printf.printf "initial (%i, %i)\n" (fst initial) (snd initial);
         Printf.printf "Ident %s\n" (Sedlexing.Latin1.lexeme buf);
         token buf
     | Plus xml_blank -> token buf

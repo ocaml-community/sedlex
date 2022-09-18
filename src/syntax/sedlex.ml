@@ -10,7 +10,7 @@ type node = {
   id : int;
   mutable eps : node list;
   mutable trans : (Cset.t * node) list;
-  mutable alias : (string * bool) list;
+  mutable alias : (string * bool) option;
 }
 
 (* Compilation regexp -> NFA *)
@@ -21,16 +21,7 @@ let cur_id = ref 0
 
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = []; alias = [] }
-
-let alias r alias succ =
-  let n = new_node () in
-  let s = new_node () in
-  s.eps <- [succ];
-  succ.alias <- (alias, false) :: succ.alias;
-  n.alias <- [(alias, true)];
-  n.eps <- [r s];
-  n
+  { id = !cur_id; eps = []; trans = []; alias = None }
 
 let seq r1 r2 succ = r1 (r2 succ)
 
@@ -82,6 +73,15 @@ let pair_op f r0 r1 =
 let subtract = pair_op Cset.difference
 let intersection = pair_op Cset.intersection
 
+let alias r alias succ =
+  let n = new_node () in
+  let s = new_node () in
+  s.eps <- [succ];
+  s.alias <- Some (alias, false);
+  n.alias <- Some (alias, true);
+  n.eps <- [r s];
+  n
+
 let compile_re re =
   let final = new_node () in
   (re final, final)
@@ -127,6 +127,68 @@ let transition (state : state) =
   Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
   t
 
+let compile_traces states (start, final) =
+  let counter = ref 0 in
+  let nodes_idx = Hashtbl.create 31 in
+  let rec aux node =
+    try ignore (Hashtbl.find nodes_idx node)
+    with Not_found ->
+      let i = !counter in
+      incr counter;
+      Hashtbl.add nodes_idx node i;
+      List.iter (fun (_, next) -> aux next) node.trans;
+      List.iter aux node.eps
+  in
+  aux start;
+  let final_idx = Hashtbl.find nodes_idx final in
+  let handle_alias (starts, stops) = function
+    | None -> (starts, stops)
+    | Some (alias, flag) ->
+        if flag then (alias :: starts, stops) else (starts, alias :: stops)
+  in
+  let first_case = (-1, 0, final_idx, [], []) in
+  let trans_cases =
+    let visited = Array.make !counter false in
+    let cases = Hashtbl.create 31 in
+    let rec traverse node =
+      let j = Hashtbl.find nodes_idx node in
+      if not visited.(j) then begin
+        visited.(j) <- true;
+        let to_states =
+          Hashtbl.fold
+            (fun state i acc -> if List.mem node state then i :: acc else acc)
+            states []
+        in
+        let rec dfs start_stops node =
+          let i = Hashtbl.find nodes_idx node in
+          let starts, stops = handle_alias start_stops node.alias in
+          List.iter
+            (fun state ->
+              try ignore (Hashtbl.find cases (i, state))
+              with Not_found ->
+                Hashtbl.add cases (i, state) (i, state, j, starts, stops))
+            to_states;
+          List.iter (dfs (starts, stops)) node.eps
+        in
+        List.iter (fun (_, next) -> dfs ([], []) next) node.trans;
+        List.iter traverse node.eps;
+        List.iter (fun (_, next) -> traverse next) node.trans
+      end
+    in
+    traverse start;
+    Hashtbl.to_seq cases |> Seq.map snd |> List.of_seq
+  in
+  let final_cases =
+    let rec dfs start_stops cases node =
+      let i = Hashtbl.find nodes_idx node in
+      let starts, stops = handle_alias start_stops node.alias in
+      let cases = (i, starts, stops) :: cases in
+      List.fold_left (dfs (starts, stops)) cases node.eps
+    in
+    dfs ([], []) [] start
+  in
+  (first_case :: trans_cases, final_cases)
+
 let compile rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
@@ -148,4 +210,5 @@ let compile rs =
   Array.iter (fun (i, _) -> init := add_node !init i) rs;
   let i = aux !init in
   assert (i = 0);
-  Array.init !counter (Hashtbl.find states_def)
+  ( Array.init !counter (Hashtbl.find states_def),
+    Array.map (compile_traces states) rs )

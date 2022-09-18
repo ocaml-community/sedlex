@@ -104,7 +104,7 @@ module StringMap = Map.Make (struct
   let compare = compare
 end)
 
-(* Aliases *)
+(* Lexeme aliases *)
 
 module StringSet = Set.Make (struct
   type t = string
@@ -197,22 +197,18 @@ let best_final final =
   !fin
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
-let matching_result = "__sedlex_matching_result"
-let matching_path = "__sedlex_matching_path"
+let trace_fun i = Printf.sprintf "__sedlex_trace_%i" i
 
 let call_state lexbuf auto state =
   let loc = default_loc in
   let trans, final = auto.(state) in
   if Array.length trans = 0 then (
     match best_final final with
-      | Some i -> [%expr [%e eint ~loc i], [%e evar ~loc matching_path]]
+      | Some i -> [%expr [%e eint ~loc i], __sedlex_path]
       | None -> assert false)
   else
     appfun (state_fun state)
-      [
-        [%expr [%e eint ~loc state] :: [%e evar ~loc matching_path]];
-        evar ~loc lexbuf;
-      ]
+      [[%expr [%e eint ~loc state] :: __sedlex_path]; evar ~loc lexbuf]
 
 let gen_state lexbuf auto i (trans, final) =
   let loc = default_loc in
@@ -233,17 +229,15 @@ let gen_state lexbuf auto i (trans, final) =
           case
             ~lhs:[%pat? _]
             ~guard:None
-            ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf], []];
+            ~rhs:
+              [%expr Sedlexing.backtrack [%e evar ~loc lexbuf], __sedlex_path];
         ])
   in
   let ret body =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:
-          (pexp_fun ~loc Nolabel None (pvar ~loc matching_path)
-             (pexp_function ~loc
-                [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]));
+        ~expr:[%expr fun __sedlex_path [%p pvar ~loc lexbuf] -> [%e body]];
     ]
   in
   match best_final final with
@@ -270,40 +264,159 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
+let gen_trace lexbuf traces i = function
+  | (_, []), _ -> []
+  | (_, aliases), { pexp_loc = loc; _ } ->
+      let trans, finals = traces.(i) in
+      let alias_indexes =
+        List.to_seq aliases
+        |> Seq.mapi (fun i alias -> (alias, i))
+        |> StringMap.of_seq
+      in
+      let find_index alias = StringMap.find alias alias_indexes in
+      let result_arrays =
+        [
+          value_binding ~loc
+            ~pat:[%pat? __sedlex_aliases_pos]
+            ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
+          value_binding ~loc
+            ~pat:[%pat? __sedlex_aliases_len]
+            ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
+        ]
+      in
+      let aux_fun =
+        let gen_start alias e =
+          let alias_index = find_index alias in
+          [%expr
+            __sedlex_aliases_len.([%e eint ~loc alias_index]) <-
+              __sedlex_aliases_pos.([%e eint ~loc alias_index]) - __sedlex_pos;
+            __sedlex_aliases_pos.([%e eint ~loc alias_index]) <- __sedlex_pos;
+            [%e e]]
+        in
+        let gen_stop alias e =
+          let alias_index = find_index alias in
+          [%expr
+            __sedlex_aliases_pos.([%e eint ~loc alias_index]) <- __sedlex_pos;
+            [%e e]]
+        in
+        let unreachable_case =
+          [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]]
+        in
+        let trans_cases =
+          List.map
+            (fun (curr, state, next, starts, stops) ->
+              let lhs =
+                if curr == -1 then [%pat? -1, _]
+                else ppat_tuple ~loc [pint ~loc curr; pint ~loc state]
+              in
+              let call_rest =
+                [%expr
+                  __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc next]
+                    __sedlex_rest]
+              in
+              let rhs =
+                call_rest
+                |> List.fold_right gen_start starts
+                |> List.fold_right gen_stop stops
+              in
+              case ~lhs ~guard:None ~rhs)
+            trans
+        in
+        let final_cases =
+          List.map
+            (fun (curr, starts, stops) ->
+              let lhs = pint ~loc curr in
+              let rhs =
+                [%expr ()]
+                |> List.fold_right gen_start starts
+                |> List.fold_right gen_stop stops
+              in
+              case ~lhs ~guard:None ~rhs)
+            finals
+        in
+        value_binding ~loc
+          ~pat:[%pat? __sedlex_aux]
+          ~expr:
+            [%expr
+              fun __sedlex_pos __sedlex_curr -> function
+                | [] ->
+                    [%e
+                      pexp_match ~loc [%expr __sedlex_curr]
+                        (final_cases @ unreachable_case)]
+                | __sedlex_state :: __sedlex_rest ->
+                    [%e
+                      pexp_match ~loc
+                        [%expr __sedlex_curr, __sedlex_state]
+                        (trans_cases @ unreachable_case)]]
+      in
+      [
+        value_binding ~loc
+          ~pat:(pvar ~loc (trace_fun i))
+          ~expr:
+            [%expr
+              fun [%p pvar ~loc lexbuf] __sedlex_path ->
+                [%e
+                  pexp_let ~loc Nonrecursive result_arrays
+                  @@ pexp_let ~loc Recursive [aux_fun]
+                  @@ [%expr
+                       __sedlex_aux
+                         (Sedlexing.lexeme_length [%e evar ~loc lexbuf] + 1)
+                         (-1) __sedlex_path;
+                       (__sedlex_aliases_pos, __sedlex_aliases_len)]]];
+      ]
+
+let gen_aliases lexbuf i e = function
+  | [] -> e
+  | aliases ->
+      let loc = e.pexp_loc in
+      pexp_let ~loc Nonrecursive
+        [
+          value_binding ~loc
+            ~pat:[%pat? __sedlex_aliases_pos, __sedlex_aliases_len]
+            ~expr:
+              (appfun (trace_fun i) [evar ~loc lexbuf; [%expr __sedlex_path]]);
+        ]
+      @@ pexp_let ~loc Nonrecursive
+           (List.mapi
+              (fun i alias ->
+                value_binding ~loc ~pat:(pvar ~loc alias)
+                  ~expr:
+                    [%expr
+                      __sedlex_aliases_pos.([%e eint ~loc i]),
+                        __sedlex_aliases_len.([%e eint ~loc i])])
+              aliases)
+      @@ e
+
 let gen_definition lexbuf l error =
   let loc = default_loc in
-  let brs = Array.of_list l in
-  let auto = Sedlex.compile (Array.map (fun ((x, _), _) -> x) brs) in
+  let brs =
+    Array.of_list
+      (List.map
+         (fun ((r, s), e) -> ((r, List.of_seq (StringSet.to_seq s)), e))
+         l)
+  in
+  let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
   let cases =
     Array.to_list
       (Array.mapi
          (fun i ((_, aliases), e) ->
-           let e =
-             if StringSet.is_empty aliases then e
-             else
-               [%expr
-                 let _ = 123 in
-                 [%e e]]
-           in
-           case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
+           case ~lhs:(pint ~loc i) ~guard:None
+             ~rhs:(gen_aliases lexbuf i e aliases))
          brs)
   in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  pexp_let ~loc (gen_recflag auto) states
-    (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
-       (pexp_let ~loc Nonrecursive
-          [
-            value_binding ~loc
-              ~pat:
-                (ppat_tuple ~loc
-                   [pvar ~loc matching_result; pvar ~loc matching_path])
-              ~expr:(appfun (state_fun 0) [[%expr [0]]; evar ~loc lexbuf]);
-          ]
-          (pexp_match ~loc
-             (evar ~loc matching_result)
-             (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))))
+  let traces = Array.mapi (gen_trace lexbuf traces) brs in
+  let traces = List.flatten (Array.to_list traces) in
+  pexp_let ~loc (gen_recflag auto) (states @ traces)
+  @@ [%expr
+       Sedlexing.start [%e evar ~loc lexbuf];
+       let __sedlex_result, __sedlex_path =
+         [%e appfun (state_fun 0) [[%expr [0]]; evar ~loc lexbuf]]
+       in
+       [%e
+         pexp_match ~loc [%expr __sedlex_result]
+           (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])]]
 
 (* Lexer specification parser *)
 
