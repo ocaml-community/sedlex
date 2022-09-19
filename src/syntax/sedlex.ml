@@ -140,13 +140,12 @@ let compile_traces states (start, final) =
       List.iter aux node.eps
   in
   aux start;
-  let final_idx = Hashtbl.find nodes_idx final in
   let handle_alias (starts, stops) = function
     | None -> (starts, stops)
     | Some (alias, flag) ->
         if flag then (alias :: starts, stops) else (starts, alias :: stops)
   in
-  let first_case = (-1, 0, final_idx, [], []) in
+  let first_case = (-1, 0, Hashtbl.find nodes_idx final, [], []) in
   let trans_cases =
     let visited = Array.make !counter false in
     let cases = Hashtbl.create 31 in

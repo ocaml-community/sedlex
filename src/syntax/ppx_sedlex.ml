@@ -106,8 +106,8 @@ end)
 
 (* Lexeme aliases *)
 
-module StringSet = Set.Make (struct
-  type t = string
+module StrLocSet = Set.Make (struct
+  type t = string loc
 
   let compare = compare
 end)
@@ -266,11 +266,12 @@ let gen_recflag auto =
 
 let gen_trace lexbuf traces i = function
   | (_, []), _ -> []
-  | (_, aliases), { pexp_loc = loc; _ } ->
+  | (_, aliases), _ ->
+      let loc = default_loc in
       let trans, finals = traces.(i) in
       let alias_indexes =
         List.to_seq aliases
-        |> Seq.mapi (fun i alias -> (alias, i))
+        |> Seq.mapi (fun i { txt = alias } -> (alias, i))
         |> StringMap.of_seq
       in
       let find_index alias = StringMap.find alias alias_indexes in
@@ -368,7 +369,7 @@ let gen_trace lexbuf traces i = function
 let gen_aliases lexbuf i e = function
   | [] -> e
   | aliases ->
-      let loc = e.pexp_loc in
+      let loc = default_loc in
       pexp_let ~loc Nonrecursive
         [
           value_binding ~loc
@@ -378,7 +379,7 @@ let gen_aliases lexbuf i e = function
         ]
       @@ pexp_let ~loc Nonrecursive
            (List.mapi
-              (fun i alias ->
+              (fun i { txt = alias; loc } ->
                 value_binding ~loc ~pat:(pvar ~loc alias)
                   ~expr:
                     [%expr
@@ -392,7 +393,7 @@ let gen_definition lexbuf l error =
   let brs =
     Array.of_list
       (List.map
-         (fun ((r, s), e) -> ((r, List.of_seq (StringSet.to_seq s)), e))
+         (fun ((r, s), e) -> ((r, List.of_seq (StrLocSet.to_seq s)), e))
          l)
   in
   let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
@@ -448,7 +449,7 @@ let regexp_of_pattern allow_alias env =
     match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
           match func (fst @@ aux p0) (fst @@ aux p1) with
-            | Some r -> (r, StringSet.empty)
+            | Some r -> (r, StrLocSet.empty)
             | None ->
                 err p.ppat_loc @@ "the " ^ name
                 ^ " operator can only applied to single-character length \
@@ -464,12 +465,12 @@ let regexp_of_pattern allow_alias env =
       | Ppat_or (p1, p2) ->
           let r1, s1 = aux ~allow_alias p1 in
           let r2, s2 = aux ~allow_alias p2 in
-          if not (StringSet.equal s1 s2) then begin
+          if not (StrLocSet.equal s1 s2) then begin
             let x =
-              try StringSet.choose (StringSet.diff s1 s2)
-              with Not_found -> StringSet.choose (StringSet.diff s2 s1)
+              try StrLocSet.choose (StrLocSet.diff s1 s2)
+              with Not_found -> StrLocSet.choose (StrLocSet.diff s2 s1)
             in
-            err loc @@ "variable " ^ x
+            err loc @@ "variable " ^ x.txt
             ^ " must occur on both sides of this | pattern"
           end;
           (Sedlex.alt r1 r2, s1)
@@ -477,17 +478,17 @@ let regexp_of_pattern allow_alias env =
           List.fold_left
             (fun (r1, s1) p ->
               let r2, s2 = aux ~allow_alias p in
-              if not (StringSet.disjoint s1 s2) then begin
-                let x = StringSet.choose (StringSet.inter s1 s2) in
-                err loc @@ "variable " ^ x
+              if not (StrLocSet.disjoint s1 s2) then begin
+                let x = StrLocSet.choose (StrLocSet.inter s1 s2) in
+                err loc @@ "variable " ^ x.txt
                 ^ " is bound several times in this matching"
               end;
-              (Sedlex.seq r1 r2, StringSet.union s1 s2))
+              (Sedlex.seq r1 r2, StrLocSet.union s1 s2))
             (aux ~allow_alias p) pl
       | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
-          (Sedlex.rep (fst @@ aux p), StringSet.empty)
+          (Sedlex.rep (fst @@ aux p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
-          (Sedlex.plus (fst @@ aux p), StringSet.empty)
+          (Sedlex.plus (fst @@ aux p), StrLocSet.empty)
       | Ppat_construct
           ( { txt = Lident "Rep" },
             Some
@@ -508,7 +509,7 @@ let regexp_of_pattern allow_alias env =
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
                 if 0 <= i1 && i1 <= i2 then
-                  (repeat (fst @@ aux p0) (i1, i2), StringSet.empty)
+                  (repeat (fst @@ aux p0) (i1, i2), StrLocSet.empty)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
@@ -516,12 +517,12 @@ let regexp_of_pattern allow_alias env =
       | Ppat_construct ({ txt = Lident "Rep" }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
       | Ppat_construct ({ txt = Lident "Opt" }, Some (_, p)) ->
-          (Sedlex.alt Sedlex.eps (fst @@ aux p), StringSet.empty)
+          (Sedlex.alt Sedlex.eps (fst @@ aux p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Compl" }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
                 match Sedlex.compl (fst @@ aux p0) with
-                  | Some r -> (r, StringSet.empty)
+                  | Some r -> (r, StrLocSet.empty)
                   | None ->
                       err p.ppat_loc
                         "the Compl operator can only applied to a \
@@ -547,43 +548,43 @@ let regexp_of_pattern allow_alias env =
                 for i = 0 to String.length s - 1 do
                   c := Cset.union !c (Cset.singleton (Char.code s.[i]))
                 done;
-                (Sedlex.chars !c, StringSet.empty)
+                (Sedlex.chars !c, StrLocSet.empty)
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
       | Ppat_interval (i_start, i_end) -> begin
           match (i_start, i_end) with
             | Pconst_char c1, Pconst_char c2 ->
                 ( Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2)),
-                  StringSet.empty )
+                  StrLocSet.empty )
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 ( Sedlex.chars
                     (Cset.interval
                        (codepoint (int_of_string i1))
                        (codepoint (int_of_string i2))),
-                  StringSet.empty )
+                  StrLocSet.empty )
             | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end
       | Ppat_constant const -> begin
           match const with
-            | Pconst_string (s, _, _) -> (regexp_for_string s, StringSet.empty)
-            | Pconst_char c -> (regexp_for_char c, StringSet.empty)
+            | Pconst_string (s, _, _) -> (regexp_for_string s, StrLocSet.empty)
+            | Pconst_char c -> (regexp_for_char c, StrLocSet.empty)
             | Pconst_integer (i, _) ->
                 ( Sedlex.chars (Cset.singleton (codepoint (int_of_string i))),
-                  StringSet.empty )
+                  StrLocSet.empty )
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end
       | Ppat_var { txt = x } -> begin
-          try (StringMap.find x env, StringSet.empty)
+          try (StringMap.find x env, StrLocSet.empty)
           with Not_found ->
             err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
-      | Ppat_alias (p, { txt = x }) when allow_alias ->
+      | Ppat_alias (p, ({ txt = x } as x_loc)) when allow_alias ->
           let r, s = aux ~allow_alias p in
-          if StringSet.mem x s then begin
+          if StrLocSet.mem x_loc s then begin
             err loc @@ "variable " ^ x
             ^ " is bound several times in this matching"
           end;
-          (Sedlex.alias r x, StringSet.add x s)
+          (Sedlex.alias r x, StrLocSet.add x_loc s)
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
   aux ~allow_alias
