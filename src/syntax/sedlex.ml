@@ -161,12 +161,13 @@ let compile_traces states (start, final) =
         let rec dfs start_stops node =
           let i = Hashtbl.find nodes_idx node in
           let starts, stops = handle_alias start_stops node.alias in
-          List.iter
-            (fun state ->
-              try ignore (Hashtbl.find cases (i, state))
-              with Not_found ->
-                Hashtbl.add cases (i, state) (i, state, j, starts, stops))
-            to_states;
+          if node.trans <> [] || node == final then
+            List.iter
+              (fun state ->
+                try ignore (Hashtbl.find cases (i, state))
+                with Not_found ->
+                  Hashtbl.add cases (i, state) (i, state, j, starts, stops))
+              to_states;
           List.iter (dfs (starts, stops)) node.eps
         in
         List.iter (fun (_, next) -> dfs ([], []) next) node.trans;
@@ -181,7 +182,10 @@ let compile_traces states (start, final) =
     let rec dfs start_stops cases node =
       let i = Hashtbl.find nodes_idx node in
       let starts, stops = handle_alias start_stops node.alias in
-      let cases = (i, starts, stops) :: cases in
+      let cases =
+        if node.trans <> [] || node == final then (i, starts, stops) :: cases
+        else cases
+      in
       List.fold_left (dfs (starts, stops)) cases node.eps
     in
     dfs ([], []) [] start
