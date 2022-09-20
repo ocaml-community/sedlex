@@ -136,8 +136,8 @@ let compile_traces states (start, final) =
       let i = !counter in
       incr counter;
       Hashtbl.add nodes_idx node i;
-      List.iter (fun (_, next) -> aux next) node.trans;
-      List.iter aux node.eps
+      List.iter aux node.eps;
+      List.iter (fun (_, next) -> aux next) node.trans
   in
   aux start;
   let handle_alias (starts, stops) = function
@@ -145,7 +145,7 @@ let compile_traces states (start, final) =
     | Some (alias, flag) ->
         if flag then (alias :: starts, stops) else (starts, alias :: stops)
   in
-  let first_case = (-1, 0, Hashtbl.find nodes_idx final, [], []) in
+  let first_node = Hashtbl.find nodes_idx final in
   let trans_cases =
     let visited = Array.make !counter false in
     let cases = Hashtbl.create 31 in
@@ -186,7 +186,7 @@ let compile_traces states (start, final) =
     in
     dfs ([], []) [] start
   in
-  (first_case :: trans_cases, final_cases)
+  (first_node, trans_cases, final_cases)
 
 let compile rs =
   let rs = Array.map compile_re rs in

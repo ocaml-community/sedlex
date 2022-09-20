@@ -109,7 +109,7 @@ end)
 module StrLocSet = Set.Make (struct
   type t = string loc
 
-  let compare = compare
+  let compare a b = compare a.txt b.txt
 end)
 
 let builtin_regexps =
@@ -230,7 +230,9 @@ let gen_state lexbuf auto i (trans, final) =
             ~lhs:[%pat? _]
             ~guard:None
             ~rhs:
-              [%expr Sedlexing.backtrack [%e evar ~loc lexbuf], __sedlex_path];
+              [%expr
+                Sedlexing.backtrack [%e evar ~loc lexbuf],
+                  __sedlex_tl __sedlex_path];
         ])
   in
   let ret body =
@@ -268,7 +270,7 @@ let gen_trace lexbuf traces i = function
   | (_, []), _ -> []
   | (_, aliases), _ ->
       let loc = default_loc in
-      let trans, finals = traces.(i) in
+      let initial, trans, finals = traces.(i) in
       let alias_indexes =
         List.to_seq aliases
         |> Seq.mapi (fun i { txt = alias } -> (alias, i))
@@ -306,10 +308,7 @@ let gen_trace lexbuf traces i = function
         let trans_cases =
           List.map
             (fun (curr, state, next, starts, stops) ->
-              let lhs =
-                if curr == -1 then [%pat? -1, _]
-                else ppat_tuple ~loc [pint ~loc curr; pint ~loc state]
-              in
+              let lhs = ppat_tuple ~loc [pint ~loc curr; pint ~loc state] in
               let call_rest =
                 [%expr
                   __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc next]
@@ -361,8 +360,8 @@ let gen_trace lexbuf traces i = function
                   @@ pexp_let ~loc Recursive [aux_fun]
                   @@ [%expr
                        __sedlex_aux
-                         (Sedlexing.lexeme_length [%e evar ~loc lexbuf] + 1)
-                         (-1) __sedlex_path;
+                         (Sedlexing.lexeme_length [%e evar ~loc lexbuf])
+                         [%e eint ~loc initial] __sedlex_path;
                        (__sedlex_aliases_pos, __sedlex_aliases_len)]]];
       ]
 
@@ -668,9 +667,13 @@ let mapper =
         let l, regexps' = sub#structure_with_regexps (!previous @ l) in
         let parts = List.map partition (get_partitions ()) in
         let tables = List.map table (get_tables ()) in
+        let funcs =
+          let loc = default_loc in
+          [%str let __sedlex_tl = function _ :: tl -> tl | _ -> assert false]
+        in
         regexps := regexps';
         should_set_cookies := true;
-        tables @ parts @ l)
+        funcs @ tables @ parts @ l)
       else fst (this#structure_with_regexps l)
   end
 
