@@ -1,7 +1,7 @@
 (* This test that unicode_old.ml is a strict sub-set of 
  * new unicode.ml. *)
 
-let test_versions = ("13.0.0", "14.0.0")
+let test_versions = ("14.0.0", "15.0.0")
 let regressions = []
 let interval s e = Array.to_list (Array.init (e - s) (fun pos -> s + pos))
 
