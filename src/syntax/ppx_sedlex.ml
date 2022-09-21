@@ -447,7 +447,7 @@ let regexp_of_pattern allow_alias env =
     (* Construct something like Sub(a,b) *)
     match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
-          match func (fst @@ aux p0) (fst @@ aux p1) with
+          match func (fst @@ aux false p0) (fst @@ aux false p1) with
             | Some r -> (r, StrLocSet.empty)
             | None ->
                 err p.ppat_loc @@ "the " ^ name
@@ -457,13 +457,13 @@ let regexp_of_pattern allow_alias env =
       | _ ->
           err p.ppat_loc @@ "the " ^ name
           ^ " operator requires two arguments, like " ^ name ^ "(a,b)"
-  and aux ?(allow_alias = false) p =
+  and aux allow_alias p =
     let loc = p.ppat_loc in
     (* interpret one pattern node *)
     match p.ppat_desc with
       | Ppat_or (p1, p2) ->
-          let r1, s1 = aux ~allow_alias p1 in
-          let r2, s2 = aux ~allow_alias p2 in
+          let r1, s1 = aux allow_alias p1 in
+          let r2, s2 = aux allow_alias p2 in
           if not (StrLocSet.equal s1 s2) then begin
             let x =
               try StrLocSet.choose (StrLocSet.diff s1 s2)
@@ -476,18 +476,18 @@ let regexp_of_pattern allow_alias env =
       | Ppat_tuple (p :: pl) ->
           List.fold_left
             (fun (r1, s1) p ->
-              let r2, s2 = aux ~allow_alias p in
+              let r2, s2 = aux allow_alias p in
               if not (StrLocSet.disjoint s1 s2) then begin
                 let x = StrLocSet.choose (StrLocSet.inter s1 s2) in
                 err loc @@ "variable " ^ x.txt
                 ^ " is bound several times in this matching"
               end;
               (Sedlex.seq r1 r2, StrLocSet.union s1 s2))
-            (aux ~allow_alias p) pl
+            (aux allow_alias p) pl
       | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
-          (Sedlex.rep (fst @@ aux p), StrLocSet.empty)
+          (Sedlex.rep (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
-          (Sedlex.plus (fst @@ aux p), StrLocSet.empty)
+          (Sedlex.plus (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct
           ( { txt = Lident "Rep" },
             Some
@@ -508,7 +508,7 @@ let regexp_of_pattern allow_alias env =
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
                 if 0 <= i1 && i1 <= i2 then
-                  (repeat (fst @@ aux p0) (i1, i2), StrLocSet.empty)
+                  (repeat (fst @@ aux false p0) (i1, i2), StrLocSet.empty)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
@@ -516,11 +516,11 @@ let regexp_of_pattern allow_alias env =
       | Ppat_construct ({ txt = Lident "Rep" }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
       | Ppat_construct ({ txt = Lident "Opt" }, Some (_, p)) ->
-          (Sedlex.alt Sedlex.eps (fst @@ aux p), StrLocSet.empty)
+          (Sedlex.alt Sedlex.eps (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Compl" }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
-                match Sedlex.compl (fst @@ aux p0) with
+                match Sedlex.compl (fst @@ aux false p0) with
                   | Some r -> (r, StrLocSet.empty)
                   | None ->
                       err p.ppat_loc
@@ -578,7 +578,7 @@ let regexp_of_pattern allow_alias env =
             err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
       | Ppat_alias (p, ({ txt = x } as x_loc)) when allow_alias ->
-          let r, s = aux ~allow_alias p in
+          let r, s = aux allow_alias p in
           if StrLocSet.mem x_loc s then begin
             err loc @@ "variable " ^ x
             ^ " is bound several times in this matching"
@@ -586,7 +586,7 @@ let regexp_of_pattern allow_alias env =
           (Sedlex.alias r x, StrLocSet.add x_loc s)
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
-  aux ~allow_alias
+  aux allow_alias
 
 let previous = ref []
 let regexps = ref []
