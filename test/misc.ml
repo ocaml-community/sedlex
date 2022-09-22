@@ -30,7 +30,7 @@ let rec token buf =
         Printf.printf "8. %s: %s\n" (lex buf) (sub s);
         token buf
     | (Plus "a" as a), (Plus "b" as b), "c" ->
-        Printf.printf "8. %s: %s %s\n" (lex buf) (sub a) (sub b);
+        Printf.printf "9. %s: %s %s\n" (lex buf) (sub a) (sub b);
         token buf
     (* {Others} *)
     | Plus xml_blank -> token buf
@@ -38,7 +38,7 @@ let rec token buf =
     | eof -> print_endline "EOF"
     | _ -> failwith "Unexpected character"
 
-let () =
+let%expect_test _ =
   let lexbuf =
     Sedlexing.Latin1.from_string
       {|
@@ -55,4 +55,21 @@ let () =
         aaaabbbc
       |}
   in
-  token lexbuf
+  token lexbuf;
+
+  [%expect
+    {|
+    1. abcd: a ab abc abcd
+    2. dcba: a ba cba dcba
+    3. ab: a b ab b
+    3. ba: a b ba a
+    4. ababababab: ab abababab
+    5. cdcdcdcdcd: dcdcdcdc
+    6. dcdc:  dcdc
+    6. dcdcdcdc: dcdc dcdc
+    7. dc: dc
+    8. abc: abc
+    8. def: def
+    9. aaaabbbc: aaaa bbb
+    EOF
+    |}]

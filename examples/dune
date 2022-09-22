@@ -1,13 +1,5 @@
 (executables
- (names
-  tokenizer
-  regressions
-  complement
-  subtraction
-  repeat
-  performance
-  number_lexer
-  misc)
+ (names tokenizer regressions complement subtraction repeat performance)
  (libraries sedlex sedlex_ppx)
  (preprocess
   (pps sedlex.ppx))
@@ -52,19 +44,5 @@
  (alias runtest)
  (deps
   (:< performance.exe))
- (action
-  (run %{<})))
-
-(rule
- (alias runtest)
- (deps
-  (:< number_lexer.exe))
- (action
-  (run %{<})))
-
-(rule
- (alias runtest)
- (deps
-  (:< misc.exe))
  (action
   (run %{<})))

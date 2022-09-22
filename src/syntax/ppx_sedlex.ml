@@ -204,7 +204,8 @@ let call_state lexbuf auto state =
   let trans, final = auto.(state) in
   if Array.length trans = 0 then (
     match best_final final with
-      | Some i -> [%expr [%e eint ~loc i], __sedlex_path]
+      | Some i ->
+          [%expr [%e eint ~loc i], [%e eint ~loc state] :: __sedlex_path]
       | None -> assert false)
   else
     appfun (state_fun state)
@@ -298,16 +299,23 @@ let gen_trace lexbuf traces i = function
             [%e e]]
         in
         let unreachable_case =
-          [case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]]
+          case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]
         in
         let trans_cases =
           List.map
-            (fun (curr, state, next, starts, stops) ->
-              let lhs = ppat_tuple ~loc [pint ~loc curr; pint ~loc state] in
+            (fun (curr_state, curr_node, prev_state, prev_node, starts, stops) ->
+              let lhs =
+                ppat_tuple ~loc
+                  [
+                    pint ~loc curr_state;
+                    pint ~loc curr_node;
+                    pint ~loc prev_state;
+                  ]
+              in
               let call_rest =
                 [%expr
-                  __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc next]
-                    __sedlex_rest]
+                  __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
+                    [%e eint ~loc prev_node] __sedlex_rest]
               in
               let rhs =
                 call_rest
@@ -333,16 +341,20 @@ let gen_trace lexbuf traces i = function
           ~pat:[%pat? __sedlex_aux]
           ~expr:
             [%expr
-              fun __sedlex_pos __sedlex_curr -> function
+              fun __sedlex_pos __sedlex_curr_state __sedlex_curr_node ->
+                function
                 | [] ->
                     [%e
-                      pexp_match ~loc [%expr __sedlex_curr]
-                        (final_cases @ unreachable_case)]
-                | __sedlex_state :: __sedlex_rest ->
+                      pexp_match ~loc [%expr __sedlex_curr_node]
+                        (final_cases @ [unreachable_case])]
+                | __sedlex_prev_state :: __sedlex_rest ->
                     [%e
                       pexp_match ~loc
-                        [%expr __sedlex_curr, __sedlex_state]
-                        (trans_cases @ unreachable_case)]]
+                        [%expr
+                          __sedlex_curr_state,
+                            __sedlex_curr_node,
+                            __sedlex_prev_state]
+                        (trans_cases @ [unreachable_case])]]
       in
       [
         value_binding ~loc
@@ -354,9 +366,13 @@ let gen_trace lexbuf traces i = function
                   pexp_let ~loc Nonrecursive result_arrays
                   @@ pexp_let ~loc Recursive [aux_fun]
                   @@ [%expr
-                       __sedlex_aux
-                         (Sedlexing.lexeme_length [%e evar ~loc lexbuf])
-                         [%e eint ~loc initial] __sedlex_path;
+                       (match __sedlex_path with
+                         | __sedlex_curr_state :: __sedlex_rest ->
+                             __sedlex_aux
+                               (Sedlexing.lexeme_length [%e evar ~loc lexbuf])
+                               __sedlex_curr_state [%e eint ~loc initial]
+                               __sedlex_rest
+                         | _ -> assert false);
                        (__sedlex_aliases_starts, __sedlex_aliases_stops)]]];
       ]
 

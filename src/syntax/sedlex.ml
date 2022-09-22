@@ -147,45 +147,41 @@ let compile_traces states (start, final) =
   in
   let first_node = Hashtbl.find nodes_idx final in
   let trans_cases =
-    let visited = Array.make !counter false in
     let cases = Hashtbl.create 31 in
-    let rec traverse node =
-      let j = Hashtbl.find nodes_idx node in
-      if not visited.(j) then begin
-        visited.(j) <- true;
-        let to_states =
-          Hashtbl.fold
-            (fun state i acc -> if List.mem node state then i :: acc else acc)
-            states []
-        in
-        let rec dfs start_stops node =
-          let i = Hashtbl.find nodes_idx node in
-          let starts, stops = handle_alias start_stops node.alias in
-          if node.trans <> [] || node == final then
+    Hashtbl.iter
+      (fun from_state j ->
+        Hashtbl.iter
+          (fun to_state i ->
             List.iter
-              (fun state ->
-                try ignore (Hashtbl.find cases (i, state))
-                with Not_found ->
-                  Hashtbl.add cases (i, state) (i, state, j, starts, stops))
-              to_states;
-          List.iter (dfs (starts, stops)) node.eps
-        in
-        List.iter (fun (_, next) -> dfs ([], []) next) node.trans;
-        List.iter traverse node.eps;
-        List.iter (fun (_, next) -> traverse next) node.trans
-      end
-    in
-    traverse start;
-    Hashtbl.to_seq cases |> Seq.map snd |> List.of_seq
+              (fun from_node ->
+                try
+                  let node_j = Hashtbl.find nodes_idx from_node in
+                  let rec dfs start_stops to_node =
+                    let node_i = Hashtbl.find nodes_idx to_node in
+                    try ignore (Hashtbl.find cases (i, node_i, j))
+                    with Not_found ->
+                      let starts, stops =
+                        handle_alias start_stops to_node.alias
+                      in
+                      Hashtbl.add cases (i, node_i, j)
+                        (i, node_i, j, node_j, starts, stops);
+                      List.iter (dfs (starts, stops)) to_node.eps
+                  in
+                  List.iter
+                    (fun (_, to_node) ->
+                      if List.mem to_node to_state then dfs ([], []) to_node)
+                    from_node.trans
+                with Not_found -> ())
+              from_state)
+          states)
+      states;
+    Hashtbl.to_seq_values cases |> List.of_seq
   in
   let final_cases =
     let rec dfs start_stops cases node =
       let i = Hashtbl.find nodes_idx node in
       let starts, stops = handle_alias start_stops node.alias in
-      let cases =
-        if node.trans <> [] || node == final then (i, starts, stops) :: cases
-        else cases
-      in
+      let cases = (i, starts, stops) :: cases in
       List.fold_left (dfs (starts, stops)) cases node.eps
     in
     dfs ([], []) [] start

@@ -61,7 +61,7 @@ let rec token buf =
     | eof -> print_endline "EOF"
     | _ -> failwith "Unexpected character"
 
-let () =
+let%expect_test _ =
   let lexbuf =
     Sedlexing.Latin1.from_string
       {|
@@ -90,4 +90,32 @@ let () =
         -0b10-11i
       |}
   in
-  token lexbuf
+  token lexbuf;
+
+  [%expect
+    {|
+    Dec 123
+    Dec +123
+    Dec -123
+    Bin 01010101
+    Bin -11110000
+    Bin +11111111
+    Oct 12345670
+    Oct +76543210
+    Oct -17263540
+    Hex 123abcdef
+    Hex -456DEFabc
+    Hex +789ABCdef
+    Dec 123/456
+    Dec -456/789
+    Dec +987/654
+    Oct 777/100
+    Oct +200/666
+    Dec 1+1i
+    Dec 1-1i
+    Hex 1f+2ei
+    Hex +1f-2ei
+    Bin 10+11i
+    Bin -10-11i
+    EOF
+    |}]

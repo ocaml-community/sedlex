@@ -161,13 +161,13 @@ let mark lexbuf i path =
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
   lexbuf.marked_val <- i;
-  lexbuf.marked_path <- List.tl path
+  lexbuf.marked_path <- path
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
   lexbuf.start_bol <- lexbuf.curr_bol;
   lexbuf.start_line <- lexbuf.curr_line;
-  mark lexbuf (-1) [0]
+  mark lexbuf (-1) []
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
