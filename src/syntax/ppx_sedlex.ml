@@ -277,10 +277,10 @@ let gen_trace lexbuf traces i = function
       let result_arrays =
         [
           value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_pos]
+            ~pat:[%pat? __sedlex_aliases_starts]
             ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
           value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_len]
+            ~pat:[%pat? __sedlex_aliases_stops]
             ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
         ]
       in
@@ -288,15 +288,13 @@ let gen_trace lexbuf traces i = function
         let gen_start alias e =
           let alias_index = find_index alias in
           [%expr
-            __sedlex_aliases_len.([%e eint ~loc alias_index]) <-
-              __sedlex_aliases_pos.([%e eint ~loc alias_index]) - __sedlex_pos;
-            __sedlex_aliases_pos.([%e eint ~loc alias_index]) <- __sedlex_pos;
+            __sedlex_aliases_starts.([%e eint ~loc alias_index]) <- __sedlex_pos;
             [%e e]]
         in
         let gen_stop alias e =
           let alias_index = find_index alias in
           [%expr
-            __sedlex_aliases_pos.([%e eint ~loc alias_index]) <- __sedlex_pos;
+            __sedlex_aliases_stops.([%e eint ~loc alias_index]) <- __sedlex_pos;
             [%e e]]
         in
         let unreachable_case =
@@ -359,7 +357,7 @@ let gen_trace lexbuf traces i = function
                        __sedlex_aux
                          (Sedlexing.lexeme_length [%e evar ~loc lexbuf])
                          [%e eint ~loc initial] __sedlex_path;
-                       (__sedlex_aliases_pos, __sedlex_aliases_len)]]];
+                       (__sedlex_aliases_starts, __sedlex_aliases_stops)]]];
       ]
 
 let gen_aliases lexbuf i e = function
@@ -369,7 +367,7 @@ let gen_aliases lexbuf i e = function
       pexp_let ~loc Nonrecursive
         [
           value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_pos, __sedlex_aliases_len]
+            ~pat:[%pat? __sedlex_aliases_starts, __sedlex_aliases_stops]
             ~expr:
               (appfun (trace_fun i) [evar ~loc lexbuf; [%expr __sedlex_path]]);
         ]
@@ -379,8 +377,9 @@ let gen_aliases lexbuf i e = function
                 value_binding ~loc ~pat:(pvar ~loc alias)
                   ~expr:
                     [%expr
-                      __sedlex_aliases_pos.([%e eint ~loc i]),
-                        __sedlex_aliases_len.([%e eint ~loc i])])
+                      __sedlex_aliases_starts.([%e eint ~loc i]),
+                        __sedlex_aliases_stops.([%e eint ~loc i])
+                        - __sedlex_aliases_starts.([%e eint ~loc i])])
               aliases)
       @@ e
 
