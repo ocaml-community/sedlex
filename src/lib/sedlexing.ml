@@ -36,6 +36,7 @@ type lexbuf = {
   mutable marked_bol : int;
   mutable marked_line : int;
   mutable marked_val : int;
+  mutable marked_path : int list;
   mutable filename : string;
   mutable finished : bool;
 }
@@ -58,6 +59,7 @@ let empty_lexbuf =
     marked_bol = 0;
     marked_line = 0;
     marked_val = 0;
+    marked_path = [];
     filename = "";
     finished = false;
   }
@@ -154,23 +156,24 @@ let __private__next_int lexbuf : int =
     Uchar.to_int ret
   end
 
-let mark lexbuf i =
+let mark lexbuf i path =
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
-  lexbuf.marked_val <- i
+  lexbuf.marked_val <- i;
+  lexbuf.marked_path <- List.tl path
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
   lexbuf.start_bol <- lexbuf.curr_bol;
   lexbuf.start_line <- lexbuf.curr_line;
-  mark lexbuf (-1)
+  mark lexbuf (-1) [0]
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.curr_bol <- lexbuf.marked_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
-  lexbuf.marked_val
+  (lexbuf.marked_val, lexbuf.marked_path)
 
 let rollback lexbuf =
   lexbuf.pos <- lexbuf.start_pos;

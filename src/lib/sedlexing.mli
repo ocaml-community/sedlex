@@ -156,14 +156,14 @@ val next : lexbuf -> Uchar.t option
     API and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
 
-(** [mark lexbuf i] stores the integer [i] in the internal
-    slot. The backtrack position is set to the current position. *)
-val mark : lexbuf -> int -> unit
+(** [mark lexbuf i path] stores the integer [i] and the list [path] in the
+    internal slot. The backtrack position is set to the current position. *)
+val mark : lexbuf -> int -> int list -> unit
 
-(** [backtrack lexbuf] returns the value stored in the
+(** [backtrack lexbuf] returns the value and path stored in the
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
-val backtrack : lexbuf -> int
+val backtrack : lexbuf -> int * int list
 
 (** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf,
     returns a generator of tokens annotated with positions.

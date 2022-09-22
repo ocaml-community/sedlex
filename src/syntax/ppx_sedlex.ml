@@ -229,10 +229,7 @@ let gen_state lexbuf auto i (trans, final) =
           case
             ~lhs:[%pat? _]
             ~guard:None
-            ~rhs:
-              [%expr
-                Sedlexing.backtrack [%e evar ~loc lexbuf],
-                  __sedlex_tl __sedlex_path];
+            ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]];
         ])
   in
   let ret body =
@@ -248,7 +245,7 @@ let gen_state lexbuf auto i (trans, final) =
     | Some i ->
         ret
           [%expr
-            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i];
+            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i] __sedlex_path;
             [%e body ()]]
 
 let gen_recflag auto =
@@ -665,13 +662,9 @@ let mapper =
         let l, regexps' = sub#structure_with_regexps (!previous @ l) in
         let parts = List.map partition (get_partitions ()) in
         let tables = List.map table (get_tables ()) in
-        let funcs =
-          let loc = default_loc in
-          [%str let __sedlex_tl = function _ :: tl -> tl | _ -> assert false]
-        in
         regexps := regexps';
         should_set_cookies := true;
-        funcs @ tables @ parts @ l)
+        tables @ parts @ l)
       else fst (this#structure_with_regexps l)
   end
 
