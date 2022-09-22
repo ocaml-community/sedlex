@@ -391,9 +391,7 @@ let gen_definition lexbuf l error =
   let loc = default_loc in
   let brs =
     Array.of_list
-      (List.map
-         (fun ((r, s), e) -> ((r, List.of_seq (StrLocSet.to_seq s)), e))
-         l)
+      (List.map (fun ((r, s), e) -> ((r, StrLocSet.elements s), e)) l)
   in
   let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
   let cases =
