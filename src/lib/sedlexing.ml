@@ -192,6 +192,7 @@ let lexeme lexbuf =
   Array.sub lexbuf.buf lexbuf.start_pos (lexbuf.pos - lexbuf.start_pos)
 
 let lexeme_char lexbuf pos = lexbuf.buf.(lexbuf.start_pos + pos)
+let lexeme_code lexbuf pos = Uchar.to_int lexbuf.buf.(lexbuf.start_pos + pos)
 
 let lexing_positions lexbuf =
   let start_p =

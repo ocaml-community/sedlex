@@ -127,6 +127,20 @@ let transition (state : state) =
   Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
   t
 
+(* Restore NFA path from DFA path *)
+
+type trans_case = {
+  curr_state : int;
+  curr_node : int;
+  prev_state : int;
+  prev_node : int;
+  char_set : Sedlex_cset.t;
+  starts : string list;
+  stops : string list;
+}
+
+type final_case = { curr_node : int; starts : string list; stops : string list }
+
 let compile_traces states (start, final) =
   let counter = ref 0 in
   let nodes_idx = Hashtbl.create 31 in
@@ -156,20 +170,29 @@ let compile_traces states (start, final) =
               (fun from_node ->
                 try
                   let node_j = Hashtbl.find nodes_idx from_node in
-                  let rec dfs start_stops to_node =
+                  let rec dfs cset start_stops to_node =
                     let node_i = Hashtbl.find nodes_idx to_node in
-                    try ignore (Hashtbl.find cases (i, node_i, j))
+                    try ignore (Hashtbl.find cases (i, node_i, j, cset))
                     with Not_found ->
                       let starts, stops =
                         handle_alias start_stops to_node.alias
                       in
-                      Hashtbl.add cases (i, node_i, j)
-                        (i, node_i, j, node_j, starts, stops);
-                      List.iter (dfs (starts, stops)) to_node.eps
+                      Hashtbl.add cases (i, node_i, j, cset)
+                        {
+                          curr_state = i;
+                          curr_node = node_i;
+                          prev_state = j;
+                          prev_node = node_j;
+                          char_set = cset;
+                          starts;
+                          stops;
+                        };
+                      List.iter (dfs cset (starts, stops)) to_node.eps
                   in
                   List.iter
-                    (fun (_, to_node) ->
-                      if List.mem to_node to_state then dfs ([], []) to_node)
+                    (fun (cset, to_node) ->
+                      if List.mem to_node to_state then
+                        dfs cset ([], []) to_node)
                     from_node.trans
                 with Not_found -> ())
               from_state)
@@ -181,7 +204,7 @@ let compile_traces states (start, final) =
     let rec dfs start_stops cases node =
       let i = Hashtbl.find nodes_idx node in
       let starts, stops = handle_alias start_stops node.alias in
-      let cases = (i, starts, stops) :: cases in
+      let cases = { curr_node = i; starts; stops } :: cases in
       List.fold_left (dfs (starts, stops)) cases node.eps
     in
     dfs ([], []) [] start

@@ -114,6 +114,10 @@ val lexeme : lexbuf -> Uchar.t array
         the matched string. *)
 val lexeme_char : lexbuf -> int -> Uchar.t
 
+(** [Sedlexing.lexeme_code lexbuf pos] returns code point number [pos] in
+        the matched string. *)
+val lexeme_code : lexbuf -> int -> int
+
 (** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
 val sub_lexeme : lexbuf -> int -> int -> Uchar.t array

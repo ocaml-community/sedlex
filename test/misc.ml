@@ -32,6 +32,10 @@ let rec token buf =
     | (Plus "a" as a), (Plus "b" as b), "c" ->
         Printf.printf "9. %s: %s %s\n" (lex buf) (sub a) (sub b);
         token buf
+    | (Star "a" as a), (Plus "b" as b), "e"
+    | (Plus "a" as b), (Plus "b" as a), "d" ->
+        Printf.printf "10. %s: %s %s\n" (lex buf) (sub a) (sub b);
+        token buf
     (* {Others} *)
     | Plus xml_blank -> token buf
     | 128 .. 255 -> print_endline "Non ASCII"
@@ -53,6 +57,8 @@ let%expect_test _ =
         abc
         def
         aaaabbbc
+        aaaabbbbd
+        aaaabbbbe
       |}
   in
   token lexbuf;
@@ -71,5 +77,7 @@ let%expect_test _ =
     8. abc: abc
     8. def: def
     9. aaaabbbc: aaaa bbb
+    10. aaaabbbbd: bbbb aaaa
+    10. aaaabbbbe: aaaa bbbb
     EOF
     |}]

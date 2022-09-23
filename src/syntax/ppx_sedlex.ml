@@ -264,6 +264,19 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
+let gen_cset ~loc x char_set =
+  let interval a b =
+    [%expr
+      [%e eint ~loc a] <= [%e evar ~loc x]
+      && [%e evar ~loc x] <= [%e eint ~loc b]]
+  in
+  match char_set with
+    | (a, b) :: l ->
+        List.fold_left
+          (fun acc (a, b) -> [%expr [%e acc] || [%e interval a b]])
+          (interval a b) l
+    | [] -> assert false
+
 let gen_trace lexbuf traces i = function
   | (_, []), _ -> []
   | (_, aliases), _ ->
@@ -303,7 +316,15 @@ let gen_trace lexbuf traces i = function
         in
         let trans_cases =
           List.map
-            (fun (curr_state, curr_node, prev_state, prev_node, starts, stops) ->
+            (fun {
+                   Sedlex.curr_state;
+                   curr_node;
+                   prev_state;
+                   prev_node;
+                   char_set;
+                   starts;
+                   stops;
+                 } ->
               let lhs =
                 ppat_tuple ~loc
                   [
@@ -312,23 +333,24 @@ let gen_trace lexbuf traces i = function
                     pint ~loc prev_state;
                   ]
               in
-              let call_rest =
-                [%expr
-                  __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
-                    [%e eint ~loc prev_node] __sedlex_rest]
-              in
+              let guard = Some (gen_cset ~loc "__sedlex_code" char_set) in
               let rhs =
+                let call_rest =
+                  [%expr
+                    __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
+                      [%e eint ~loc prev_node] __sedlex_rest]
+                in
                 call_rest
                 |> List.fold_right gen_start starts
                 |> List.fold_right gen_stop stops
               in
-              case ~lhs ~guard:None ~rhs)
+              case ~lhs ~guard ~rhs)
             trans
         in
         let final_cases =
           List.map
-            (fun (curr, starts, stops) ->
-              let lhs = pint ~loc curr in
+            (fun { Sedlex.curr_node; starts; stops } ->
+              let lhs = pint ~loc curr_node in
               let rhs =
                 [%expr ()]
                 |> List.fold_right gen_start starts
@@ -348,6 +370,10 @@ let gen_trace lexbuf traces i = function
                       pexp_match ~loc [%expr __sedlex_curr_node]
                         (final_cases @ [unreachable_case])]
                 | __sedlex_prev_state :: __sedlex_rest ->
+                    let __sedlex_code =
+                      Sedlexing.lexeme_code [%e evar ~loc lexbuf]
+                        (__sedlex_pos - 1)
+                    in
                     [%e
                       pexp_match ~loc
                         [%expr

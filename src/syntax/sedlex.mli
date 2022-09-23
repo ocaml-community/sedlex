@@ -23,10 +23,19 @@ val intersection : regexp -> regexp -> regexp option
 (* If each argument is a single [chars] regexp, returns a regexp
    which matches the intersection set.  Otherwise returns [None]. *)
 
+type trans_case = {
+  curr_state : int;
+  curr_node : int;
+  prev_state : int;
+  prev_node : int;
+  char_set : Sedlex_cset.t;
+  starts : string list;
+  stops : string list;
+}
+
+type final_case = { curr_node : int; starts : string list; stops : string list }
+
 val compile :
   regexp array ->
   ((Sedlex_cset.t * int) array * bool array) array
-  * (int
-    * (int * int * int * int * string list * string list) list
-    * (int * string list * string list) list)
-    array
+  * (int * trans_case list * final_case list) array
