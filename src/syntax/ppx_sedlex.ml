@@ -333,7 +333,11 @@ let gen_trace lexbuf traces i = function
                     pint ~loc prev_state;
                   ]
               in
-              let guard = Some (gen_cset ~loc "__sedlex_code" char_set) in
+              let guard =
+                match char_set with
+                  | [] -> None
+                  | _ -> Some (gen_cset ~loc "__sedlex_code" char_set)
+              in
               let rhs =
                 let call_rest =
                   [%expr
