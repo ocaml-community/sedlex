@@ -315,6 +315,15 @@ let gen_trace lexbuf traces i = function
           case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]
         in
         let trans_cases =
+          let case_cnt = Hashtbl.create (List.length trans) in
+          List.iter
+            (fun { Sedlex.curr_state; curr_node; prev_state; _ } ->
+              let key = (curr_state, curr_node, prev_state) in
+              try
+                let cnt = Hashtbl.find case_cnt key in
+                Hashtbl.add case_cnt key (cnt + 1)
+              with Not_found -> Hashtbl.add case_cnt key 1)
+            trans;
           List.map
             (fun {
                    Sedlex.curr_state;
@@ -334,9 +343,9 @@ let gen_trace lexbuf traces i = function
                   ]
               in
               let guard =
-                match char_set with
-                  | [] -> None
-                  | _ -> Some (gen_cset ~loc "__sedlex_code" char_set)
+                if Hashtbl.find case_cnt (curr_state, curr_node, prev_state) = 1
+                then None
+                else Some (gen_cset ~loc "__sedlex_code" char_set)
               in
               let rhs =
                 let call_rest =

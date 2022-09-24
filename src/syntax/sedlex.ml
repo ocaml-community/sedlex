@@ -177,16 +177,17 @@ let compile_traces states (start, final) =
                       let starts, stops =
                         handle_alias start_stops to_node.alias
                       in
-                      Hashtbl.add cases (i, node_i, j, cset)
-                        {
-                          curr_state = i;
-                          curr_node = node_i;
-                          prev_state = j;
-                          prev_node = node_j;
-                          char_set = cset;
-                          starts;
-                          stops;
-                        };
+                      if to_node.trans <> [] || to_node == final then
+                        Hashtbl.add cases (i, node_i, j, cset)
+                          {
+                            curr_state = i;
+                            curr_node = node_i;
+                            prev_state = j;
+                            prev_node = node_j;
+                            char_set = cset;
+                            starts;
+                            stops;
+                          };
                       List.iter (dfs cset (starts, stops)) to_node.eps
                   in
                   List.iter
@@ -204,7 +205,11 @@ let compile_traces states (start, final) =
     let rec dfs start_stops cases node =
       let i = Hashtbl.find nodes_idx node in
       let starts, stops = handle_alias start_stops node.alias in
-      let cases = { curr_node = i; starts; stops } :: cases in
+      let cases =
+        if node.trans <> [] || node == final then
+          { curr_node = i; starts; stops } :: cases
+        else cases
+      in
       List.fold_left (dfs (starts, stops)) cases node.eps
     in
     dfs ([], []) [] start
