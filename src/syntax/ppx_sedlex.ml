@@ -315,14 +315,14 @@ let gen_trace lexbuf traces i = function
           case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]
         in
         let trans_cases =
-          let case_cnt = Hashtbl.create (List.length trans) in
+          let dup_case = Hashtbl.create (List.length trans) in
           List.iter
             (fun { Sedlex.curr_state; curr_node; prev_state; _ } ->
               let key = (curr_state, curr_node, prev_state) in
               try
-                let cnt = Hashtbl.find case_cnt key in
-                Hashtbl.add case_cnt key (cnt + 1)
-              with Not_found -> Hashtbl.add case_cnt key 1)
+                ignore (Hashtbl.find dup_case key);
+                Hashtbl.add dup_case key false
+              with Not_found -> Hashtbl.add dup_case key true)
             trans;
           List.map
             (fun {
@@ -343,7 +343,7 @@ let gen_trace lexbuf traces i = function
                   ]
               in
               let guard =
-                if Hashtbl.find case_cnt (curr_state, curr_node, prev_state) = 1
+                if Hashtbl.find dup_case (curr_state, curr_node, prev_state)
                 then None
                 else Some (gen_cset ~loc "__sedlex_code" char_set)
               in
