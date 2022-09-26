@@ -646,7 +646,9 @@ let regexp_of_pattern allow_alias env =
           with Not_found ->
             err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
-      | Ppat_alias (p, ({ txt = x } as x_loc)) when allow_alias ->
+      | Ppat_alias (_, { loc }) when not allow_alias ->
+          err loc @@ "alias is not allowed inside constructors"
+      | Ppat_alias (p, ({ txt = x } as x_loc)) ->
           let r, s = aux allow_alias p in
           if StrLocSet.mem x_loc s then begin
             err loc @@ "variable " ^ x
