@@ -264,6 +264,42 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
+let gen_offsets traces i = function
+  | (_, []), _ -> None
+  | (_, aliases), _ ->
+      let n = List.length aliases in
+      let _, trans, finals = traces.(i) in
+      let cases =
+        List.map (fun ({ actions; _ } : Sedlex.trans_case) -> actions) trans
+        @ List.map (fun ({ actions; _ } : Sedlex.final_case) -> actions) finals
+      in
+      let action2cases = Hashtbl.create n in
+      List.iteri
+        (fun i actions ->
+          List.iter
+            (fun action ->
+              try
+                let offsets = Hashtbl.find action2cases action in
+                Hashtbl.replace action2cases action (i :: offsets)
+              with Not_found -> Hashtbl.add action2cases action [i])
+            actions)
+        cases;
+      let counter = ref 0 in
+      let alias2offset = Hashtbl.create n in
+      let cases2offset = Hashtbl.create 31 in
+      Hashtbl.iter
+        (fun action offsets ->
+          try
+            let i = Hashtbl.find cases2offset offsets in
+            Hashtbl.replace cases2offset offsets i;
+            Hashtbl.add alias2offset action i
+          with Not_found ->
+            Hashtbl.add cases2offset offsets !counter;
+            Hashtbl.add alias2offset action !counter;
+            incr counter)
+        action2cases;
+      Some (!counter, alias2offset)
+
 let gen_cset ~loc x char_set =
   let interval a b =
     [%expr
@@ -278,37 +314,21 @@ let gen_cset ~loc x char_set =
     | [] -> assert false
 
 let gen_trace lexbuf traces i = function
-  | (_, []), _ -> []
-  | (_, aliases), _ ->
+  | None -> []
+  | Some (offsets_num, action_offsets) ->
       let loc = default_loc in
       let initial, trans, finals = traces.(i) in
-      let alias_indexes =
-        List.to_seq aliases
-        |> Seq.mapi (fun i { txt = alias } -> (alias, i))
-        |> StringMap.of_seq
+      let offset_array =
+        value_binding ~loc
+          ~pat:[%pat? __sedlex_offsets]
+          ~expr:(pexp_array ~loc (List.init offsets_num (fun _ -> [%expr 0])))
       in
-      let find_index alias = StringMap.find alias alias_indexes in
-      let result_arrays =
-        [
-          value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_starts]
-            ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
-          value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_stops]
-            ~expr:(pexp_array ~loc (List.map (fun _ -> [%expr 0]) aliases));
-        ]
-      in
+      let find_offset_idx action = Hashtbl.find action_offsets action in
       let aux_fun =
-        let gen_start alias e =
-          let alias_index = find_index alias in
+        let gen_action e action =
+          let offset_idx = find_offset_idx action in
           [%expr
-            __sedlex_aliases_starts.([%e eint ~loc alias_index]) <- __sedlex_pos;
-            [%e e]]
-        in
-        let gen_stop alias e =
-          let alias_index = find_index alias in
-          [%expr
-            __sedlex_aliases_stops.([%e eint ~loc alias_index]) <- __sedlex_pos;
+            __sedlex_offsets.([%e eint ~loc offset_idx]) <- __sedlex_pos;
             [%e e]]
         in
         let unreachable_case =
@@ -321,7 +341,7 @@ let gen_trace lexbuf traces i = function
               let key = (curr_state, curr_node, prev_state) in
               try
                 ignore (Hashtbl.find dup_case key);
-                Hashtbl.add dup_case key false
+                Hashtbl.replace dup_case key false
               with Not_found -> Hashtbl.add dup_case key true)
             trans;
           List.map
@@ -331,8 +351,7 @@ let gen_trace lexbuf traces i = function
                    prev_state;
                    prev_node;
                    char_set;
-                   starts;
-                   stops;
+                   actions;
                  } ->
               let lhs =
                 ppat_tuple ~loc
@@ -353,22 +372,16 @@ let gen_trace lexbuf traces i = function
                     __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
                       [%e eint ~loc prev_node] __sedlex_rest]
                 in
-                call_rest
-                |> List.fold_right gen_start starts
-                |> List.fold_right gen_stop stops
+                List.fold_left gen_action call_rest actions
               in
               case ~lhs ~guard ~rhs)
             trans
         in
         let final_cases =
           List.map
-            (fun { Sedlex.curr_node; starts; stops } ->
+            (fun { Sedlex.curr_node; actions } ->
               let lhs = pint ~loc curr_node in
-              let rhs =
-                [%expr ()]
-                |> List.fold_right gen_start starts
-                |> List.fold_right gen_stop stops
-              in
+              let rhs = List.fold_left gen_action [%expr ()] actions in
               case ~lhs ~guard:None ~rhs)
             finals
         in
@@ -402,7 +415,7 @@ let gen_trace lexbuf traces i = function
             [%expr
               fun [%p pvar ~loc lexbuf] __sedlex_path ->
                 [%e
-                  pexp_let ~loc Nonrecursive result_arrays
+                  pexp_let ~loc Nonrecursive [offset_array]
                   @@ pexp_let ~loc Recursive [aux_fun]
                   @@ [%expr
                        (match __sedlex_path with
@@ -412,29 +425,32 @@ let gen_trace lexbuf traces i = function
                                __sedlex_curr_state [%e eint ~loc initial]
                                __sedlex_rest
                          | _ -> assert false);
-                       (__sedlex_aliases_starts, __sedlex_aliases_stops)]]];
+                       __sedlex_offsets]]];
       ]
 
-let gen_aliases lexbuf i e = function
+let gen_aliases lexbuf offsets i e = function
   | [] -> e
   | aliases ->
       let loc = default_loc in
+      let _, action_offsets = Option.get offsets.(i) in
       pexp_let ~loc Nonrecursive
         [
           value_binding ~loc
-            ~pat:[%pat? __sedlex_aliases_starts, __sedlex_aliases_stops]
+            ~pat:[%pat? __sedlex_offsets]
             ~expr:
               (appfun (trace_fun i) [evar ~loc lexbuf; [%expr __sedlex_path]]);
         ]
       @@ pexp_let ~loc Nonrecursive
-           (List.mapi
-              (fun i { txt = alias; loc } ->
+           (List.map
+              (fun { txt = alias; loc } ->
+                let start = Hashtbl.find action_offsets (alias, true) in
+                let stop = Hashtbl.find action_offsets (alias, false) in
                 value_binding ~loc ~pat:(pvar ~loc alias)
                   ~expr:
                     [%expr
-                      __sedlex_aliases_starts.([%e eint ~loc i]),
-                        __sedlex_aliases_stops.([%e eint ~loc i])
-                        - __sedlex_aliases_starts.([%e eint ~loc i])])
+                      __sedlex_offsets.([%e eint ~loc start]),
+                        __sedlex_offsets.([%e eint ~loc stop])
+                        - __sedlex_offsets.([%e eint ~loc start])])
               aliases)
       @@ e
 
@@ -445,17 +461,18 @@ let gen_definition lexbuf l error =
       (List.map (fun ((r, s), e) -> ((r, StrLocSet.elements s), e)) l)
   in
   let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
+  let offsets = Array.mapi (gen_offsets traces) brs in
   let cases =
     Array.to_list
       (Array.mapi
          (fun i ((_, aliases), e) ->
            case ~lhs:(pint ~loc i) ~guard:None
-             ~rhs:(gen_aliases lexbuf i e aliases))
+             ~rhs:(gen_aliases lexbuf offsets i e aliases))
          brs)
   in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  let traces = Array.mapi (gen_trace lexbuf traces) brs in
+  let traces = Array.mapi (gen_trace lexbuf traces) offsets in
   let traces = List.flatten (Array.to_list traces) in
   pexp_let ~loc (gen_recflag auto) (states @ traces)
   @@ [%expr

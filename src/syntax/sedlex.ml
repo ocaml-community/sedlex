@@ -135,11 +135,10 @@ type trans_case = {
   prev_state : int;
   prev_node : int;
   char_set : Sedlex_cset.t;
-  starts : string list;
-  stops : string list;
+  actions : (string * bool) list;
 }
 
-type final_case = { curr_node : int; starts : string list; stops : string list }
+type final_case = { curr_node : int; actions : (string * bool) list }
 
 let compile_traces states (start, final) =
   let counter = ref 0 in
@@ -154,10 +153,9 @@ let compile_traces states (start, final) =
       List.iter (fun (_, next) -> aux next) node.trans
   in
   aux start;
-  let handle_alias (starts, stops) = function
-    | None -> (starts, stops)
-    | Some (alias, flag) ->
-        if flag then (alias :: starts, stops) else (starts, alias :: stops)
+  let append_action actions = function
+    | None -> actions
+    | Some action -> action :: actions
   in
   let first_node = Hashtbl.find nodes_idx final in
   let trans_cases =
@@ -170,13 +168,11 @@ let compile_traces states (start, final) =
               (fun from_node ->
                 try
                   let node_j = Hashtbl.find nodes_idx from_node in
-                  let rec dfs cset start_stops to_node =
+                  let rec dfs cset actions to_node =
                     let node_i = Hashtbl.find nodes_idx to_node in
                     try ignore (Hashtbl.find cases (i, node_i, j, cset))
                     with Not_found ->
-                      let starts, stops =
-                        handle_alias start_stops to_node.alias
-                      in
+                      let actions = append_action actions to_node.alias in
                       if to_node.trans <> [] || to_node == final then
                         Hashtbl.add cases (i, node_i, j, cset)
                           {
@@ -185,15 +181,13 @@ let compile_traces states (start, final) =
                             prev_state = j;
                             prev_node = node_j;
                             char_set = cset;
-                            starts;
-                            stops;
+                            actions;
                           };
-                      List.iter (dfs cset (starts, stops)) to_node.eps
+                      List.iter (dfs cset actions) to_node.eps
                   in
                   List.iter
                     (fun (cset, to_node) ->
-                      if List.mem to_node to_state then
-                        dfs cset ([], []) to_node)
+                      if List.mem to_node to_state then dfs cset [] to_node)
                     from_node.trans
                 with Not_found -> ())
               from_state)
@@ -202,17 +196,17 @@ let compile_traces states (start, final) =
     Hashtbl.to_seq_values cases |> List.of_seq
   in
   let final_cases =
-    let rec dfs start_stops cases node =
+    let rec dfs actions cases node =
       let i = Hashtbl.find nodes_idx node in
-      let starts, stops = handle_alias start_stops node.alias in
+      let actions = append_action actions node.alias in
       let cases =
         if node.trans <> [] || node == final then
-          { curr_node = i; starts; stops } :: cases
+          { curr_node = i; actions } :: cases
         else cases
       in
-      List.fold_left (dfs (starts, stops)) cases node.eps
+      List.fold_left (dfs actions) cases node.eps
     in
-    dfs ([], []) [] start
+    dfs [] [] start
   in
   (first_node, trans_cases, final_cases)
 

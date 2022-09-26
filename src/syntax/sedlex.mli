@@ -29,11 +29,10 @@ type trans_case = {
   prev_state : int;
   prev_node : int;
   char_set : Sedlex_cset.t;
-  starts : string list;
-  stops : string list;
+  actions : (string * bool) list;
 }
 
-type final_case = { curr_node : int; starts : string list; stops : string list }
+type final_case = { curr_node : int; actions : (string * bool) list }
 
 val compile :
   regexp array ->
