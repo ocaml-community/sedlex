@@ -325,8 +325,7 @@ let gen_trace lexbuf traces i = function
       in
       let find_offset_idx action = Hashtbl.find action_offsets action in
       let aux_fun =
-        let gen_action e action =
-          let offset_idx = find_offset_idx action in
+        let gen_action e offset_idx =
           [%expr
             __sedlex_offsets.([%e eint ~loc offset_idx]) <- __sedlex_pos;
             [%e e]]
@@ -372,7 +371,8 @@ let gen_trace lexbuf traces i = function
                     __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
                       [%e eint ~loc prev_node] __sedlex_rest]
                 in
-                List.fold_left gen_action call_rest actions
+                List.fold_left gen_action call_rest
+                  (List.map find_offset_idx actions |> List.sort_uniq compare)
               in
               case ~lhs ~guard ~rhs)
             trans
@@ -381,7 +381,10 @@ let gen_trace lexbuf traces i = function
           List.map
             (fun { Sedlex.curr_node; actions } ->
               let lhs = pint ~loc curr_node in
-              let rhs = List.fold_left gen_action [%expr ()] actions in
+              let rhs =
+                List.fold_left gen_action [%expr ()]
+                  (List.map find_offset_idx actions |> List.sort_uniq compare)
+              in
               case ~lhs ~guard:None ~rhs)
             finals
         in
