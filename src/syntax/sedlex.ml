@@ -143,23 +143,11 @@ type trans_case = {
 type final_case = { curr_node : int; actions : action list }
 
 let compile_traces states (start, final) =
-  let counter = ref 0 in
-  let nodes_idx = Hashtbl.create 31 in
-  let rec aux node =
-    if not (Hashtbl.mem nodes_idx node) then begin
-      let i = !counter in
-      incr counter;
-      Hashtbl.add nodes_idx node i;
-      List.iter aux node.eps;
-      List.iter (fun (_, next) -> aux next) node.trans
-    end
-  in
-  aux start;
   let append_action actions = function
     | None -> actions
     | Some action -> action :: actions
   in
-  let first_node = Hashtbl.find nodes_idx final in
+  let first_node = final.id in
   let trans_cases =
     let cases = Hashtbl.create 31 in
     Hashtbl.iter
@@ -169,9 +157,9 @@ let compile_traces states (start, final) =
             List.iter
               (fun from_node ->
                 try
-                  let node_j = Hashtbl.find nodes_idx from_node in
+                  let node_j = from_node.id in
                   let rec dfs cset actions to_node =
-                    let node_i = Hashtbl.find nodes_idx to_node in
+                    let node_i = to_node.id in
                     if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
                       let actions = append_action actions to_node.action in
                       if to_node.trans <> [] || to_node == final then
@@ -199,11 +187,10 @@ let compile_traces states (start, final) =
   in
   let final_cases =
     let rec dfs actions cases node =
-      let i = Hashtbl.find nodes_idx node in
       let actions = append_action actions node.action in
       let cases =
         if node.trans <> [] || node == final then
-          { curr_node = i; actions } :: cases
+          { curr_node = node.id; actions } :: cases
         else cases
       in
       List.fold_left (dfs actions) cases node.eps
