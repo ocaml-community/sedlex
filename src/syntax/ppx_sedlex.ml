@@ -320,7 +320,7 @@ let gen_trace lexbuf traces i = function
       let offset_array =
         value_binding ~loc
           ~pat:[%pat? __sedlex_offsets]
-          ~expr:(pexp_array ~loc (List.init offsets_num (fun _ -> [%expr 0])))
+          ~expr:(pexp_array ~loc (List.init offsets_num (fun _ -> [%expr -1])))
       in
       let find_offset_idx action = Hashtbl.find action_offsets action in
       let aux_fun =
@@ -337,10 +337,9 @@ let gen_trace lexbuf traces i = function
           List.iter
             (fun { Sedlex.curr_state; curr_node; prev_state; _ } ->
               let key = (curr_state, curr_node, prev_state) in
-              try
-                ignore (Hashtbl.find dup_case key);
+              if Hashtbl.mem dup_case key then
                 Hashtbl.replace dup_case key false
-              with Not_found -> Hashtbl.add dup_case key true)
+              else Hashtbl.add dup_case key true)
             trans;
           List.map
             (fun {

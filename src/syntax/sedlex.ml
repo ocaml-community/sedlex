@@ -146,13 +146,13 @@ let compile_traces states (start, final) =
   let counter = ref 0 in
   let nodes_idx = Hashtbl.create 31 in
   let rec aux node =
-    try ignore (Hashtbl.find nodes_idx node)
-    with Not_found ->
+    if not (Hashtbl.mem nodes_idx node) then begin
       let i = !counter in
       incr counter;
       Hashtbl.add nodes_idx node i;
       List.iter aux node.eps;
       List.iter (fun (_, next) -> aux next) node.trans
+    end
   in
   aux start;
   let append_action actions = function
@@ -172,8 +172,7 @@ let compile_traces states (start, final) =
                   let node_j = Hashtbl.find nodes_idx from_node in
                   let rec dfs cset actions to_node =
                     let node_i = Hashtbl.find nodes_idx to_node in
-                    try ignore (Hashtbl.find cases (i, node_i, j, cset))
-                    with Not_found ->
+                    if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
                       let actions = append_action actions to_node.action in
                       if to_node.trans <> [] || to_node == final then
                         Hashtbl.add cases (i, node_i, j, cset)
@@ -186,6 +185,7 @@ let compile_traces states (start, final) =
                             actions;
                           };
                       List.iter (dfs cset actions) to_node.eps
+                    end
                   in
                   List.iter
                     (fun (cset, to_node) ->
