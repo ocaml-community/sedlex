@@ -199,19 +199,50 @@ let best_final final =
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 let trace_fun i = Printf.sprintf "__sedlex_trace_%i" i
 
+let set_trace_info auto offsets =
+  let new_auto =
+    Array.map
+      (fun (trans, final) ->
+        let enable_trace =
+          Array.mem true
+            (Array.map2 (fun f o -> f && Option.is_some o) final offsets)
+        in
+        (trans, final, enable_trace))
+      auto
+  in
+  Array.fold_left
+    (fun auto _ ->
+      Array.map
+        (fun ((trans, final, enable_trace) as x) ->
+          if enable_trace then x
+          else
+            ( trans,
+              final,
+              Array.exists
+                (fun (_, j) ->
+                  let _, _, enable_trace = auto.(j) in
+                  enable_trace)
+                trans ))
+        auto)
+    new_auto new_auto
+
 let call_state lexbuf auto state =
   let loc = default_loc in
-  let trans, final = auto.(state) in
+  let trans, final, enable_trace = auto.(state) in
   if Array.length trans = 0 then (
     match best_final final with
-      | Some i ->
+      | Some i when enable_trace ->
           [%expr [%e eint ~loc i], [%e eint ~loc state] :: __sedlex_path]
+      | Some i -> [%expr [%e eint ~loc i], __sedlex_path]
       | None -> assert false)
-  else
-    appfun (state_fun state)
-      [[%expr [%e eint ~loc state] :: __sedlex_path]; evar ~loc lexbuf]
+  else (
+    let path =
+      if enable_trace then [%expr [%e eint ~loc state] :: __sedlex_path]
+      else [%expr __sedlex_path]
+    in
+    appfun (state_fun state) [evar ~loc lexbuf; path])
 
-let gen_state lexbuf auto i (trans, final) =
+let gen_state lexbuf auto i (trans, final, _) =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -237,7 +268,7 @@ let gen_state lexbuf auto i (trans, final) =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:[%expr fun __sedlex_path [%p pvar ~loc lexbuf] -> [%e body]];
+        ~expr:[%expr fun [%p pvar ~loc lexbuf] __sedlex_path -> [%e body]];
     ]
   in
   match best_final final with
@@ -254,10 +285,10 @@ let gen_recflag auto =
      in states with no further transitions. *)
   try
     Array.iter
-      (fun (trans_i, _) ->
+      (fun (trans_i, _, _) ->
         Array.iter
           (fun (_, j) ->
-            let trans_j, _ = auto.(j) in
+            let trans_j, _, _ = auto.(j) in
             if Array.length trans_j > 0 then raise Exit)
           trans_i)
       auto;
@@ -462,6 +493,7 @@ let gen_definition lexbuf l error =
   in
   let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
   let offsets = Array.mapi (gen_offsets traces) brs in
+  let auto = set_trace_info auto offsets in
   let cases =
     Array.to_list
       (Array.mapi
@@ -478,7 +510,7 @@ let gen_definition lexbuf l error =
   @@ [%expr
        Sedlexing.start [%e evar ~loc lexbuf];
        let __sedlex_result, __sedlex_path =
-         [%e appfun (state_fun 0) [[%expr [0]]; evar ~loc lexbuf]]
+         [%e appfun (state_fun 0) [evar ~loc lexbuf; [%expr [0]]]]
        in
        [%e
          pexp_match ~loc [%expr __sedlex_result]
