@@ -291,7 +291,6 @@ let gen_offsets traces i = function
         (fun action offsets ->
           try
             let i = Hashtbl.find cases2offset offsets in
-            Hashtbl.replace cases2offset offsets i;
             Hashtbl.add alias2offset action i
           with Not_found ->
             Hashtbl.add cases2offset offsets !counter;
@@ -431,11 +430,10 @@ let gen_trace lexbuf traces i = function
                        __sedlex_offsets]]];
       ]
 
-let gen_aliases lexbuf offsets i e = function
-  | [] -> e
-  | aliases ->
+let gen_aliases lexbuf i e aliases = function
+  | None -> e
+  | Some (_, action_offsets) ->
       let loc = default_loc in
-      let _, action_offsets = Option.get offsets.(i) in
       pexp_let ~loc Nonrecursive
         [
           value_binding ~loc
@@ -470,7 +468,7 @@ let gen_definition lexbuf l error =
       (Array.mapi
          (fun i ((_, aliases), e) ->
            case ~lhs:(pint ~loc i) ~guard:None
-             ~rhs:(gen_aliases lexbuf offsets i e aliases))
+             ~rhs:(gen_aliases lexbuf i e aliases offsets.(i)))
          brs)
   in
   let states = Array.mapi (gen_state lexbuf auto) auto in
