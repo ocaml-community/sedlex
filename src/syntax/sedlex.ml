@@ -6,11 +6,13 @@ module Cset = Sedlex_cset
 
 (* NFA *)
 
+type action = Start of string | Stop of string
+
 type node = {
   id : int;
   mutable eps : node list;
   mutable trans : (Cset.t * node) list;
-  mutable alias : (string * bool) option;
+  mutable action : action option;
 }
 
 (* Compilation regexp -> NFA *)
@@ -21,7 +23,7 @@ let cur_id = ref 0
 
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = []; alias = None }
+  { id = !cur_id; eps = []; trans = []; action = None }
 
 let seq r1 r2 succ = r1 (r2 succ)
 
@@ -77,8 +79,8 @@ let alias r alias succ =
   let n = new_node () in
   let s = new_node () in
   s.eps <- [succ];
-  s.alias <- Some (alias, false);
-  n.alias <- Some (alias, true);
+  s.action <- Some (Stop alias);
+  n.action <- Some (Start alias);
   n.eps <- [r s];
   n
 
@@ -135,10 +137,10 @@ type trans_case = {
   prev_state : int;
   prev_node : int;
   char_set : Sedlex_cset.t;
-  actions : (string * bool) list;
+  actions : action list;
 }
 
-type final_case = { curr_node : int; actions : (string * bool) list }
+type final_case = { curr_node : int; actions : action list }
 
 let compile_traces states (start, final) =
   let counter = ref 0 in
@@ -172,7 +174,7 @@ let compile_traces states (start, final) =
                     let node_i = Hashtbl.find nodes_idx to_node in
                     try ignore (Hashtbl.find cases (i, node_i, j, cset))
                     with Not_found ->
-                      let actions = append_action actions to_node.alias in
+                      let actions = append_action actions to_node.action in
                       if to_node.trans <> [] || to_node == final then
                         Hashtbl.add cases (i, node_i, j, cset)
                           {
@@ -198,7 +200,7 @@ let compile_traces states (start, final) =
   let final_cases =
     let rec dfs actions cases node =
       let i = Hashtbl.find nodes_idx node in
-      let actions = append_action actions node.alias in
+      let actions = append_action actions node.action in
       let cases =
         if node.trans <> [] || node == final then
           { curr_node = i; actions } :: cases

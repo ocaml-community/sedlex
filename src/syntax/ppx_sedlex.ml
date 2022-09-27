@@ -444,8 +444,8 @@ let gen_aliases lexbuf i e aliases = function
       @@ pexp_let ~loc Nonrecursive
            (List.map
               (fun { txt = alias; loc } ->
-                let start = Hashtbl.find action_offsets (alias, true) in
-                let stop = Hashtbl.find action_offsets (alias, false) in
+                let start = Hashtbl.find action_offsets (Sedlex.Start alias) in
+                let stop = Hashtbl.find action_offsets (Stop alias) in
                 value_binding ~loc ~pat:(pvar ~loc alias)
                   ~expr:
                     [%expr
