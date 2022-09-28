@@ -233,16 +233,16 @@ let call_state lexbuf auto state =
     match best_final final with
       | Some i when enable_trace ->
           [%expr [%e eint ~loc i], [%e eint ~loc state] :: __sedlex_path]
-      | Some i -> [%expr [%e eint ~loc i], __sedlex_path]
+      | Some i -> [%expr [%e eint ~loc i], []]
       | None -> assert false)
-  else (
-    let path =
-      if enable_trace then [%expr [%e eint ~loc state] :: __sedlex_path]
-      else [%expr __sedlex_path]
-    in
-    appfun (state_fun state) [evar ~loc lexbuf; path])
+  else begin
+    if enable_trace then
+      appfun (state_fun state)
+        [evar ~loc lexbuf; [%expr [%e eint ~loc state] :: __sedlex_path]]
+    else appfun (state_fun state) [evar ~loc lexbuf]
+  end
 
-let gen_state lexbuf auto i (trans, final, _) =
+let gen_state lexbuf auto i (trans, final, enable_trace) =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -268,16 +268,24 @@ let gen_state lexbuf auto i (trans, final, _) =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:[%expr fun [%p pvar ~loc lexbuf] __sedlex_path -> [%e body]];
+        ~expr:
+          (if enable_trace then
+           [%expr fun [%p pvar ~loc lexbuf] __sedlex_path -> [%e body]]
+          else [%expr fun [%p pvar ~loc lexbuf] -> [%e body]]);
     ]
   in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i ->
+    | Some i when enable_trace ->
         ret
           [%expr
             Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i] __sedlex_path;
+            [%e body ()]]
+    | Some i ->
+        ret
+          [%expr
+            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i] [];
             [%e body ()]]
 
 let gen_recflag auto =
@@ -510,7 +518,11 @@ let gen_definition lexbuf l error =
   @@ [%expr
        Sedlexing.start [%e evar ~loc lexbuf];
        let __sedlex_result, __sedlex_path =
-         [%e appfun (state_fun 0) [evar ~loc lexbuf; [%expr [0]]]]
+         [%e
+           let _, _, enable_trace = auto.(0) in
+           if enable_trace then
+             appfun (state_fun 0) [evar ~loc lexbuf; [%expr [0]]]
+           else appfun (state_fun 0) [evar ~loc lexbuf]]
        in
        [%e
          pexp_match ~loc [%expr __sedlex_result]
