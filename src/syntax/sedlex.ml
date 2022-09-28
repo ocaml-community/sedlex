@@ -147,6 +147,20 @@ let compile_traces states (start, final) =
     | None -> actions
     | Some action -> action :: actions
   in
+  let exception Irrelevant in
+  let is_relevant node =
+    let relevant_nodes = Hashtbl.create 31 in
+    let rec aux node =
+      if not (Hashtbl.mem relevant_nodes node.id) then begin
+        Hashtbl.add relevant_nodes node.id ();
+        List.iter aux node.eps;
+        List.iter (fun (_, n) -> aux n) node.trans
+      end
+    in
+    aux start;
+    try ignore (Hashtbl.find relevant_nodes node)
+    with Not_found -> raise Irrelevant
+  in
   let first_node = final.id in
   let trans_cases =
     let cases = Hashtbl.create 31 in
@@ -158,8 +172,10 @@ let compile_traces states (start, final) =
               (fun from_node ->
                 try
                   let node_j = from_node.id in
+                  is_relevant node_j;
                   let rec dfs cset actions to_node =
                     let node_i = to_node.id in
+                    is_relevant node_i;
                     if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
                       let actions = append_action actions to_node.action in
                       if to_node.trans <> [] || to_node == final then
@@ -179,7 +195,7 @@ let compile_traces states (start, final) =
                     (fun (cset, to_node) ->
                       if List.mem to_node to_state then dfs cset [] to_node)
                     from_node.trans
-                with Not_found -> ())
+                with Irrelevant -> ())
               from_state)
           states)
       states;
