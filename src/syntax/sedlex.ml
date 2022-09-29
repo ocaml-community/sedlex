@@ -147,20 +147,16 @@ let compile_traces states (start, final) =
     | None -> actions
     | Some action -> action :: actions
   in
-  let exception Irrelevant in
-  let is_relevant node =
-    let relevant_nodes = Hashtbl.create 31 in
-    let rec aux node =
-      if not (Hashtbl.mem relevant_nodes node.id) then begin
-        Hashtbl.add relevant_nodes node.id ();
-        List.iter aux node.eps;
-        List.iter (fun (_, n) -> aux n) node.trans
-      end
-    in
-    aux start;
-    try ignore (Hashtbl.find relevant_nodes node)
-    with Not_found -> raise Irrelevant
+  let relevant_nodes = Hashtbl.create 31 in
+  let rec aux node =
+    if not (Hashtbl.mem relevant_nodes node.id) then begin
+      Hashtbl.add relevant_nodes node.id ();
+      List.iter aux node.eps;
+      List.iter (fun (_, n) -> aux n) node.trans
+    end
   in
+  aux start;
+  let is_relevant node = Hashtbl.mem relevant_nodes node in
   let first_node = final.id in
   let trans_cases =
     let cases = Hashtbl.create 31 in
@@ -170,32 +166,30 @@ let compile_traces states (start, final) =
           (fun to_state i ->
             List.iter
               (fun from_node ->
-                try
-                  let node_j = from_node.id in
-                  is_relevant node_j;
+                let node_j = from_node.id in
+                if is_relevant node_j then (
                   let rec dfs cset actions to_node =
                     let node_i = to_node.id in
-                    is_relevant node_i;
-                    if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
-                      let actions = append_action actions to_node.action in
-                      if to_node.trans <> [] || to_node == final then
-                        Hashtbl.add cases (i, node_i, j, cset)
-                          {
-                            curr_state = i;
-                            curr_node = node_i;
-                            prev_state = j;
-                            prev_node = node_j;
-                            char_set = cset;
-                            actions;
-                          };
-                      List.iter (dfs cset actions) to_node.eps
-                    end
+                    if is_relevant node_i then
+                      if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
+                        let actions = append_action actions to_node.action in
+                        if to_node.trans <> [] || to_node == final then
+                          Hashtbl.add cases (i, node_i, j, cset)
+                            {
+                              curr_state = i;
+                              curr_node = node_i;
+                              prev_state = j;
+                              prev_node = node_j;
+                              char_set = cset;
+                              actions;
+                            };
+                        List.iter (dfs cset actions) to_node.eps
+                      end
                   in
                   List.iter
                     (fun (cset, to_node) ->
                       if List.mem to_node to_state then dfs cset [] to_node)
-                    from_node.trans
-                with Irrelevant -> ())
+                    from_node.trans))
               from_state)
           states)
       states;
