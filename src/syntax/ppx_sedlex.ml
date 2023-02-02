@@ -104,6 +104,14 @@ module StringMap = Map.Make (struct
   let compare = compare
 end)
 
+(* Lexeme aliases *)
+
+module StrLocSet = Set.Make (struct
+  type t = string loc
+
+  let compare a b = compare a.txt b.txt
+end)
+
 let builtin_regexps =
   List.fold_left
     (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
@@ -189,16 +197,52 @@ let best_final final =
   !fin
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
+let trace_fun i = Printf.sprintf "__sedlex_trace_%i" i
+
+let set_trace_info auto offsets =
+  let new_auto =
+    Array.map
+      (fun (trans, final) ->
+        let enable_trace =
+          Array.mem true
+            (Array.map2 (fun f o -> f && Option.is_some o) final offsets)
+        in
+        (trans, final, enable_trace))
+      auto
+  in
+  Array.fold_left
+    (fun auto _ ->
+      Array.map
+        (fun ((trans, final, enable_trace) as x) ->
+          if enable_trace then x
+          else
+            ( trans,
+              final,
+              Array.exists
+                (fun (_, j) ->
+                  let _, _, enable_trace = auto.(j) in
+                  enable_trace)
+                trans ))
+        auto)
+    new_auto new_auto
 
 let call_state lexbuf auto state =
-  let trans, final = auto.(state) in
+  let loc = default_loc in
+  let trans, final, enable_trace = auto.(state) in
   if Array.length trans = 0 then (
     match best_final final with
-      | Some i -> eint ~loc:default_loc i
+      | Some i when enable_trace ->
+          [%expr [%e eint ~loc i], [%e eint ~loc state] :: __sedlex_path]
+      | Some i -> [%expr [%e eint ~loc i], []]
       | None -> assert false)
-  else appfun (state_fun state) [evar ~loc:default_loc lexbuf]
+  else begin
+    if enable_trace then
+      appfun (state_fun state)
+        [evar ~loc lexbuf; [%expr [%e eint ~loc state] :: __sedlex_path]]
+    else appfun (state_fun state) [evar ~loc lexbuf]
+  end
 
-let gen_state lexbuf auto i (trans, final) =
+let gen_state lexbuf auto i (trans, final, enable_trace) =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -225,17 +269,23 @@ let gen_state lexbuf auto i (trans, final) =
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
         ~expr:
-          (pexp_function ~loc
-             [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]);
+          (if enable_trace then
+           [%expr fun [%p pvar ~loc lexbuf] __sedlex_path -> [%e body]]
+          else [%expr fun [%p pvar ~loc lexbuf] -> [%e body]]);
     ]
   in
   match best_final final with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
+    | Some i when enable_trace ->
+        ret
+          [%expr
+            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i] __sedlex_path;
+            [%e body ()]]
     | Some i ->
         ret
           [%expr
-            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i];
+            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i] [];
             [%e body ()]]
 
 let gen_recflag auto =
@@ -243,34 +293,240 @@ let gen_recflag auto =
      in states with no further transitions. *)
   try
     Array.iter
-      (fun (trans_i, _) ->
+      (fun (trans_i, _, _) ->
         Array.iter
           (fun (_, j) ->
-            let trans_j, _ = auto.(j) in
+            let trans_j, _, _ = auto.(j) in
             if Array.length trans_j > 0 then raise Exit)
           trans_i)
       auto;
     Nonrecursive
   with Exit -> Recursive
 
+let gen_offsets traces i = function
+  | (_, []), _ -> None
+  | (_, aliases), _ ->
+      let n = List.length aliases in
+      let _, trans, finals = traces.(i) in
+      let cases =
+        List.map (fun ({ actions; _ } : Sedlex.trans_case) -> actions) trans
+        @ List.map (fun ({ actions; _ } : Sedlex.final_case) -> actions) finals
+      in
+      let action2cases = Hashtbl.create n in
+      List.iteri
+        (fun i actions ->
+          List.iter
+            (fun action ->
+              try
+                let offsets = Hashtbl.find action2cases action in
+                Hashtbl.replace action2cases action (i :: offsets)
+              with Not_found -> Hashtbl.add action2cases action [i])
+            actions)
+        cases;
+      let counter = ref 0 in
+      let alias2offset = Hashtbl.create n in
+      let cases2offset = Hashtbl.create 31 in
+      Hashtbl.iter
+        (fun action offsets ->
+          try
+            let i = Hashtbl.find cases2offset offsets in
+            Hashtbl.add alias2offset action i
+          with Not_found ->
+            Hashtbl.add cases2offset offsets !counter;
+            Hashtbl.add alias2offset action !counter;
+            incr counter)
+        action2cases;
+      Some (!counter, alias2offset)
+
+let gen_cset ~loc x char_set =
+  let interval a b =
+    [%expr
+      [%e eint ~loc a] <= [%e evar ~loc x]
+      && [%e evar ~loc x] <= [%e eint ~loc b]]
+  in
+  match char_set with
+    | (a, b) :: l ->
+        List.fold_left
+          (fun acc (a, b) -> [%expr [%e acc] || [%e interval a b]])
+          (interval a b) l
+    | [] -> assert false
+
+let gen_trace lexbuf traces i = function
+  | None -> []
+  | Some (offsets_num, action_offsets) ->
+      let loc = default_loc in
+      let initial, trans, finals = traces.(i) in
+      let offset_array =
+        value_binding ~loc
+          ~pat:[%pat? __sedlex_offsets]
+          ~expr:(pexp_array ~loc (List.init offsets_num (fun _ -> [%expr -1])))
+      in
+      let find_offset_idx action = Hashtbl.find action_offsets action in
+      let aux_fun =
+        let gen_action e offset_idx =
+          [%expr
+            __sedlex_offsets.([%e eint ~loc offset_idx]) <- __sedlex_pos;
+            [%e e]]
+        in
+        let unreachable_case =
+          case ~lhs:[%pat? _] ~guard:None ~rhs:[%expr assert false]
+        in
+        let trans_cases =
+          let dup_case = Hashtbl.create (List.length trans) in
+          List.iter
+            (fun { Sedlex.curr_state; curr_node; prev_state; _ } ->
+              let key = (curr_state, curr_node, prev_state) in
+              if Hashtbl.mem dup_case key then
+                Hashtbl.replace dup_case key false
+              else Hashtbl.add dup_case key true)
+            trans;
+          List.map
+            (fun {
+                   Sedlex.curr_state;
+                   curr_node;
+                   prev_state;
+                   prev_node;
+                   char_set;
+                   actions;
+                 } ->
+              let lhs =
+                ppat_tuple ~loc
+                  [
+                    pint ~loc curr_state;
+                    pint ~loc curr_node;
+                    pint ~loc prev_state;
+                  ]
+              in
+              let guard =
+                if Hashtbl.find dup_case (curr_state, curr_node, prev_state)
+                then None
+                else Some (gen_cset ~loc "__sedlex_code" char_set)
+              in
+              let rhs =
+                let call_rest =
+                  [%expr
+                    __sedlex_aux (__sedlex_pos - 1) [%e eint ~loc prev_state]
+                      [%e eint ~loc prev_node] __sedlex_rest]
+                in
+                List.fold_left gen_action call_rest
+                  (List.map find_offset_idx actions |> List.sort_uniq compare)
+              in
+              case ~lhs ~guard ~rhs)
+            trans
+        in
+        let final_cases =
+          List.map
+            (fun { Sedlex.curr_node; actions } ->
+              let lhs = pint ~loc curr_node in
+              let rhs =
+                List.fold_left gen_action [%expr ()]
+                  (List.map find_offset_idx actions |> List.sort_uniq compare)
+              in
+              case ~lhs ~guard:None ~rhs)
+            finals
+        in
+        value_binding ~loc
+          ~pat:[%pat? __sedlex_aux]
+          ~expr:
+            [%expr
+              fun __sedlex_pos __sedlex_curr_state __sedlex_curr_node ->
+                function
+                | [] ->
+                    [%e
+                      pexp_match ~loc [%expr __sedlex_curr_node]
+                        (final_cases @ [unreachable_case])]
+                | __sedlex_prev_state :: __sedlex_rest ->
+                    let __sedlex_code =
+                      Sedlexing.lexeme_code [%e evar ~loc lexbuf]
+                        (__sedlex_pos - 1)
+                    in
+                    [%e
+                      pexp_match ~loc
+                        [%expr
+                          __sedlex_curr_state,
+                            __sedlex_curr_node,
+                            __sedlex_prev_state]
+                        (trans_cases @ [unreachable_case])]]
+      in
+      [
+        value_binding ~loc
+          ~pat:(pvar ~loc (trace_fun i))
+          ~expr:
+            [%expr
+              fun [%p pvar ~loc lexbuf] __sedlex_path ->
+                [%e
+                  pexp_let ~loc Nonrecursive [offset_array]
+                  @@ pexp_let ~loc Recursive [aux_fun]
+                  @@ [%expr
+                       (match __sedlex_path with
+                         | __sedlex_curr_state :: __sedlex_rest ->
+                             __sedlex_aux
+                               (Sedlexing.lexeme_length [%e evar ~loc lexbuf])
+                               __sedlex_curr_state [%e eint ~loc initial]
+                               __sedlex_rest
+                         | _ -> assert false);
+                       __sedlex_offsets]]];
+      ]
+
+let gen_aliases lexbuf i e aliases = function
+  | None -> e
+  | Some (_, action_offsets) ->
+      let loc = default_loc in
+      pexp_let ~loc Nonrecursive
+        [
+          value_binding ~loc
+            ~pat:[%pat? __sedlex_offsets]
+            ~expr:
+              (appfun (trace_fun i) [evar ~loc lexbuf; [%expr __sedlex_path]]);
+        ]
+      @@ pexp_let ~loc Nonrecursive
+           (List.map
+              (fun { txt = alias; loc } ->
+                let start = Hashtbl.find action_offsets (Sedlex.Start alias) in
+                let stop = Hashtbl.find action_offsets (Stop alias) in
+                value_binding ~loc ~pat:(pvar ~loc alias)
+                  ~expr:
+                    [%expr
+                      __sedlex_offsets.([%e eint ~loc start]),
+                        __sedlex_offsets.([%e eint ~loc stop])
+                        - __sedlex_offsets.([%e eint ~loc start])])
+              aliases)
+      @@ e
+
 let gen_definition lexbuf l error =
   let loc = default_loc in
-  let brs = Array.of_list l in
-  let auto = Sedlex.compile (Array.map fst brs) in
+  let brs =
+    Array.of_list
+      (List.map (fun ((r, s), e) -> ((r, StrLocSet.elements s), e)) l)
+  in
+  let auto, traces = Sedlex.compile (Array.map (fun ((r, _), _) -> r) brs) in
+  let offsets = Array.mapi (gen_offsets traces) brs in
+  let auto = set_trace_info auto offsets in
   let cases =
     Array.to_list
       (Array.mapi
-         (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
+         (fun i ((_, aliases), e) ->
+           case ~lhs:(pint ~loc i) ~guard:None
+             ~rhs:(gen_aliases lexbuf i e aliases offsets.(i)))
          brs)
   in
   let states = Array.mapi (gen_state lexbuf auto) auto in
   let states = List.flatten (Array.to_list states) in
-  pexp_let ~loc (gen_recflag auto) states
-    (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
-       (pexp_match ~loc
-          (appfun (state_fun 0) [evar ~loc lexbuf])
-          (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])))
+  let traces = Array.mapi (gen_trace lexbuf traces) offsets in
+  let traces = List.flatten (Array.to_list traces) in
+  pexp_let ~loc (gen_recflag auto) (states @ traces)
+  @@ [%expr
+       Sedlexing.start [%e evar ~loc lexbuf];
+       let __sedlex_result, __sedlex_path =
+         [%e
+           let _, _, enable_trace = auto.(0) in
+           if enable_trace then
+             appfun (state_fun 0) [evar ~loc lexbuf; [%expr [0]]]
+           else appfun (state_fun 0) [evar ~loc lexbuf]]
+       in
+       [%e
+         pexp_match ~loc [%expr __sedlex_result]
+           (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])]]
 
 (* Lexer specification parser *)
 
@@ -296,13 +552,13 @@ let rec repeat r = function
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
-let regexp_of_pattern env =
+let regexp_of_pattern allow_alias env =
   let rec char_pair_op func name p tuple =
     (* Construct something like Sub(a,b) *)
     match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
-          match func (aux p0) (aux p1) with
-            | Some r -> r
+          match func (fst @@ aux false p0) (fst @@ aux false p1) with
+            | Some r -> (r, StrLocSet.empty)
             | None ->
                 err p.ppat_loc @@ "the " ^ name
                 ^ " operator can only applied to single-character length \
@@ -311,16 +567,37 @@ let regexp_of_pattern env =
       | _ ->
           err p.ppat_loc @@ "the " ^ name
           ^ " operator requires two arguments, like " ^ name ^ "(a,b)"
-  and aux p =
+  and aux allow_alias p =
+    let loc = p.ppat_loc in
     (* interpret one pattern node *)
     match p.ppat_desc with
-      | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
+      | Ppat_or (p1, p2) ->
+          let r1, s1 = aux allow_alias p1 in
+          let r2, s2 = aux allow_alias p2 in
+          if not (StrLocSet.equal s1 s2) then begin
+            let x =
+              try StrLocSet.choose (StrLocSet.diff s1 s2)
+              with Not_found -> StrLocSet.choose (StrLocSet.diff s2 s1)
+            in
+            err loc @@ "variable " ^ x.txt
+            ^ " must occur on both sides of this | pattern"
+          end;
+          (Sedlex.alt r1 r2, s1)
       | Ppat_tuple (p :: pl) ->
-          List.fold_left (fun r p -> Sedlex.seq r (aux p)) (aux p) pl
+          List.fold_left
+            (fun (r1, s1) p ->
+              let r2, s2 = aux allow_alias p in
+              if not (StrLocSet.disjoint s1 s2) then begin
+                let x = StrLocSet.choose (StrLocSet.inter s1 s2) in
+                err loc @@ "variable " ^ x.txt
+                ^ " is bound several times in this matching"
+              end;
+              (Sedlex.seq r1 r2, StrLocSet.union s1 s2))
+            (aux allow_alias p) pl
       | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
-          Sedlex.rep (aux p)
+          (Sedlex.rep (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
-          Sedlex.plus (aux p)
+          (Sedlex.plus (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct
           ( { txt = Lident "Rep" },
             Some
@@ -340,7 +617,8 @@ let regexp_of_pattern env =
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then repeat (aux p0) (i1, i2)
+                if 0 <= i1 && i1 <= i2 then
+                  (repeat (fst @@ aux false p0) (i1, i2), StrLocSet.empty)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
@@ -348,12 +626,12 @@ let regexp_of_pattern env =
       | Ppat_construct ({ txt = Lident "Rep" }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
       | Ppat_construct ({ txt = Lident "Opt" }, Some (_, p)) ->
-          Sedlex.alt Sedlex.eps (aux p)
+          (Sedlex.alt Sedlex.eps (fst @@ aux false p), StrLocSet.empty)
       | Ppat_construct ({ txt = Lident "Compl" }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
-                match Sedlex.compl (aux p0) with
-                  | Some r -> r
+                match Sedlex.compl (fst @@ aux false p0) with
+                  | Some r -> (r, StrLocSet.empty)
                   | None ->
                       err p.ppat_loc
                         "the Compl operator can only applied to a \
@@ -379,36 +657,48 @@ let regexp_of_pattern env =
                 for i = 0 to String.length s - 1 do
                   c := Cset.union !c (Cset.singleton (Char.code s.[i]))
                 done;
-                Sedlex.chars !c
+                (Sedlex.chars !c, StrLocSet.empty)
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
       | Ppat_interval (i_start, i_end) -> begin
           match (i_start, i_end) with
             | Pconst_char c1, Pconst_char c2 ->
-                Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
+                ( Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2)),
+                  StrLocSet.empty )
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
-                Sedlex.chars
-                  (Cset.interval
-                     (codepoint (int_of_string i1))
-                     (codepoint (int_of_string i2)))
+                ( Sedlex.chars
+                    (Cset.interval
+                       (codepoint (int_of_string i1))
+                       (codepoint (int_of_string i2))),
+                  StrLocSet.empty )
             | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end
       | Ppat_constant const -> begin
           match const with
-            | Pconst_string (s, _, _) -> regexp_for_string s
-            | Pconst_char c -> regexp_for_char c
+            | Pconst_string (s, _, _) -> (regexp_for_string s, StrLocSet.empty)
+            | Pconst_char c -> (regexp_for_char c, StrLocSet.empty)
             | Pconst_integer (i, _) ->
-                Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
+                ( Sedlex.chars (Cset.singleton (codepoint (int_of_string i))),
+                  StrLocSet.empty )
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end
       | Ppat_var { txt = x } -> begin
-          try StringMap.find x env
+          try (StringMap.find x env, StrLocSet.empty)
           with Not_found ->
             err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
         end
+      | Ppat_alias (_, { loc }) when not allow_alias ->
+          err loc @@ "alias is not allowed inside constructors"
+      | Ppat_alias (p, ({ txt = x } as x_loc)) ->
+          let r, s = aux allow_alias p in
+          if StrLocSet.mem x_loc s then begin
+            err loc @@ "variable " ^ x
+            ^ " is bound several times in this matching"
+          end;
+          (Sedlex.alias r x, StrLocSet.add x_loc s)
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
-  aux
+  aux allow_alias
 
 let previous = ref []
 let regexps = ref []
@@ -420,7 +710,7 @@ let mapper =
     val env = builtin_regexps
 
     method define_regexp name p =
-      {<env = StringMap.add name (regexp_of_pattern env p) env>}
+      {<env = StringMap.add name (fst @@ regexp_of_pattern false env p) env>}
 
     method! expression e =
       match e with
@@ -446,7 +736,7 @@ let mapper =
               List.map
                 (function
                   | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-                      (regexp_of_pattern env p, super#expression e)
+                      (regexp_of_pattern true env p, super#expression e)
                   | { pc_guard = Some e } ->
                       err e.pexp_loc "'when' guards are not supported")
                 cases

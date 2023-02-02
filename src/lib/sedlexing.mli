@@ -114,6 +114,10 @@ val lexeme : lexbuf -> Uchar.t array
         the matched string. *)
 val lexeme_char : lexbuf -> int -> Uchar.t
 
+(** [Sedlexing.lexeme_code lexbuf pos] returns code point number [pos] in
+        the matched string. *)
+val lexeme_code : lexbuf -> int -> int
+
 (** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
     matched by the regular expression as an array of Unicode code point. *)
 val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
@@ -151,19 +155,19 @@ val next : lexbuf -> Uchar.t option
     lexer buffer and increments to current position. If the input stream
     is exhausted, the function returns -1.
     If a ['\n'] is encountered, the tracked line number is incremented.
-    
+
     This is a private API, it should not be used by code using this module's
     API and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
 
-(** [mark lexbuf i] stores the integer [i] in the internal
-    slot. The backtrack position is set to the current position. *)
-val mark : lexbuf -> int -> unit
+(** [mark lexbuf i path] stores the integer [i] and the list [path] in the
+    internal slot. The backtrack position is set to the current position. *)
+val mark : lexbuf -> int -> int list -> unit
 
-(** [backtrack lexbuf] returns the value stored in the
+(** [backtrack lexbuf] returns the value and path stored in the
     internal slot of the buffer, and performs backtracking
     (the current position is set to the value of the backtrack position). *)
-val backtrack : lexbuf -> int
+val backtrack : lexbuf -> int * int list
 
 (** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf,
     returns a generator of tokens annotated with positions.

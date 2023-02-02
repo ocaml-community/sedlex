@@ -6,10 +6,13 @@ module Cset = Sedlex_cset
 
 (* NFA *)
 
+type action = Start of string | Stop of string
+
 type node = {
   id : int;
   mutable eps : node list;
   mutable trans : (Cset.t * node) list;
+  mutable action : action option;
 }
 
 (* Compilation regexp -> NFA *)
@@ -20,7 +23,7 @@ let cur_id = ref 0
 
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = [] }
+  { id = !cur_id; eps = []; trans = []; action = None }
 
 let seq r1 r2 succ = r1 (r2 succ)
 
@@ -72,6 +75,15 @@ let pair_op f r0 r1 =
 let subtract = pair_op Cset.difference
 let intersection = pair_op Cset.intersection
 
+let alias r alias succ =
+  let n = new_node () in
+  let s = new_node () in
+  s.eps <- [succ];
+  s.action <- Some (Stop alias);
+  n.action <- Some (Start alias);
+  n.eps <- [r s];
+  n
+
 let compile_re re =
   let final = new_node () in
   (re final, final)
@@ -117,6 +129,86 @@ let transition (state : state) =
   Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
   t
 
+(* Restore NFA path from DFA path *)
+
+type trans_case = {
+  curr_state : int;
+  curr_node : int;
+  prev_state : int;
+  prev_node : int;
+  char_set : Sedlex_cset.t;
+  actions : action list;
+}
+
+type final_case = { curr_node : int; actions : action list }
+
+let compile_traces states (start, final) =
+  let append_action actions = function
+    | None -> actions
+    | Some action -> action :: actions
+  in
+  let relevant_nodes = Hashtbl.create 31 in
+  let rec aux node =
+    if not (Hashtbl.mem relevant_nodes node.id) then begin
+      Hashtbl.add relevant_nodes node.id ();
+      List.iter aux node.eps;
+      List.iter (fun (_, n) -> aux n) node.trans
+    end
+  in
+  aux start;
+  let is_relevant node = Hashtbl.mem relevant_nodes node in
+  let first_node = final.id in
+  let trans_cases =
+    let cases = Hashtbl.create 31 in
+    Hashtbl.iter
+      (fun from_state j ->
+        Hashtbl.iter
+          (fun to_state i ->
+            List.iter
+              (fun from_node ->
+                let node_j = from_node.id in
+                if is_relevant node_j then (
+                  let rec dfs cset actions to_node =
+                    let node_i = to_node.id in
+                    if is_relevant node_i then
+                      if not (Hashtbl.mem cases (i, node_i, j, cset)) then begin
+                        let actions = append_action actions to_node.action in
+                        if to_node.trans <> [] || to_node == final then
+                          Hashtbl.add cases (i, node_i, j, cset)
+                            {
+                              curr_state = i;
+                              curr_node = node_i;
+                              prev_state = j;
+                              prev_node = node_j;
+                              char_set = cset;
+                              actions;
+                            };
+                        List.iter (dfs cset actions) to_node.eps
+                      end
+                  in
+                  List.iter
+                    (fun (cset, to_node) ->
+                      if List.mem to_node to_state then dfs cset [] to_node)
+                    from_node.trans))
+              from_state)
+          states)
+      states;
+    Hashtbl.to_seq_values cases |> List.of_seq
+  in
+  let final_cases =
+    let rec dfs actions cases node =
+      let actions = append_action actions node.action in
+      let cases =
+        if node.trans <> [] || node == final then
+          { curr_node = node.id; actions } :: cases
+        else cases
+      in
+      List.fold_left (dfs actions) cases node.eps
+    in
+    dfs [] [] start
+  in
+  (first_node, trans_cases, final_cases)
+
 let compile rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
@@ -138,4 +230,5 @@ let compile rs =
   Array.iter (fun (i, _) -> init := add_node !init i) rs;
   let i = aux !init in
   assert (i = 0);
-  Array.init !counter (Hashtbl.find states_def)
+  ( Array.init !counter (Hashtbl.find states_def),
+    Array.map (compile_traces states) rs )
