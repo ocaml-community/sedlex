@@ -177,7 +177,11 @@ let partition (name, p) =
           Char.code (String.unsafe_get [%e evar ~loc (table_name t)] [%e c]) - 1]
   in
   let body = gen_tree (simplify_decision_tree (decision_table p)) in
-  glb_value name [%expr fun c -> [%e body]]
+  glb_value name
+    [%expr
+      fun c ->
+        let open! Stdlib in
+        [%e body]]
 
 (* Code generation for the automata *)
 
