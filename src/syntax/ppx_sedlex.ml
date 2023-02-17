@@ -436,7 +436,7 @@ let mapper =
             let error =
               match List.hd cases with
                 | { pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None } ->
-                    super#expression e
+                    this#expression e
                 | { pc_lhs = p } ->
                     err p.ppat_loc
                       "the last branch must be a catch-all error case"
@@ -446,7 +446,7 @@ let mapper =
               List.map
                 (function
                   | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-                      (regexp_of_pattern env p, super#expression e)
+                      (regexp_of_pattern env p, this#expression e)
                   | { pc_guard = Some e } ->
                       err e.pexp_loc "'when' guards are not supported")
                 cases
