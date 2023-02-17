@@ -1,3 +1,6 @@
+3.2:
+    * Fix directly nested sedlex matches (@smuenzel, PR #117, Fixes: #12)
+
 3.1:
     * Updated unicode support to `15.0.0`
 
