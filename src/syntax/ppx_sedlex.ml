@@ -200,9 +200,9 @@ let call_state lexbuf auto state =
     match best_final final with
       | Some i -> eint ~loc:default_loc i
       | None -> assert false)
-  else appfun (state_fun state) [evar ~loc:default_loc lexbuf]
+  else appfun (state_fun state) [lexbuf]
 
-let gen_state lexbuf auto i (trans, final) =
+let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -215,22 +215,21 @@ let gen_state lexbuf auto i (trans, final) =
   let body () =
     pexp_match ~loc
       (appfun (partition_name partition)
-         [[%expr Sedlexing.__private__next_int [%e evar ~loc lexbuf]]])
+         [[%expr Sedlexing.__private__next_int [%e lexbuf]]])
       (cases
       @ [
           case
             ~lhs:[%pat? _]
             ~guard:None
-            ~rhs:[%expr Sedlexing.backtrack [%e evar ~loc lexbuf]];
+            ~rhs:[%expr Sedlexing.backtrack [%e lexbuf]];
         ])
   in
   let ret body =
+    let lhs = pvar ~loc:lexbuf.pexp_loc lexbuf_name in
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:
-          (pexp_function ~loc
-             [case ~lhs:(pvar ~loc lexbuf) ~guard:None ~rhs:body]);
+        ~expr:(pexp_function ~loc [case ~lhs ~guard:None ~rhs:body]);
     ]
   in
   match best_final final with
@@ -239,7 +238,7 @@ let gen_state lexbuf auto i (trans, final) =
     | Some i ->
         ret
           [%expr
-            Sedlexing.mark [%e evar ~loc lexbuf] [%e eint ~loc i];
+            Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
             [%e body ()]]
 
 let gen_recflag auto =
@@ -257,7 +256,7 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
-let gen_definition lexbuf l error =
+let gen_definition ((_, lexbuf) as lexbuf_with_name) l error =
   let loc = default_loc in
   let brs = Array.of_list l in
   let auto = Sedlex.compile (Array.map fst brs) in
@@ -267,13 +266,13 @@ let gen_definition lexbuf l error =
          (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
          brs)
   in
-  let states = Array.mapi (gen_state lexbuf auto) auto in
+  let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
   pexp_let ~loc (gen_recflag auto) states
     (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e evar ~loc lexbuf]]
+       [%expr Sedlexing.start [%e lexbuf]]
        (pexp_match ~loc
-          (appfun (state_fun 0) [evar ~loc lexbuf])
+          (appfun (state_fun 0) [lexbuf])
           (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])))
 
 (* Lexer specification parser *)
@@ -431,7 +430,8 @@ let mapper =
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match (lexbuf, cases) }]]] ->
             let lexbuf =
               match lexbuf with
-                | { pexp_desc = Pexp_ident { txt = Lident lexbuf } } -> lexbuf
+                | { pexp_desc = Pexp_ident { txt = Lident txt } } ->
+                    txt, lexbuf
                 | _ ->
                     err lexbuf.pexp_loc
                       "the matched expression must be a single identifier"
