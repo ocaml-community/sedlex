@@ -202,7 +202,7 @@ let call_state lexbuf auto state =
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
-let gen_state lexbuf auto i (trans, final) =
+let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -225,12 +225,7 @@ let gen_state lexbuf auto i (trans, final) =
         ])
   in
   let ret body =
-    let lhs =
-      match lexbuf with
-        | { pexp_desc = Pexp_ident { txt = Lident ident; _ }; pexp_loc } ->
-            pvar ~loc:pexp_loc ident
-        | _ -> assert false
-    in
+    let lhs = pvar ~loc:lexbuf.pexp_loc lexbuf_name in
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
@@ -261,7 +256,7 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
-let gen_definition lexbuf l error =
+let gen_definition ((_, lexbuf) as lexbuf_with_name) l error =
   let loc = default_loc in
   let brs = Array.of_list l in
   let auto = Sedlex.compile (Array.map fst brs) in
@@ -271,7 +266,7 @@ let gen_definition lexbuf l error =
          (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
          brs)
   in
-  let states = Array.mapi (gen_state lexbuf auto) auto in
+  let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
   pexp_let ~loc (gen_recflag auto) states
     (pexp_sequence ~loc
@@ -433,9 +428,10 @@ let mapper =
     method! expression e =
       match e with
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match (lexbuf, cases) }]]] ->
-            let () =
+            let lexbuf =
               match lexbuf with
-                | { pexp_desc = Pexp_ident { txt = Lident _ } } -> ()
+                | { pexp_desc = Pexp_ident { txt = Lident txt } } ->
+                    txt, lexbuf
                 | _ ->
                     err lexbuf.pexp_loc
                       "the matched expression must be a single identifier"
