@@ -431,7 +431,7 @@ let mapper =
             let lexbuf =
               match lexbuf with
                 | { pexp_desc = Pexp_ident { txt = Lident txt } } ->
-                    txt, lexbuf
+                    (txt, lexbuf)
                 | _ ->
                     err lexbuf.pexp_loc
                       "the matched expression must be a single identifier"
