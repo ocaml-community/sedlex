@@ -1,0 +1,94 @@
+# 3.2:
+- Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)
+- Use explicit stdlib in generated code (@hhugo, PR #122, fixes: #115)
+- Preserve location of lexbuf (@hhugo, PR #118, fixes: #19)
+
+# 3.1:
+- Updated unicode support to `15.0.0`
+
+# 3.0:
+- Dropped `Stream` api which was removed in `4.14.0` ahead of the `5.0`
+  release.
+
+2.6:
+- Adapted to ppxlib `0.26`, thanks to @pitag-ha
+
+2.5:
+- Fix exponential compilation time, thanks to @mnxn for reporting in #97
+  and @fangyi-zhou for fixing in #106
+- Update unicode support for `14.0.0`.
+
+# 2.4
+- Update `dune` support to `2.8`, add auto-generated `opam` files.
+- Optimize generated code, thanks to @bobzhang
+- Update unicode version to 13.0.0
+
+# 2.3
+- Switch to ppxlib
+
+# 2.2
+- Support for OCaml 4.08
+
+# 2.1
+- GPR#78: Auto-generate unicode data
+
+# 2.0
+- GPR#70: Switch to dune, opam v2
+- GPR#60: Breaking change: switch from int codepoints to Uchar.t
+  codepoints
+- GPR#59: Track lexing position
+
+# 1.99.4
+- GPR#47: Switch to ocaml-migrate-parsetree (contributed by Adrien Guatto)
+- GPR#42: Added 'Rep' (repeat operator) (contributed by jpathy)
+
+# 1.99.3
+- Update to work with 4.03 (4.02 still supported)
+
+# 1.99.2
+- First official release of sedlex
+
+# 1.99.1
+- Support for new Ast_mapper registration API, follow OCaml trunk after
+  the inclusion of the extension_point branch
+
+# 1.99
+- First version of sedlex.  The history below refers to ulex, the ancestor
+  or sedlex implemented with Camlp4.
+
+# 1.1
+- Generate (more) globally unique identifiers to avoid conflicts when open'ing another module
+  processed by ulex (issue reported by Gerd Stolpmann)
+
+# 1.0
+- Update to the new Camlp4 and to ocamlbuild (release for OCaml 3.10
+  only), by Nicolas Pouillard.
+
+# 0.8
+- Really make it work with OCaml 3.09.
+- Support for Utf-16.
+
+# 0.7 released May 24 2005
+- Bug fixes
+- Update to OCaml 3.09 (currently CVS). Still works with OCaml 3.08.
+- MIT-like license (used to LGPL)
+
+# 0.5 release Jul. 8 2004
+- Document how to use a custom implementation for lex buffers
+- Update to OCaml 3.08
+
+# 0.4 released Jan. 10 2004
+- Bug fix (accept 1114111 as valid Unicode code point)
+- Add the rollback function-
+# 0.3 released Oct. 8 2003
+- Bug fix
+- Add a new predefined class for ISO identifiers
+
+# 0.2 released Sep. 22 2003
+- Changed the names of predefined regexp
+- Fix max_code = 0x10ffff
+- Lexers that changes encoding on the fly
+- Documentation of the interface Ulexing
+
+# 0.1 released Sep. 20 2003
+- Initial release
