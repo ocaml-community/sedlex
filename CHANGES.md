@@ -2,6 +2,9 @@
 - Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)
 - Use explicit stdlib in generated code (@hhugo, PR #122, fixes: #115)
 - Preserve location of lexbuf (@hhugo, PR #118, fixes: #19)
+- Don't use gen to consume channels (@hhugo, PR #124, fixes: #45)
+- New expect_test testsuite (@hhugo, PR #124)
+- Properly recognize malformed truncated input (@hhugo, PR #124)
 
 # 3.1:
 - Updated unicode support to `15.0.0`
