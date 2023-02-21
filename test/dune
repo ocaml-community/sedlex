@@ -1,0 +1,6 @@
+(library
+ (name sedlex_test)
+ (libraries sedlex)
+ (inline_tests)
+ (preprocess
+  (pps sedlex.ppx ppx_expect)))
