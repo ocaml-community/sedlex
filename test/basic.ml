@@ -205,23 +205,14 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_gen ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_channel ==
     Ident asas
     Number 123
     Op +
-    Number 2
-    EOF |}];
+    MalFormed |}];
   let s1 = "12asd12\u{1F6F3}" in
   let s = utf16_of_utf8 s1 in
   test_utf16 s bo (fun lb -> token lb);
@@ -246,47 +237,32 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 2) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 3) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 4) bo (fun lb -> token lb);
   [%expect
     {|
@@ -337,23 +313,14 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_gen ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_channel ==
     Ident asas
     Number 123
     Op +
-    Number 2
-    EOF |}];
+    MalFormed |}];
   let s1 = "12asd12\u{1F6F3}" in
   let s = utf16_of_utf8 s1 in
   test_utf16 s bo (fun lb -> token lb);
@@ -378,47 +345,32 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 2) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 3) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 4) bo (fun lb -> token lb);
   [%expect
     {|
@@ -469,23 +421,14 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_gen ==
-    Ident asas
-    Number 123
-    Op +
-    Number 2
-    EOF
+    MalFormed
     == from_channel ==
     Ident asas
     Number 123
     Op +
-    Number 2
-    EOF |}];
+    MalFormed |}];
   let s1 = "12asd12\u{1F6F3}" in
   let s = utf16_of_utf8 s1 in
   test_utf16 s bo (fun lb -> token lb);
@@ -510,47 +453,32 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 2) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 3) bo (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_gen ==
-    Number 12
-    Ident asd12
-    EOF
+    MalFormed
     == from_channel ==
     Number 12
-    Ident asd12
-    EOF |}];
+    MalFormed |}];
   test_utf16 (remove_last s 4) bo (fun lb -> token lb);
   [%expect
     {|
