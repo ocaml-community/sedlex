@@ -5,11 +5,7 @@
 exception InvalidCodepoint of int
 exception MalFormed
 
-let gen_of_channel chan =
-  let f () = try Some (input_char chan) with End_of_file -> None in
-  f
-
-let ( >>= ) o f = match o with Some x -> f x | None -> None
+let ( >>| ) o f = match o with Some x -> Some (f x) | None -> None
 
 (* Absolute position from the beginning of the stream *)
 type apos = int
@@ -216,6 +212,76 @@ let with_tokenizer lexer' lexbuf =
   in
   lexer
 
+module Chan = struct
+  exception Missing_input
+
+  type t = {
+    b : Bytes.t;
+    ic : in_channel;
+    mutable len : int;
+    mutable pos : int;
+  }
+
+  let min_buffer_size = 64
+
+  let create ic len : t =
+    let len = max len min_buffer_size in
+    { b = Bytes.create len; ic; len = 0; pos = 0 }
+
+  let available (t : t) = t.len - t.pos
+
+  let rec ensure_bytes_available (t : t) ~can_refill n =
+    if available t >= n then ()
+    else if can_refill then (
+      let len = t.len - t.pos in
+      if len > 0 then Bytes.blit t.b t.pos t.b 0 len;
+      let read = input t.ic t.b len (Bytes.length t.b - len) in
+      t.len <- len + read;
+      t.pos <- 0;
+      if read = 0 then raise Missing_input
+      else ensure_bytes_available t ~can_refill n)
+    else raise Missing_input
+
+  let ensure_bytes_available t ~can_refill n =
+    (* [n] should not exceed the size of the buffer. Here we are
+       conservative and make sure it doesn't exceed the mininum size
+       for the buffer. *)
+    if n <= 0 || n > min_buffer_size then invalid_arg "Sedlexing.Chan.ensure";
+    ensure_bytes_available t ~can_refill n
+
+  let get (t : t) i = Bytes.get t.b (t.pos + i)
+
+  let advance (t : t) n =
+    if t.pos + n > t.len then invalid_arg "advance";
+    t.pos <- t.pos + n
+
+  let raw_buf (t : t) = t.b
+  let raw_pos (t : t) = t.pos
+end
+
+let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
+  let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
+  let refill buf pos len =
+    let rec loop i =
+      if i = len then i
+      else (
+        match
+          (* we refill our bytes buffer only if we haven't refilled any uchar yet. *)
+          let can_refill = i = 0 in
+          Chan.ensure_bytes_available t ~can_refill min_bytes_per_uchar;
+          read_uchar ~can_refill t
+        with
+          | c ->
+              buf.(pos + i) <- c;
+              loop (i + 1)
+          | exception Chan.Missing_input ->
+              if i = 0 && Chan.available t > 0 then raise MalFormed;
+              i)
+    in
+    loop 0
+  in
+  create refill
+
 module Latin1 = struct
   let from_gen s = create (fill_buf_from_gen Uchar.of_char s)
 
@@ -228,7 +294,12 @@ module Latin1 = struct
       finished = true;
     }
 
-  let from_channel ic = from_gen (gen_of_channel ic)
+  let from_channel ic =
+    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
+      ~read_uchar:(fun ~can_refill:_ t ->
+        let c = Chan.get t 0 in
+        Chan.advance t 1;
+        Uchar.of_char c)
 
   let to_latin1 c =
     if Uchar.is_char c then Uchar.to_char c
@@ -250,32 +321,24 @@ module Utf8 = struct
   module Helper = struct
     (* http://www.faqs.org/rfcs/rfc3629.html *)
 
-    let width = Array.make 256 (-1)
-
-    let () =
-      for i = 0 to 127 do
-        width.(i) <- 1
-      done;
-      for i = 192 to 223 do
-        width.(i) <- 2
-      done;
-      for i = 224 to 239 do
-        width.(i) <- 3
-      done;
-      for i = 240 to 247 do
-        width.(i) <- 4
-      done
+    let width = function
+      | '\000' .. '\127' -> 1
+      | '\192' .. '\223' -> 2
+      | '\224' .. '\239' -> 3
+      | '\240' .. '\247' -> 4
+      | _ -> raise MalFormed
 
     let next s i =
-      match s.[i] with
-        | '\000' .. '\127' as c -> Char.code c
-        | '\192' .. '\223' as c ->
-            let n1 = Char.code c in
+      let c1 = s.[i] in
+      match width c1 with
+        | 1 -> Char.code c1
+        | 2 ->
+            let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
             if n2 lsr 6 != 0b10 then raise MalFormed;
             ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
-        | '\224' .. '\239' as c ->
-            let n1 = Char.code c in
+        | 3 ->
+            let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
             let n3 = Char.code s.[i + 2] in
             if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
@@ -286,8 +349,8 @@ module Utf8 = struct
             in
             if p >= 0xd800 && p <= 0xdf00 then raise MalFormed;
             p
-        | '\240' .. '\247' as c ->
-            let n1 = Char.code c in
+        | 4 ->
+            let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
             let n3 = Char.code s.[i + 2] in
             let n4 = Char.code s.[i + 3] in
@@ -297,60 +360,56 @@ module Utf8 = struct
             lor ((n2 land 0x3f) lsl 12)
             lor ((n3 land 0x3f) lsl 6)
             lor (n4 land 0x3f)
-        | _ -> raise MalFormed
+        | _ -> assert false
 
     let from_gen s =
-      Gen.next s >>= function
-      | '\000' .. '\127' as c -> Some (Uchar.of_char c)
-      | '\192' .. '\223' as c ->
-          let n1 = Char.code c in
-          Gen.next s >>= fun c2 ->
-          let n2 = Char.code c2 in
-          if n2 lsr 6 != 0b10 then raise MalFormed;
-          Some (Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)))
-      | '\224' .. '\239' as c ->
-          let n1 = Char.code c in
-          Gen.next s >>= fun c2 ->
-          let n2 = Char.code c2 in
-          Gen.next s >>= fun c3 ->
-          let n3 = Char.code c3 in
-          if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
-          Some
-            (Uchar.of_int
-               (((n1 land 0x0f) lsl 12)
-               lor ((n2 land 0x3f) lsl 6)
-               lor (n3 land 0x3f)))
-      | '\240' .. '\247' as c ->
-          let n1 = Char.code c in
-          Gen.next s >>= fun c2 ->
-          let n2 = Char.code c2 in
-          Gen.next s >>= fun c3 ->
-          let n3 = Char.code c3 in
-          Gen.next s >>= fun c4 ->
-          let n4 = Char.code c4 in
-          if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
-            raise MalFormed;
-          Some
-            (Uchar.of_int
-               (((n1 land 0x07) lsl 18)
-               lor ((n2 land 0x3f) lsl 12)
-               lor ((n3 land 0x3f) lsl 6)
-               lor (n4 land 0x3f)))
-      | _ -> raise MalFormed
+      let next_or_fail () =
+        match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
+      in
+      Gen.next s >>| fun c1 ->
+      match width c1 with
+        | 1 -> Uchar.of_char c1
+        | 2 ->
+            let n1 = Char.code c1 in
+            let n2 = next_or_fail () in
+            if n2 lsr 6 != 0b10 then raise MalFormed;
+            Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
+        | 3 ->
+            let n1 = Char.code c1 in
+            let n2 = next_or_fail () in
+            let n3 = next_or_fail () in
+            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
+            Uchar.of_int
+              (((n1 land 0x0f) lsl 12)
+              lor ((n2 land 0x3f) lsl 6)
+              lor (n3 land 0x3f))
+        | 4 ->
+            let n1 = Char.code c1 in
+            let n2 = next_or_fail () in
+            let n3 = next_or_fail () in
+            let n4 = next_or_fail () in
+            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
+              raise MalFormed;
+            Uchar.of_int
+              (((n1 land 0x07) lsl 18)
+              lor ((n2 land 0x3f) lsl 12)
+              lor ((n3 land 0x3f) lsl 6)
+              lor (n4 land 0x3f))
+        | _ -> raise MalFormed
 
     let compute_len s pos bytes =
       let rec aux n i =
         if i >= pos + bytes then if i = pos + bytes then n else raise MalFormed
         else (
-          let w = width.(Char.code s.[i]) in
-          if w > 0 then aux (succ n) (i + w) else raise MalFormed)
+          let w = width s.[i] in
+          aux (succ n) (i + w))
       in
       aux 0 pos
 
     let rec blit_to_int s spos a apos n =
       if n > 0 then begin
         a.(apos) <- next s spos;
-        blit_to_int s (spos + width.(Char.code s.[spos])) a (succ apos) (pred n)
+        blit_to_int s (spos + width s.[spos]) a (succ apos) (pred n)
       end
 
     let to_int_array s pos bytes =
@@ -391,7 +450,16 @@ module Utf8 = struct
     let gen_from_char_gen s () = from_gen s
   end
 
-  let from_channel ic = from_gen (Helper.gen_from_char_gen (gen_of_channel ic))
+  let from_channel ic =
+    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
+      ~read_uchar:(fun ~can_refill t ->
+        let w = Helper.width (Chan.get t 0) in
+        Chan.ensure_bytes_available t ~can_refill w;
+        let c =
+          Helper.next (Bytes.unsafe_to_string (Chan.raw_buf t)) (Chan.raw_pos t)
+        in
+        Chan.advance t w;
+        Uchar.of_int c)
 
   let from_gen s =
     create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
@@ -410,10 +478,10 @@ module Utf16 = struct
   module Helper = struct
     (* http://www.ietf.org/rfc/rfc2781.txt *)
 
-    let number_of_char_pair bo c1 c2 =
+    let number_of_pair bo c1 c2 =
       match bo with
-        | Little_endian -> (Char.code c2 lsl 8) + Char.code c1
-        | Big_endian -> (Char.code c1 lsl 8) + Char.code c2
+        | Little_endian -> (c2 lsl 8) + c1
+        | Big_endian -> (c1 lsl 8) + c2
 
     let char_pair_of_number bo num =
       match bo with
@@ -422,43 +490,43 @@ module Utf16 = struct
         | Big_endian ->
             (Char.chr ((num lsr 8) land 0xFF), Char.chr (num land 0xFF))
 
-    let next_in_gen bo s =
-      Gen.next s >>= fun c1 ->
-      Gen.next s >>= fun c2 -> Some (number_of_char_pair bo c1 c2)
+    let get_bo bo c1 c2 =
+      match !bo with
+        | Some o -> o
+        | None ->
+            let o =
+              match (c1, c2) with
+                | 0xff, 0xfe -> Little_endian
+                | _ -> Big_endian
+            in
+            bo := Some o;
+            o
 
-    let from_gen bo s w1 =
-      if w1 = 0xfffe then raise (InvalidCodepoint w1);
-      if w1 < 0xd800 || 0xdfff < w1 then Some (Uchar.of_int w1)
-      else if w1 <= 0xdbff then (
-        next_in_gen bo s >>= fun w2 ->
-        if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
-        let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
-        Some (Uchar.of_int (0x10000 + upper10 + lower10)))
-      else raise MalFormed
-
-    let gen_from_char_gen opt_bo s =
+    let from_gen opt_bo s =
+      let next_or_fail () =
+        match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
+      in
       let bo = ref opt_bo in
       fun () ->
-        Gen.next s >>= fun c1 ->
-        Gen.next s >>= fun c2 ->
-        let o =
-          match !bo with
-            | Some o -> o
-            | None ->
-                let o =
-                  match (Char.code c1, Char.code c2) with
-                    | 0xff, 0xfe -> Little_endian
-                    | _ -> Big_endian
-                in
-                bo := Some o;
-                o
-        in
-        from_gen o s (number_of_char_pair o c1 c2)
+        Gen.next s >>| fun c1 ->
+        let n1 = Char.code c1 in
+        let n2 = next_or_fail () in
+        let o = get_bo bo n1 n2 in
+        let w1 = number_of_pair o n1 n2 in
+        if w1 = 0xfffe then raise (InvalidCodepoint w1);
+        if w1 < 0xd800 || 0xdfff < w1 then Uchar.of_int w1
+        else if w1 <= 0xdbff then (
+          let n3 = next_or_fail () in
+          let n4 = next_or_fail () in
+          let w2 = number_of_pair o n3 n4 in
+          if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
+          let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
+          Uchar.of_int (0x10000 + upper10 + lower10))
+        else raise MalFormed
 
     let compute_len opt_bo str pos bytes =
       let s =
-        gen_from_char_gen opt_bo
-          (Gen.init ~limit:(bytes - pos) (fun i -> str.[i + pos]))
+        from_gen opt_bo (Gen.init ~limit:(bytes - pos) (fun i -> str.[i + pos]))
       in
       let l = ref 0 in
       Gen.iter (fun _ -> incr l) s;
@@ -466,8 +534,7 @@ module Utf16 = struct
 
     let blit_to_int opt_bo s spos a apos bytes =
       let s =
-        gen_from_char_gen opt_bo
-          (Gen.init ~limit:(bytes - spos) (fun i -> s.[i + spos]))
+        from_gen opt_bo (Gen.init ~limit:(bytes - spos) (fun i -> s.[i + spos]))
       in
       let p = ref apos in
       Gen.iter
@@ -511,8 +578,30 @@ module Utf16 = struct
       aux apos len
   end
 
-  let from_gen s opt_bo = from_gen (Helper.gen_from_char_gen opt_bo s)
-  let from_channel ic opt_bo = from_gen (gen_of_channel ic) opt_bo
+  let from_gen s opt_bo = from_gen (Helper.from_gen opt_bo s)
+
+  let from_channel ic opt_bo =
+    let bo = ref opt_bo in
+    make_from_channel ic ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
+      ~read_uchar:(fun ~can_refill t ->
+        let n1 = Char.code (Chan.get t 0) in
+        let n2 = Char.code (Chan.get t 1) in
+        let o = Helper.get_bo bo n1 n2 in
+        let w1 = Helper.number_of_pair o n1 n2 in
+        if w1 = 0xfffe then raise (InvalidCodepoint w1);
+        if w1 < 0xd800 || 0xdfff < w1 then (
+          Chan.advance t 2;
+          Uchar.of_int w1)
+        else if w1 <= 0xdbff then (
+          Chan.ensure_bytes_available t ~can_refill 4;
+          let n3 = Char.code (Chan.get t 2) in
+          let n4 = Char.code (Chan.get t 3) in
+          let w2 = Helper.number_of_pair o n3 n4 in
+          if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
+          let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
+          Chan.advance t 4;
+          Uchar.of_int (0x10000 + upper10 + lower10))
+        else raise MalFormed)
 
   let from_string s opt_bo =
     let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in

@@ -22,4 +22,5 @@ extension.")
    dune
    (ppxlib (>= 0.26.0))
    gen
-   uchar))
+   uchar
+   (ppx_expect :with-test)))
