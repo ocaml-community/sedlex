@@ -5,6 +5,7 @@
 - Don't use gen to consume channels (@hhugo, PR #124, fixes: #45)
 - New expect_test testsuite (@hhugo, PR #124)
 - Properly recognize malformed truncated input (@hhugo, PR #124)
+- Raise `Malformed` instead of `Invalid_arg` (@hhugo, PR #126, fixes: #91)
 
 # 3.1:
 - Updated unicode support to `15.0.0`
