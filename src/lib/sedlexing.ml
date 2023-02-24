@@ -5,6 +5,13 @@
 exception InvalidCodepoint of int
 exception MalFormed
 
+module Uchar = struct
+  include Uchar
+
+  let of_int x =
+    if Uchar.is_valid x then Uchar.unsafe_of_int x else raise MalFormed
+end
+
 let ( >>| ) o f = match o with Some x -> Some (f x) | None -> None
 
 (* Absolute position from the beginning of the stream *)
