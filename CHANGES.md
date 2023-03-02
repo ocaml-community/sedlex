@@ -1,4 +1,4 @@
-# 3.2:
+# 3.1:
 - Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)
 - Use explicit stdlib in generated code (@hhugo, PR #122, fixes: #115)
 - Preserve location of lexbuf (@hhugo, PR #118, fixes: #19)
@@ -6,8 +6,6 @@
 - New expect_test testsuite (@hhugo, PR #124)
 - Properly recognize malformed truncated input (@hhugo, PR #124)
 - Raise `Malformed` instead of `Invalid_arg` (@hhugo, PR #126, fixes: #91)
-
-# 3.1:
 - Updated unicode support to `15.0.0`
 
 # 3.0:
