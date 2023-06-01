@@ -55,7 +55,7 @@ let empty_lexbuf =
     offset = 0;
     pos = 0;
     curr_bol = 0;
-    curr_line = 0;
+    curr_line = 1;
     start_pos = 0;
     start_bol = 0;
     start_line = 0;
@@ -75,7 +75,6 @@ let create refill =
     empty_lexbuf with
     refill;
     buf = Array.make chunk_size dummy_uchar;
-    curr_line = 1;
   }
 
 let set_position lexbuf position =
@@ -139,7 +138,7 @@ let refill lexbuf =
   if n = 0 then lexbuf.finished <- true else lexbuf.len <- lexbuf.len + n
 
 let new_line lexbuf =
-  if lexbuf.curr_line != 0 then lexbuf.curr_line <- lexbuf.curr_line + 1;
+  lexbuf.curr_line <- lexbuf.curr_line + 1;
   lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
 
 let[@inline always] next_aux some none lexbuf =
