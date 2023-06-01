@@ -404,27 +404,6 @@ module Utf8 = struct
               lor (n4 land 0x3f))
         | _ -> raise MalFormed
 
-    let compute_len s pos bytes =
-      let rec aux n i =
-        if i >= pos + bytes then if i = pos + bytes then n else raise MalFormed
-        else (
-          let w = width s.[i] in
-          aux (succ n) (i + w))
-      in
-      aux 0 pos
-
-    let rec blit_to_int s spos a apos n =
-      if n > 0 then begin
-        a.(apos) <- next s spos;
-        blit_to_int s (spos + width s.[spos]) a (succ apos) (pred n)
-      end
-
-    let to_int_array s pos bytes =
-      let n = compute_len s pos bytes in
-      let a = Array.make n 0 in
-      blit_to_int s pos a 0 n;
-      a
-
     (**************************)
 
     let store b p =
@@ -471,7 +450,15 @@ module Utf8 = struct
   let from_gen s =
     create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
 
-  let from_string s = from_int_array (Helper.to_int_array s 0 (String.length s))
+  let from_string s =
+    let gen =
+      let pos = ref (-1) in
+      let len = String.length s in
+      fun () ->
+        incr pos;
+        if !pos < len then Some s.[!pos] else None
+    in
+    from_gen gen
 
   let sub_lexeme lexbuf pos len =
     Helper.from_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len

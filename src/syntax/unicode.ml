@@ -1,5 +1,6 @@
 (* This file was automatically generated, do not edit. *)
 (* Edit gen_unicode.ml.inc instead. *)
+
 [@@@ocamlformat "disable"]
 
 let version = "15.0.0"
