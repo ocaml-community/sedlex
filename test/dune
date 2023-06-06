@@ -2,5 +2,7 @@
  (name sedlex_test)
  (libraries sedlex)
  (inline_tests)
+ (enabled_if
+  (>= %{ocaml_version} 4.14))
  (preprocess
   (pps sedlex.ppx ppx_expect)))

@@ -1,3 +1,6 @@
+# dev
+- Restore compatibility with OCaml 4.08
+
 # 3.1:
 - Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)
 - Use explicit stdlib in generated code (@hhugo, PR #122, fixes: #115)
