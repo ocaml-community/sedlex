@@ -162,7 +162,7 @@ let%expect_test "utf8" =
     Number 2
     Ident asd
     EOF |}];
-  let s = "asas 123 + 2\129" in
+  let s = "asas 123 + 2\129123" in
   test_utf8 s (fun lb -> token lb);
   [%expect
     {|
