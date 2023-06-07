@@ -80,19 +80,21 @@ let set_position lexbuf position =
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let fill_buf_from_gen f gen buf pos len =
-  let rec aux i =
-    if i >= len then len
-    else (
-      match gen () with
-        | Some c ->
-            buf.(pos + i) <- f c;
-            aux (i + 1)
-        | None -> i)
-  in
-  aux 0
+let fill_buf_from_gen gen =
+  let () = () in
+  fun buf pos len ->
+    let rec aux i =
+      if i >= len then len
+      else (
+        match gen () with
+          | Some c ->
+              buf.(pos + i) <- c;
+              aux (i + 1)
+          | None -> i)
+    in
+    aux 0
 
-let from_gen s = create (fill_buf_from_gen (fun id -> id) s)
+let from_gen gen = create (fill_buf_from_gen gen)
 
 let from_int_array a =
   let len = Array.length a in
@@ -290,7 +292,11 @@ let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
   create refill
 
 module Latin1 = struct
-  let from_gen s = create (fill_buf_from_gen Uchar.of_char s)
+  let from_gen gen =
+    let gen () =
+      match gen () with None -> None | Some c -> Some (Uchar.of_char c)
+    in
+    create (fill_buf_from_gen gen)
 
   let from_string s =
     let len = String.length s in
@@ -468,9 +474,7 @@ module Utf8 = struct
         Chan.advance t w;
         Uchar.of_int c)
 
-  let from_gen s =
-    create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
-
+  let from_gen gen = create (fill_buf_from_gen (Helper.gen_from_char_gen gen))
   let from_string s = from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
