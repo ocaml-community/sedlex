@@ -450,7 +450,7 @@ module Utf8 = struct
         Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f))))
       else raise MalFormed
 
-    let from_uchar_array a apos len =
+    let string_of_uchar_array a apos len =
       let b = Buffer.create (len * 4) in
       let rec aux apos len =
         if len > 0 then (
@@ -478,7 +478,7 @@ module Utf8 = struct
   let from_string s = from_int_array (Helper.to_int_array s 0 (String.length s))
 
   let sub_lexeme lexbuf pos len =
-    Helper.from_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
+    Helper.string_of_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
 end
@@ -575,7 +575,7 @@ module Utf16 = struct
         Buffer.add_char buf c3;
         Buffer.add_char buf c4)
 
-    let from_uchar_array bo a apos len bom =
+    let string_of_uchar_array bo a apos len bom =
       let b = Buffer.create ((len * 4) + 2) in
       (* +2 for the BOM *)
       if bom then store bo b 0xfeff;
@@ -619,7 +619,7 @@ module Utf16 = struct
     from_uchar_array a
 
   let sub_lexeme lb pos len bo bom =
-    Helper.from_uchar_array bo lb.buf (lb.start_pos + pos) len bom
+    Helper.string_of_uchar_array bo lb.buf (lb.start_pos + pos) len bom
 
   let lexeme lb bo bom = sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
 end
