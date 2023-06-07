@@ -12,8 +12,6 @@ module Uchar = struct
     if Uchar.is_valid x then Uchar.unsafe_of_int x else raise MalFormed
 end
 
-let ( >>| ) o f = match o with Some x -> Some (f x) | None -> None
-
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
@@ -80,9 +78,10 @@ let set_position lexbuf position =
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let fill_buf_from_gen gen =
-  let () = () in
+let refill_buf_from_gen gen =
+  let malformed = ref false in
   fun buf pos len ->
+    if !malformed then raise MalFormed;
     let rec aux i =
       if i >= len then len
       else (
@@ -90,29 +89,34 @@ let fill_buf_from_gen gen =
           | Some c ->
               buf.(pos + i) <- c;
               aux (i + 1)
-          | None -> i)
+          | None -> i
+          | exception MalFormed when i <> 0 ->
+              malformed := true;
+              i)
     in
     aux 0
 
-let from_gen gen = create (fill_buf_from_gen gen)
+let from_gen gen = create (refill_buf_from_gen gen)
 
 let from_int_array a =
+  let i = ref 0 in
+  (* copy the array to not be affected by future mutations *)
+  let a = Array.copy a in
   let len = Array.length a in
-  {
-    empty_lexbuf with
-    buf = Array.init len (fun i -> Uchar.of_int a.(i));
-    len;
-    finished = true;
-  }
+  let gen () =
+    if !i = len then None
+    else (
+      let u = Uchar.of_int (Array.get a !i) in
+      incr i;
+      Some u)
+  in
+  from_gen gen
 
-let from_uchar_array a =
-  let len = Array.length a in
-  {
-    empty_lexbuf with
-    buf = Array.init len (fun i -> a.(i));
-    len;
-    finished = true;
-  }
+let from_uchar_array buf =
+  (* copy the array to not be affected by future mutations *)
+  let buf = Array.copy buf in
+  let len = Array.length buf in
+  { empty_lexbuf with buf; len; finished = true }
 
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf then begin
@@ -221,9 +225,20 @@ let with_tokenizer lexer' lexbuf =
   in
   lexer
 
-module Chan = struct
-  exception Missing_input
+module type Buf = sig
+  type t
 
+  val available : t -> int
+  val ensure_bytes_available : t -> can_refill:bool -> int -> unit
+  val get : t -> int -> char
+  val advance : t -> int -> unit
+  val raw_buf : t -> Bytes.t
+  val raw_pos : t -> int
+end
+
+exception Missing_input
+
+module T_channel = struct
   type t = {
     b : Bytes.t;
     ic : in_channel;
@@ -243,10 +258,11 @@ module Chan = struct
     if available t >= n then ()
     else if can_refill then (
       let len = t.len - t.pos in
-      if len > 0 then Bytes.blit t.b t.pos t.b 0 len;
+      if t.pos > 0 then (
+        Bytes.blit t.b t.pos t.b 0 len;
+        t.pos <- 0);
       let read = input t.ic t.b len (Bytes.length t.b - len) in
       t.len <- len + read;
-      t.pos <- 0;
       if read = 0 then raise Missing_input
       else ensure_bytes_available t ~can_refill n)
     else raise Missing_input
@@ -268,51 +284,155 @@ module Chan = struct
   let raw_pos (t : t) = t.pos
 end
 
-let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
-  let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
+module T_gen = struct
+  type t = {
+    b : Bytes.t;
+    gen : unit -> char option;
+    mutable len : int;
+    mutable pos : int;
+  }
+
+  let min_buffer_size = 64
+  let create gen len : t = { b = Bytes.create len; gen; len = 0; pos = 0 }
+  let available (t : t) = t.len - t.pos
+
+  let rec ensure_bytes_available (t : t) n =
+    let available = available t in
+    if available >= n then ()
+    else (
+      match t.gen () with
+        | None -> raise Missing_input
+        | Some c ->
+            if t.pos > 0 then
+              if available = 0 then (
+                t.pos <- 0;
+                t.len <- 0)
+              else (
+                Bytes.blit t.b t.pos t.b 0 available;
+                t.pos <- 0;
+                t.len <- available);
+            Bytes.set t.b t.len c;
+            t.len <- t.len + 1;
+            ensure_bytes_available t n)
+
+  let ensure_bytes_available t ~can_refill:_ n =
+    (* [n] should not exceed the size of the buffer. Here we are
+       conservative and make sure it doesn't exceed the mininum size
+       for the buffer. *)
+    if n <= 0 || n > min_buffer_size then invalid_arg "Sedlexing.Chan.ensure";
+    ensure_bytes_available t n
+
+  let get (t : t) i = Bytes.get t.b (t.pos + i)
+
+  let advance (t : t) n =
+    if t.pos + n > t.len then invalid_arg "advance";
+    t.pos <- t.pos + n;
+    assert (t.pos <= t.len)
+
+  let raw_buf (t : t) = t.b
+  let raw_pos (t : t) = t.pos
+end
+
+module T_bytes = struct
+  type t = { b : Bytes.t; max : int; mutable pos : int }
+
+  let create b pos len : t =
+    let max = min (Bytes.length b) (pos + len) in
+    { b; max; pos }
+
+  let available (t : t) = t.max - t.pos
+
+  let ensure_bytes_available (t : t) n =
+    let available = available t in
+    if available >= n then () else raise Missing_input
+
+  let ensure_bytes_available t ~can_refill:_ n =
+    (* [n] should not exceed the size of the buffer. Here we are
+       conservative and make sure it doesn't exceed the mininum size
+       for the buffer. *)
+    if n <= 0 then invalid_arg "Sedlexing.Chan.ensure";
+    ensure_bytes_available t n
+
+  let get (t : t) i = Bytes.get t.b (t.pos + i)
+
+  let advance (t : t) n =
+    if t.pos + n > t.max then invalid_arg "advance";
+    t.pos <- t.pos + n
+
+  let raw_buf (t : t) = t.b
+  let raw_pos (t : t) = t.pos
+end
+
+let make_from_buf (type t) (module B : Buf with type t = t) (t : t)
+    ~max_bytes_per_uchar:_ ~min_bytes_per_uchar
+    ~(read_uchar :
+       (module Buf with type t = t) -> can_refill:bool -> t -> Uchar.t) =
+  let malformed = ref false in
   let refill buf pos len =
+    if !malformed then raise MalFormed;
     let rec loop i =
       if i = len then i
       else (
         match
           (* we refill our bytes buffer only if we haven't refilled any uchar yet. *)
           let can_refill = i = 0 in
-          Chan.ensure_bytes_available t ~can_refill min_bytes_per_uchar;
-          read_uchar ~can_refill t
+          B.ensure_bytes_available t ~can_refill min_bytes_per_uchar;
+          read_uchar (module B) ~can_refill t
         with
           | c ->
               buf.(pos + i) <- c;
               loop (i + 1)
-          | exception Chan.Missing_input ->
-              if i = 0 && Chan.available t > 0 then raise MalFormed;
+          | exception MalFormed when i <> 0 ->
+              malformed := true;
+              i
+          | exception Missing_input ->
+              if i = 0 && B.available t > 0 then raise MalFormed;
               i)
     in
     loop 0
   in
   create refill
 
-module Latin1 = struct
-  let from_gen gen =
-    let gen () =
-      match gen () with None -> None | Some c -> Some (Uchar.of_char c)
-    in
-    create (fill_buf_from_gen gen)
+let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
+  let t = T_channel.create ic (chunk_size * max_bytes_per_uchar) in
+  make_from_buf
+    (module T_channel)
+    t ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar
 
-  let from_string s =
-    let len = String.length s in
-    {
-      empty_lexbuf with
-      buf = Array.init len (fun i -> Uchar.of_char s.[i]);
-      len;
-      finished = true;
-    }
+let make_from_char_gen ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar
+    =
+  let t = T_gen.create ic max_bytes_per_uchar in
+  make_from_buf
+    (module T_gen)
+    t ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar
+
+let make_from_substring (s : string) pos len ~max_bytes_per_uchar
+    ~min_bytes_per_uchar ~read_uchar =
+  let b = Bytes.unsafe_of_string s in
+  let t = T_bytes.create b pos len in
+  make_from_buf
+    (module T_bytes)
+    t ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar
+
+module Latin1 = struct
+  let read_uchar (type t) (module Buf : Buf with type t = t) ~can_refill:_
+      (t : t) =
+    let c = Uchar.of_char (Buf.get t 0) in
+    Buf.advance t 1;
+    c
+
+  let min_bytes_per_uchar = 1
+  let max_bytes_per_uchar = 1
 
   let from_channel ic =
-    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
-      ~read_uchar:(fun ~can_refill:_ t ->
-        let c = Chan.get t 0 in
-        Chan.advance t 1;
-        Uchar.of_char c)
+    make_from_channel ic ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
+
+  let from_gen gen =
+    make_from_char_gen gen ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
+
+  let from_string s =
+    make_from_substring s 0 (String.length s) ~min_bytes_per_uchar
+      ~max_bytes_per_uchar ~read_uchar
 
   let to_latin1 c =
     if Uchar.is_char c then Uchar.to_char c
@@ -375,62 +495,6 @@ module Utf8 = struct
             lor (n4 land 0x3f)
         | _ -> assert false
 
-    let from_gen s =
-      let next_or_fail () =
-        match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
-      in
-      Gen.next s >>| fun c1 ->
-      match width c1 with
-        | 1 -> Uchar.of_char c1
-        | 2 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            if n2 lsr 6 != 0b10 then raise MalFormed;
-            Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
-        | 3 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            let n3 = next_or_fail () in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
-            Uchar.of_int
-              (((n1 land 0x0f) lsl 12)
-              lor ((n2 land 0x3f) lsl 6)
-              lor (n3 land 0x3f))
-        | 4 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            let n3 = next_or_fail () in
-            let n4 = next_or_fail () in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
-              raise MalFormed;
-            Uchar.of_int
-              (((n1 land 0x07) lsl 18)
-              lor ((n2 land 0x3f) lsl 12)
-              lor ((n3 land 0x3f) lsl 6)
-              lor (n4 land 0x3f))
-        | _ -> raise MalFormed
-
-    let compute_len s pos bytes =
-      let rec aux n i =
-        if i >= pos + bytes then if i = pos + bytes then n else raise MalFormed
-        else (
-          let w = width s.[i] in
-          aux (succ n) (i + w))
-      in
-      aux 0 pos
-
-    let rec blit_to_int s spos a apos n =
-      if n > 0 then begin
-        a.(apos) <- next s spos;
-        blit_to_int s (spos + width s.[spos]) a (succ apos) (pred n)
-      end
-
-    let to_int_array s pos bytes =
-      let n = compute_len s pos bytes in
-      let a = Array.make n 0 in
-      blit_to_int s pos a 0 n;
-      a
-
     (**************************)
 
     let store b p =
@@ -459,23 +523,30 @@ module Utf8 = struct
         else Buffer.contents b
       in
       aux apos len
-
-    let gen_from_char_gen s () = from_gen s
   end
 
-  let from_channel ic =
-    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
-        let w = Helper.width (Chan.get t 0) in
-        Chan.ensure_bytes_available t ~can_refill w;
-        let c =
-          Helper.next (Bytes.unsafe_to_string (Chan.raw_buf t)) (Chan.raw_pos t)
-        in
-        Chan.advance t w;
-        Uchar.of_int c)
+  let read_uchar (type t) (module Buf : Buf with type t = t) ~can_refill (t : t)
+      =
+    let w = Helper.width (Buf.get t 0) in
+    Buf.ensure_bytes_available t ~can_refill w;
+    let c =
+      Helper.next (Bytes.unsafe_to_string (Buf.raw_buf t)) (Buf.raw_pos t)
+    in
+    Buf.advance t w;
+    Uchar.of_int c
 
-  let from_gen gen = create (fill_buf_from_gen (Helper.gen_from_char_gen gen))
-  let from_string s = from_int_array (Helper.to_int_array s 0 (String.length s))
+  let min_bytes_per_uchar = 1
+  let max_bytes_per_uchar = 4
+
+  let from_channel ic =
+    make_from_channel ic ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
+
+  let from_gen gen =
+    make_from_char_gen gen ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
+
+  let from_string s =
+    make_from_substring s 0 (String.length s) ~min_bytes_per_uchar
+      ~max_bytes_per_uchar ~read_uchar
 
   let sub_lexeme lexbuf pos len =
     Helper.string_of_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
@@ -513,53 +584,6 @@ module Utf16 = struct
             bo := Some o;
             o
 
-    let from_gen opt_bo s =
-      let next_or_fail () =
-        match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
-      in
-      let bo = ref opt_bo in
-      fun () ->
-        Gen.next s >>| fun c1 ->
-        let n1 = Char.code c1 in
-        let n2 = next_or_fail () in
-        let o = get_bo bo n1 n2 in
-        let w1 = number_of_pair o n1 n2 in
-        if w1 = 0xfffe then raise (InvalidCodepoint w1);
-        if w1 < 0xd800 || 0xdfff < w1 then Uchar.of_int w1
-        else if w1 <= 0xdbff then (
-          let n3 = next_or_fail () in
-          let n4 = next_or_fail () in
-          let w2 = number_of_pair o n3 n4 in
-          if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
-          let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
-          Uchar.of_int (0x10000 + upper10 + lower10))
-        else raise MalFormed
-
-    let compute_len opt_bo str pos bytes =
-      let s =
-        from_gen opt_bo (Gen.init ~limit:(bytes - pos) (fun i -> str.[i + pos]))
-      in
-      let l = ref 0 in
-      Gen.iter (fun _ -> incr l) s;
-      !l
-
-    let blit_to_int opt_bo s spos a apos bytes =
-      let s =
-        from_gen opt_bo (Gen.init ~limit:(bytes - spos) (fun i -> s.[i + spos]))
-      in
-      let p = ref apos in
-      Gen.iter
-        (fun x ->
-          a.(!p) <- x;
-          incr p)
-        s
-
-    let to_uchar_array opt_bo s pos bytes =
-      let len = compute_len opt_bo s pos bytes in
-      let a = Array.make len (Uchar.of_int 0) in
-      blit_to_int opt_bo s pos a 0 bytes;
-      a
-
     let store bo buf code =
       if code < 0x10000 then (
         let c1, c2 = char_pair_of_number bo code in
@@ -589,34 +613,42 @@ module Utf16 = struct
       aux apos len
   end
 
-  let from_gen s opt_bo = from_gen (Helper.from_gen opt_bo s)
+  let min_bytes_per_uchar = 2
+  let max_bytes_per_uchar = 4
+
+  let read_uchar bo (type t) (module Buf : Buf with type t = t) ~can_refill
+      (t : t) =
+    let n1 = Char.code (Buf.get t 0) in
+    let n2 = Char.code (Buf.get t 1) in
+    let o = Helper.get_bo bo n1 n2 in
+    let w1 = Helper.number_of_pair o n1 n2 in
+    if w1 = 0xfffe then raise (InvalidCodepoint w1);
+    if w1 < 0xd800 || 0xdfff < w1 then (
+      Buf.advance t 2;
+      Uchar.of_int w1)
+    else if w1 <= 0xdbff then (
+      Buf.ensure_bytes_available t ~can_refill max_bytes_per_uchar;
+      let n3 = Char.code (Buf.get t 2) in
+      let n4 = Char.code (Buf.get t 3) in
+      let w2 = Helper.number_of_pair o n3 n4 in
+      if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
+      let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
+      Buf.advance t 4;
+      Uchar.of_int (0x10000 + upper10 + lower10))
+    else raise MalFormed
 
   let from_channel ic opt_bo =
-    let bo = ref opt_bo in
-    make_from_channel ic ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
-        let n1 = Char.code (Chan.get t 0) in
-        let n2 = Char.code (Chan.get t 1) in
-        let o = Helper.get_bo bo n1 n2 in
-        let w1 = Helper.number_of_pair o n1 n2 in
-        if w1 = 0xfffe then raise (InvalidCodepoint w1);
-        if w1 < 0xd800 || 0xdfff < w1 then (
-          Chan.advance t 2;
-          Uchar.of_int w1)
-        else if w1 <= 0xdbff then (
-          Chan.ensure_bytes_available t ~can_refill 4;
-          let n3 = Char.code (Chan.get t 2) in
-          let n4 = Char.code (Chan.get t 3) in
-          let w2 = Helper.number_of_pair o n3 n4 in
-          if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
-          let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
-          Chan.advance t 4;
-          Uchar.of_int (0x10000 + upper10 + lower10))
-        else raise MalFormed)
+    let read_uchar = read_uchar (ref opt_bo) in
+    make_from_channel ic ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
+
+  let from_gen gen opt_bo =
+    let read_uchar = read_uchar (ref opt_bo) in
+    make_from_char_gen gen ~min_bytes_per_uchar ~max_bytes_per_uchar ~read_uchar
 
   let from_string s opt_bo =
-    let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in
-    from_uchar_array a
+    let read_uchar = read_uchar (ref opt_bo) in
+    make_from_substring s 0 (String.length s) ~min_bytes_per_uchar
+      ~max_bytes_per_uchar ~read_uchar
 
   let sub_lexeme lb pos len bo bom =
     Helper.string_of_uchar_array bo lb.buf (lb.start_pos + pos) len bom
