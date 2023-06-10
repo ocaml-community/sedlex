@@ -20,6 +20,10 @@ jobs:
           - 4.14.x
         skip-test:
           - false
+        include:
+          - os: ubuntu-latest
+            ocaml-compiler: 4.8.x
+            skip-test: true
 
     runs-on: ${{ matrix.os }}
 

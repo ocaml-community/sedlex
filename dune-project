@@ -18,7 +18,7 @@ Unicode. Unlike ocamllex, sedlex allows lexer specifications within regular
 OCaml source files. Lexing specific constructs are provided via a ppx syntax
 extension.")
  (depends
-   (ocaml (>= 4.14))
+   (ocaml (>= 4.08))
    dune
    (ppxlib (>= 0.26.0))
    gen
