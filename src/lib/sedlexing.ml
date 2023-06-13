@@ -65,10 +65,10 @@ let empty_lexbuf =
     finished = false;
   }
 
-let create f =
+let create refill =
   {
     empty_lexbuf with
-    refill = f;
+    refill;
     buf = Array.make chunk_size (Uchar.of_int 0);
     curr_line = 1;
   }
@@ -80,7 +80,7 @@ let set_position lexbuf position =
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let fill_buf_from_gen f gen buf pos len =
+let refill_buf_from_gen f gen buf pos len =
   let rec aux i =
     if i >= len then len
     else (
@@ -92,7 +92,7 @@ let fill_buf_from_gen f gen buf pos len =
   in
   aux 0
 
-let from_gen s = create (fill_buf_from_gen (fun id -> id) s)
+let from_gen s = create (refill_buf_from_gen (fun id -> id) s)
 
 let from_int_array a =
   let len = Array.length a in
@@ -290,7 +290,7 @@ let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
   create refill
 
 module Latin1 = struct
-  let from_gen s = create (fill_buf_from_gen Uchar.of_char s)
+  let from_gen s = from_gen (Gen.map Uchar.of_char s)
 
   let from_string s =
     let len = String.length s in
@@ -369,40 +369,41 @@ module Utf8 = struct
             lor (n4 land 0x3f)
         | _ -> assert false
 
-    let from_gen s =
+    let gen_from_char_gen s =
       let next_or_fail () =
         match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
       in
-      Gen.next s >>| fun c1 ->
-      match width c1 with
-        | 1 -> Uchar.of_char c1
-        | 2 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            if n2 lsr 6 != 0b10 then raise MalFormed;
-            Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
-        | 3 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            let n3 = next_or_fail () in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
-            Uchar.of_int
-              (((n1 land 0x0f) lsl 12)
-              lor ((n2 land 0x3f) lsl 6)
-              lor (n3 land 0x3f))
-        | 4 ->
-            let n1 = Char.code c1 in
-            let n2 = next_or_fail () in
-            let n3 = next_or_fail () in
-            let n4 = next_or_fail () in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
-              raise MalFormed;
-            Uchar.of_int
-              (((n1 land 0x07) lsl 18)
-              lor ((n2 land 0x3f) lsl 12)
-              lor ((n3 land 0x3f) lsl 6)
-              lor (n4 land 0x3f))
-        | _ -> raise MalFormed
+      fun () ->
+        Gen.next s >>| fun c1 ->
+        match width c1 with
+          | 1 -> Uchar.of_char c1
+          | 2 ->
+              let n1 = Char.code c1 in
+              let n2 = next_or_fail () in
+              if n2 lsr 6 != 0b10 then raise MalFormed;
+              Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
+          | 3 ->
+              let n1 = Char.code c1 in
+              let n2 = next_or_fail () in
+              let n3 = next_or_fail () in
+              if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
+              Uchar.of_int
+                (((n1 land 0x0f) lsl 12)
+                lor ((n2 land 0x3f) lsl 6)
+                lor (n3 land 0x3f))
+          | 4 ->
+              let n1 = Char.code c1 in
+              let n2 = next_or_fail () in
+              let n3 = next_or_fail () in
+              let n4 = next_or_fail () in
+              if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
+                raise MalFormed;
+              Uchar.of_int
+                (((n1 land 0x07) lsl 18)
+                lor ((n2 land 0x3f) lsl 12)
+                lor ((n3 land 0x3f) lsl 6)
+                lor (n4 land 0x3f))
+          | _ -> raise MalFormed
 
     (**************************)
 
@@ -432,8 +433,6 @@ module Utf8 = struct
         else Buffer.contents b
       in
       aux apos len
-
-    let gen_from_char_gen s () = from_gen s
   end
 
   let from_channel ic =
@@ -447,8 +446,7 @@ module Utf8 = struct
         Chan.advance t w;
         Uchar.of_int c)
 
-  let from_gen s =
-    create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
+  let from_gen s = from_gen (Helper.gen_from_char_gen s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
@@ -489,7 +487,7 @@ module Utf16 = struct
             bo := Some o;
             o
 
-    let from_gen opt_bo s =
+    let gen_from_char_gen opt_bo s =
       let next_or_fail () =
         match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
       in
@@ -540,8 +538,6 @@ module Utf16 = struct
       aux apos len
   end
 
-  let from_gen s opt_bo = from_gen (Helper.from_gen opt_bo s)
-
   let from_channel ic opt_bo =
     let bo = ref opt_bo in
     make_from_channel ic ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
@@ -564,6 +560,8 @@ module Utf16 = struct
           Chan.advance t 4;
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed)
+
+  let from_gen s opt_bo = from_gen (Helper.gen_from_char_gen opt_bo s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
