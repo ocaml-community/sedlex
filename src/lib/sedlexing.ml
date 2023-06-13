@@ -80,19 +80,20 @@ let set_position lexbuf position =
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let refill_buf_from_gen f gen buf pos len =
-  let rec aux i =
-    if i >= len then len
-    else (
-      match gen () with
-        | Some c ->
-            buf.(pos + i) <- f c;
-            aux (i + 1)
-        | None -> i)
+let from_gen gen =
+  let refill buf pos len =
+    let rec loop i =
+      if i >= len then len
+      else (
+        match gen () with
+          | Some c ->
+              buf.(pos + i) <- c;
+              loop (i + 1)
+          | None -> i)
+    in
+    loop 0
   in
-  aux 0
-
-let from_gen s = create (refill_buf_from_gen (fun id -> id) s)
+  create refill
 
 let from_int_array a =
   let len = Array.length a in
