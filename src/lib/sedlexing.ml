@@ -451,14 +451,7 @@ module Utf8 = struct
     create (fill_buf_from_gen (fun id -> id) (Helper.gen_from_char_gen s))
 
   let from_string s =
-    let gen =
-      let pos = ref (-1) in
-      let len = String.length s in
-      fun () ->
-        incr pos;
-        if !pos < len then Some s.[!pos] else None
-    in
-    from_gen gen
+    from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lexbuf pos len =
     Helper.from_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
@@ -518,31 +511,6 @@ module Utf16 = struct
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed
 
-    let compute_len opt_bo str pos bytes =
-      let s =
-        from_gen opt_bo (Gen.init ~limit:(bytes - pos) (fun i -> str.[i + pos]))
-      in
-      let l = ref 0 in
-      Gen.iter (fun _ -> incr l) s;
-      !l
-
-    let blit_to_int opt_bo s spos a apos bytes =
-      let s =
-        from_gen opt_bo (Gen.init ~limit:(bytes - spos) (fun i -> s.[i + spos]))
-      in
-      let p = ref apos in
-      Gen.iter
-        (fun x ->
-          a.(!p) <- x;
-          incr p)
-        s
-
-    let to_uchar_array opt_bo s pos bytes =
-      let len = compute_len opt_bo s pos bytes in
-      let a = Array.make len (Uchar.of_int 0) in
-      blit_to_int opt_bo s pos a 0 bytes;
-      a
-
     let store bo buf code =
       if code < 0x10000 then (
         let c1, c2 = char_pair_of_number bo code in
@@ -597,9 +565,8 @@ module Utf16 = struct
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed)
 
-  let from_string s opt_bo =
-    let a = Helper.to_uchar_array opt_bo s 0 (String.length s) in
-    from_uchar_array a
+  let from_string s =
+    from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lb pos len bo bom =
     Helper.from_uchar_array bo lb.buf (lb.start_pos + pos) len bom
