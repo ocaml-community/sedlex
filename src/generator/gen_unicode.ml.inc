@@ -135,9 +135,10 @@ let () =
       done
     with End_of_file -> close_in ch) files;
   let ch = open_out_bin target in
-  Printf.fprintf ch "(* This file was automatically generated, do not edit. *)\n";
-  Printf.fprintf ch "(* Edit gen_unicode.ml.inc instead. *)\n";
   Printf.fprintf ch {|[@@@ocamlformat "disable"]|};
+  Printf.fprintf ch "\n\n";
+  Printf.fprintf ch "(* This file was automatically generated, do not edit. *)\n";
+  Printf.fprintf ch "(* Edit gen_unicode.ml.inc instead. *)\n\n";
   Printf.fprintf ch "\n\nlet version = %S\n\n" version;
   Printf.fprintf ch "module Categories = struct\n\n";
   print_elements ch categories;
