@@ -1,6 +1,6 @@
 # dev
 - Restore compatibility with OCaml 4.08
-- Use `Sedlexing.Utf8.from_gen` to initialize UTF8 lexing buffers from
+- Use `Sedlexing.{Utf8,Utf16}.from_gen` to initialize UTF8 (resp. UTF16) lexing buffers from
   string.
 
 # 3.1:
