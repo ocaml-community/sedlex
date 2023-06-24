@@ -95,13 +95,7 @@ let fill_buf_from_gen f gen buf pos len =
 let from_gen s = create (fill_buf_from_gen (fun id -> id) s)
 
 let from_int_array a =
-  let len = Array.length a in
-  {
-    empty_lexbuf with
-    buf = Array.init len (fun i -> Uchar.of_int a.(i));
-    len;
-    finished = true;
-  }
+  from_gen (Gen.init ~limit:(Array.length a) (fun i -> Uchar.of_int a.(i)))
 
 let from_uchar_array a =
   let len = Array.length a in
