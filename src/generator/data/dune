@@ -1,5 +1,5 @@
 (rule
- (targets DerivedCoreProperties.txt)
+ (target DerivedCoreProperties.txt)
  (deps base_url)
  (action
   (run
@@ -8,10 +8,10 @@
    -s
    %{read:base_url}/ucd/DerivedCoreProperties.txt
    -o
-   DerivedCoreProperties.txt)))
+   %{target})))
 
 (rule
- (targets DerivedGeneralCategory.txt)
+ (target DerivedGeneralCategory.txt)
  (deps base_url)
  (action
   (run
@@ -20,10 +20,16 @@
    -s
    %{read:base_url}/ucd/extracted/DerivedGeneralCategory.txt
    -o
-   DerivedGeneralCategory.txt)))
+   %{target})))
 
 (rule
- (targets PropList.txt)
+ (target PropList.txt)
  (deps base_url)
  (action
-  (run curl -L -s %{read:base_url}/ucd/PropList.txt -o PropList.txt)))
+  (run curl -L -s %{read:base_url}/ucd/PropList.txt -o %{target})))
+
+(rule
+ (target UnicodeData.txt)
+ (deps base_url)
+ (action
+  (run curl -L -s %{read:base_url}/ucd/UnicodeData.txt -o %{target})))

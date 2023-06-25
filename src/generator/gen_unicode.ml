@@ -2,136 +2,59 @@
  * the files exported at https://www.unicode.org/Public/<unicode version>
  * and stored at src/generator/data. *)
 open Sedlex_utils
+module SSet = Set.Make (String)
 
 let target = Sys.argv.(1)
 let categories = Hashtbl.create 1024
 let labels = Hashtbl.create 1024
 
-(* Categories and Properties that we're keeping. *)
-let keepers =
-  [
-    "cc";
-    "cf";
-    "cn";
-    "co";
-    "cs";
-    "ll";
-    "lm";
-    "lo";
-    "lt";
-    "lu";
-    "mc";
-    "me";
-    "mn";
-    "nd";
-    "nl";
-    "no";
-    "pc";
-    "pd";
-    "pe";
-    "pf";
-    "pi";
-    "po";
-    "ps";
-    "sc";
-    "sk";
-    "sm";
-    "so";
-    "zl";
-    "zp";
-    "zs";
-    "alphabetic";
-    "ascii_hex_digit";
-    "hex_digit";
-    "id_continue";
-    "id_start";
-    "lowercase";
-    "math";
-    "other_alphabetic";
-    "other_lowercase";
-    "other_math";
-    "other_uppercase";
-    "uppercase";
-    "white_space";
-    "xid_continue";
-    "xid_start";
-  ]
-
-let prop_interval_rex =
-  Str.regexp
-    "^\\([0-9a-fA-F]+\\)\\.\\.\\([0-9a-fA-F]+\\)[ ]*;[ ]+\\([a-zA-Z_]+\\)[ \
-     ]+#[ ]+\\([a-zA-Z][a-zA-Z&]\\)"
-
-let prop_single_rex =
-  Str.regexp
-    "^\\([0-9a-fA-F]+\\)[ ]*;[ ]+\\([a-zA-Z_]+\\)[ ]+#[ \
-     ]+\\([a-zA-Z][a-zA-Z&]\\)"
-
-let derived_interval_rex =
-  Str.regexp
-    "^\\([0-9a-fA-F]+\\)\\.\\.\\([0-9a-fA-F]+\\)[ ]*;[ ]+\\([a-zA-Z_]+\\)"
-
-let derived_single_rex =
-  Str.regexp "^\\([0-9a-fA-F]+\\)[ ]*;[ ]+\\([a-zA-Z_]+\\)"
-
-let add_entry hashtbl (b, e) name =
-  let mk s = int_of_string (Printf.sprintf "0x%s" s) in
-  let interval = (mk b, mk e) in
-  let label = String.lowercase_ascii name in
-  if List.mem label keepers then Hashtbl.add hashtbl label interval
-
-let match_interval s =
-  if Str.string_match prop_interval_rex s 0 then (
-    let interval = (Str.matched_group 1 s, Str.matched_group 2 s) in
-    add_entry labels interval (Str.matched_group 3 s);
-    add_entry categories interval (Str.matched_group 4 s))
-
-let match_single s =
-  if Str.string_match prop_single_rex s 0 then (
-    let interval = (Str.matched_group 1 s, Str.matched_group 1 s) in
-    add_entry labels interval (Str.matched_group 2 s);
-    add_entry categories interval (Str.matched_group 3 s))
-
-let match_derived_interval s =
-  if Str.string_match derived_interval_rex s 0 then (
-    let interval = (Str.matched_group 1 s, Str.matched_group 2 s) in
-    add_entry categories interval (Str.matched_group 3 s))
-
-let match_derived_single s =
-  if Str.string_match derived_single_rex s 0 then (
-    let interval = (Str.matched_group 1 s, Str.matched_group 1 s) in
-    add_entry categories interval (Str.matched_group 2 s))
-
-let split list n =
-  let rec aux acc rem =
-    match (acc, rem) with
-      | [], el :: rem -> aux [[el]] rem
-      | l :: acc, el :: rem when List.length l = n ->
-          aux ([el] :: List.rev l :: acc) rem
-      | l :: acc, el :: rem -> aux ((el :: l) :: acc) rem
-      | l :: acc, [] -> List.rev (List.rev l :: acc)
-      | [], [] -> []
+(* Drop comments and split semi-column separated fields *)
+let parse_line l =
+  let l =
+    match String.index_opt l '#' with None -> l | Some i -> String.sub l 0 i
   in
-  aux [] list
+  String.split_on_char ';' l
 
-let build_interval l =
-  List.map (fun (a, b) -> Cset.interval a b) l |> Cset.union_list
+let parse_code s =
+  try int_of_string (Printf.sprintf "0x%s" s)
+  with _ -> failwith (Printf.sprintf "invalid code %s" s)
 
-let print_elements ch hashtbl =
-  let cats =
-    List.sort_uniq compare (Hashtbl.fold (fun cat _ l -> cat :: l) hashtbl [])
-  in
+let parse_category x = String.lowercase_ascii (String.trim x)
+let parse_prop x = String.lowercase_ascii (String.trim x)
+
+let parse_interval s =
+  match String.split_on_char '.' (String.trim s) with
+    | [] -> assert false
+    | [x] ->
+        let x = parse_code x in
+        Cset.singleton x
+    | [x; ""; y] ->
+        let x = parse_code x and y = parse_code y in
+        Cset.interval x y
+    | _ -> failwith (Printf.sprintf "invalid interval %s" s)
+
+let print_elements ch hashtbl cats =
+  let cats_set = SSet.of_list cats in
+  let all_keys = SSet.of_seq (Hashtbl.to_seq_keys hashtbl) in
+  let missing = SSet.diff cats_set all_keys in
+  let ignoring = SSet.diff all_keys cats_set in
   let len = List.length cats in
   List.iter
     (fun c ->
       let entries =
         List.map
           (fun (b, e) -> Printf.sprintf "0x%x, 0x%x" b e)
-          (build_interval (Hashtbl.find_all hashtbl c) :> (int * int) list)
+          (Cset.union_list (Hashtbl.find_all hashtbl c) :> (int * int) list)
       in
-      let entries = List.map (String.concat "; ") (split entries 5) in
-      let entries = String.concat ";\n     " entries in
-      Printf.fprintf ch "  let %s = Sedlex_cset.of_list\n    [%s]\n\n" c entries)
+      Printf.fprintf ch "  let %s = Sedlex_cset.of_list\n    [" c;
+      List.iteri
+        (fun i x ->
+          if i > 0 then
+            if i mod 5 = 0 then Printf.fprintf ch ";\n     "
+            else Printf.fprintf ch "; ";
+          Printf.fprintf ch "%s" x)
+        entries;
+      Printf.fprintf ch "]\n\n")
     cats;
   Printf.fprintf ch "  let list = [\n";
   List.iteri
@@ -139,14 +62,54 @@ let print_elements ch hashtbl =
       Printf.fprintf ch "    (%S, %s)%s\n" c c
         (if pos == len - 1 then "" else ";"))
     cats;
-  Printf.fprintf ch "  ]\n\n"
+  Printf.fprintf ch "  ]\n\n";
+  if not (SSet.is_empty ignoring) then (
+    Printf.fprintf ch "(* ignoring:\n";
+    SSet.iter (fun s -> Printf.fprintf ch "  - %s\n" s) ignoring;
+    Printf.fprintf ch "*)\n");
+  if not (SSet.is_empty missing) then (
+    Printf.fprintf ch "(* missing:\n";
+    SSet.iter (fun s -> Printf.fprintf ch "  - %s\n" s) missing;
+    Printf.fprintf ch "*)\n")
 
 let files =
   [
-    ("PropList.txt", [match_interval; match_single]);
-    ("DerivedCoreProperties.txt", [match_interval; match_single]);
+    ( "PropList.txt",
+      fun s ->
+        match parse_line s with
+          | [""] -> ()
+          | [interval; prop] ->
+              let interval = parse_interval interval in
+              let prop = parse_prop prop in
+              Hashtbl.add labels prop interval
+          | _ -> assert false );
+    ( "DerivedCoreProperties.txt",
+      fun s ->
+        match parse_line s with
+          | [""] -> ()
+          | [interval; prop] ->
+              let interval = parse_interval interval in
+              let prop = parse_prop prop in
+              Hashtbl.add labels prop interval
+          | _ -> assert false );
     ( "DerivedGeneralCategory.txt",
-      [match_derived_interval; match_derived_single] );
+      fun s ->
+        match parse_line s with
+          | [""] -> ()
+          | [interval; cat] ->
+              let interval = parse_interval interval in
+              let cat = parse_category cat in
+              Hashtbl.add categories cat interval
+          | _ -> assert false );
+    ( "UnicodeData.txt",
+      fun s ->
+        match parse_line s with
+          | [""] -> ()
+          | interval :: _ :: cat :: _ ->
+              let interval = parse_interval interval in
+              let cat = parse_category cat in
+              Hashtbl.add categories cat interval
+          | _ -> assert false );
   ]
 
 let read_version fname =
@@ -165,12 +128,12 @@ let () =
   in
   let version = read_version (Filename.concat base_dir "PropList.txt") in
   List.iter
-    (fun (fname, fns) ->
+    (fun (fname, fn) ->
       let ch = open_in_bin (Filename.concat base_dir fname) in
       try
         while true do
           let ret = input_line ch in
-          List.iter (fun fn -> fn ret) fns
+          fn ret
         done
       with End_of_file -> close_in ch)
     files;
@@ -182,9 +145,58 @@ let () =
   Printf.fprintf ch "(* Edit gen_unicode.ml.inc instead. *)\n\n";
   Printf.fprintf ch "\n\nlet version = %S\n\n" version;
   Printf.fprintf ch "module Categories = struct\n\n";
-  print_elements ch categories;
+  print_elements ch categories
+    [
+      "cc";
+      "cf";
+      "cn";
+      "co";
+      "cs";
+      "ll";
+      "lm";
+      "lo";
+      "lt";
+      "lu";
+      "mc";
+      "me";
+      "mn";
+      "nd";
+      "nl";
+      "no";
+      "pc";
+      "pd";
+      "pe";
+      "pf";
+      "pi";
+      "po";
+      "ps";
+      "sc";
+      "sk";
+      "sm";
+      "so";
+      "zl";
+      "zp";
+      "zs";
+    ];
   Printf.fprintf ch "end\n\n";
   Printf.fprintf ch "module Properties = struct\n\n";
-  print_elements ch labels;
+  print_elements ch labels
+    [
+      "alphabetic";
+      "ascii_hex_digit";
+      "hex_digit";
+      "id_continue";
+      "id_start";
+      "lowercase";
+      "math";
+      "other_alphabetic";
+      "other_lowercase";
+      "other_math";
+      "other_uppercase";
+      "uppercase";
+      "white_space";
+      "xid_continue";
+      "xid_start";
+    ];
   Printf.fprintf ch "end\n";
   close_out ch

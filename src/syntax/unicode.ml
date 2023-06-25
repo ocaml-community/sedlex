@@ -2074,4 +2074,44 @@ module Properties = struct
     ("xid_start", xid_start)
   ]
 
+(* ignoring:
+  - bidi_control
+  - case_ignorable
+  - cased
+  - changes_when_casefolded
+  - changes_when_casemapped
+  - changes_when_lowercased
+  - changes_when_titlecased
+  - changes_when_uppercased
+  - dash
+  - default_ignorable_code_point
+  - deprecated
+  - diacritic
+  - extender
+  - grapheme_base
+  - grapheme_extend
+  - grapheme_link
+  - hyphen
+  - ideographic
+  - ids_binary_operator
+  - ids_trinary_operator
+  - join_control
+  - logical_order_exception
+  - noncharacter_code_point
+  - other_default_ignorable_code_point
+  - other_grapheme_extend
+  - other_id_continue
+  - other_id_start
+  - pattern_syntax
+  - pattern_white_space
+  - prepended_concatenation_mark
+  - quotation_mark
+  - radical
+  - regional_indicator
+  - sentence_terminal
+  - soft_dotted
+  - terminal_punctuation
+  - unified_ideograph
+  - variation_selector
+*)
 end
