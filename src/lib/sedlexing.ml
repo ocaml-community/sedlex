@@ -12,6 +12,8 @@ module Uchar = struct
     if Uchar.is_valid x then Uchar.unsafe_of_int x else raise MalFormed
 end
 
+(* shadow polymorphic equal *)
+let ( = ) (a : int) b = a = b
 let ( >>| ) o f = match o with Some x -> Some (f x) | None -> None
 
 (* Absolute position from the beginning of the stream *)
@@ -65,11 +67,14 @@ let empty_lexbuf =
     finished = false;
   }
 
+let dummy_uchar = Uchar.of_int 0
+let nl_uchar = Uchar.of_int 10
+
 let create refill =
   {
     empty_lexbuf with
     refill;
-    buf = Array.make chunk_size (Uchar.of_int 0);
+    buf = Array.make chunk_size dummy_uchar;
     curr_line = 1;
   }
 
@@ -120,7 +125,7 @@ let refill lexbuf =
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
     else begin
       let newlen = (Array.length lexbuf.buf + chunk_size) * 2 in
-      let newbuf = Array.make newlen (Uchar.of_int 0) in
+      let newbuf = Array.make newlen dummy_uchar in
       Array.blit lexbuf.buf s newbuf 0 ls;
       lexbuf.buf <- newbuf
     end;
@@ -137,25 +142,18 @@ let new_line lexbuf =
   if lexbuf.curr_line != 0 then lexbuf.curr_line <- lexbuf.curr_line + 1;
   lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
 
-let next lexbuf =
+let[@inline always] next_aux some none lexbuf =
   if (not lexbuf.finished) && lexbuf.pos = lexbuf.len then refill lexbuf;
-  if lexbuf.finished && lexbuf.pos = lexbuf.len then None
+  if lexbuf.finished && lexbuf.pos = lexbuf.len then none
   else begin
     let ret = lexbuf.buf.(lexbuf.pos) in
     lexbuf.pos <- lexbuf.pos + 1;
-    if ret = Uchar.of_int 10 then new_line lexbuf;
-    Some ret
+    if Uchar.equal ret nl_uchar then new_line lexbuf;
+    some ret
   end
 
-let __private__next_int lexbuf : int =
-  if (not lexbuf.finished) && lexbuf.pos = lexbuf.len then refill lexbuf;
-  if lexbuf.finished && lexbuf.pos = lexbuf.len then -1
-  else begin
-    let ret = lexbuf.buf.(lexbuf.pos) in
-    lexbuf.pos <- lexbuf.pos + 1;
-    if ret = Uchar.of_int 10 then new_line lexbuf;
-    Uchar.to_int ret
-  end
+let next lexbuf = (next_aux [@inlined]) (fun x -> Some x) None lexbuf
+let __private__next_int lexbuf = (next_aux [@inlined]) Uchar.to_int (-1) lexbuf
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
