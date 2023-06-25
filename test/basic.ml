@@ -167,10 +167,19 @@ let%expect_test "utf8" =
   [%expect
     {|
     == from_string ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_gen ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_channel ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed |}]
 
 let%expect_test "utf16" =
@@ -205,8 +214,14 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_gen ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_channel ==
     Ident asas
@@ -237,8 +252,10 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -247,8 +264,10 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -257,8 +276,10 @@ let%expect_test "utf16" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -313,8 +334,14 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_gen ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_channel ==
     Ident asas
@@ -345,8 +372,10 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -355,8 +384,10 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -365,8 +396,10 @@ let%expect_test "utf16-be" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -421,8 +454,14 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_gen ==
+    Ident asas
+    Number 123
+    Op +
     MalFormed
     == from_channel ==
     Ident asas
@@ -453,8 +492,10 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -463,8 +504,10 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12
@@ -473,8 +516,10 @@ let%expect_test "utf16-le" =
   [%expect
     {|
     == from_string ==
+    Number 12
     MalFormed
     == from_gen ==
+    Number 12
     MalFormed
     == from_channel ==
     Number 12

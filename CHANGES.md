@@ -2,6 +2,7 @@
 - Restore compatibility with OCaml 4.08
 - Use `Sedlexing.{Utf8,Utf16}.from_gen` to initialize UTF8 (resp. UTF16) lexing buffers from
   string.
+- Delay raising Malformed until actually reading the malformed part of the imput. (#140)
 
 # 3.1:
 - Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)

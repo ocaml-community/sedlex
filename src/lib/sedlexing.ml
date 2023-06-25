@@ -81,15 +81,20 @@ let set_position lexbuf position =
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
 let from_gen gen =
+  let malformed = ref false in
   let refill buf pos len =
     let rec loop i =
+      if !malformed then raise MalFormed;
       if i >= len then len
       else (
         match gen () with
           | Some c ->
               buf.(pos + i) <- c;
               loop (i + 1)
-          | None -> i)
+          | None -> i
+          | exception MalFormed when i <> 0 ->
+              malformed := true;
+              i)
     in
     loop 0
   in
@@ -263,8 +268,10 @@ end
 
 let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
   let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
+  let malformed = ref false in
   let refill buf pos len =
     let rec loop i =
+      if !malformed then raise MalFormed;
       if i = len then i
       else (
         match
@@ -276,6 +283,9 @@ let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
           | c ->
               buf.(pos + i) <- c;
               loop (i + 1)
+          | exception MalFormed when i <> 0 ->
+              malformed := true;
+              i
           | exception Chan.Missing_input ->
               if i = 0 && Chan.available t > 0 then raise MalFormed;
               i)
