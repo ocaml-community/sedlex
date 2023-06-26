@@ -15,6 +15,7 @@ val max_code : int
 val empty : t
 val any : t
 val union : t -> t -> t
+val union_list : t list -> t
 val difference : t -> t -> t
 val intersection : t -> t -> t
 val is_empty : t -> bool

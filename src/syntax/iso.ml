@@ -214,4 +214,4 @@ let tr8876_ident_char =
       (0xffda, 0xffdc);
     ]
   in
-  List.fold_left (fun acc (a, b) -> union acc (interval a b)) empty l
+  union_list (List.map (fun (a, b) -> interval a b) l)

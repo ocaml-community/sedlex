@@ -1,6 +1,7 @@
 (* This file generates unicode data from
  * the files exported at https://www.unicode.org/Public/<unicode version>
  * and stored at src/generator/data. *)
+open Sedlex_utils
 
 let target = Sys.argv.(1)
 let categories = Hashtbl.create 1024
@@ -113,17 +114,8 @@ let split list n =
   in
   aux [] list
 
-let rec merge_interval = function
-  | [] -> []
-  | [x] -> [x]
-  | (a, b) :: ((c, d) :: l as l') ->
-      assert (a <= b);
-      if a = c then merge_interval ((a, d) :: l)
-      else if b = c || b + 1 = c then merge_interval ((a, d) :: l)
-      else if b >= d then merge_interval ((a, b) :: l)
-      else (
-        if not (b + 1 < c) then failwith (Printf.sprintf "%d-%d %d-%d" a b c d);
-        (a, b) :: merge_interval l')
+let build_interval l =
+  List.map (fun (a, b) -> Cset.interval a b) l |> Cset.union_list
 
 let print_elements ch hashtbl =
   let cats =
@@ -135,7 +127,7 @@ let print_elements ch hashtbl =
       let entries =
         List.map
           (fun (b, e) -> Printf.sprintf "0x%x, 0x%x" b e)
-          (merge_interval (List.sort_uniq compare (Hashtbl.find_all hashtbl c)))
+          (build_interval (Hashtbl.find_all hashtbl c) :> (int * int) list)
       in
       let entries = List.map (String.concat "; ") (split entries 5) in
       let entries = String.concat ";\n     " entries in
