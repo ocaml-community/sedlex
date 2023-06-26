@@ -122,6 +122,59 @@ let read_version fname =
   ignore (Str.string_match version_rex s 0);
   Str.matched_group 1 s
 
+let exported_categories =
+  [
+    "cc";
+    "cf";
+    "cn";
+    "co";
+    "cs";
+    "ll";
+    "lm";
+    "lo";
+    "lt";
+    "lu";
+    "mc";
+    "me";
+    "mn";
+    "nd";
+    "nl";
+    "no";
+    "pc";
+    "pd";
+    "pe";
+    "pf";
+    "pi";
+    "po";
+    "ps";
+    "sc";
+    "sk";
+    "sm";
+    "so";
+    "zl";
+    "zp";
+    "zs";
+  ]
+
+let exported_properties =
+  [
+    "alphabetic";
+    "ascii_hex_digit";
+    "hex_digit";
+    "id_continue";
+    "id_start";
+    "lowercase";
+    "math";
+    "other_alphabetic";
+    "other_lowercase";
+    "other_math";
+    "other_uppercase";
+    "uppercase";
+    "white_space";
+    "xid_continue";
+    "xid_start";
+  ]
+
 let () =
   let base_dir =
     Filename.concat (Filename.dirname Sys.executable_name) "data"
@@ -145,58 +198,9 @@ let () =
   Printf.fprintf ch "(* Edit gen_unicode.ml.inc instead. *)\n\n";
   Printf.fprintf ch "\n\nlet version = %S\n\n" version;
   Printf.fprintf ch "module Categories = struct\n\n";
-  print_elements ch categories
-    [
-      "cc";
-      "cf";
-      "cn";
-      "co";
-      "cs";
-      "ll";
-      "lm";
-      "lo";
-      "lt";
-      "lu";
-      "mc";
-      "me";
-      "mn";
-      "nd";
-      "nl";
-      "no";
-      "pc";
-      "pd";
-      "pe";
-      "pf";
-      "pi";
-      "po";
-      "ps";
-      "sc";
-      "sk";
-      "sm";
-      "so";
-      "zl";
-      "zp";
-      "zs";
-    ];
+  print_elements ch categories exported_categories;
   Printf.fprintf ch "end\n\n";
   Printf.fprintf ch "module Properties = struct\n\n";
-  print_elements ch labels
-    [
-      "alphabetic";
-      "ascii_hex_digit";
-      "hex_digit";
-      "id_continue";
-      "id_start";
-      "lowercase";
-      "math";
-      "other_alphabetic";
-      "other_lowercase";
-      "other_math";
-      "other_uppercase";
-      "uppercase";
-      "white_space";
-      "xid_continue";
-      "xid_start";
-    ];
+  print_elements ch labels exported_properties;
   Printf.fprintf ch "end\n";
   close_out ch
