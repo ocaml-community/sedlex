@@ -3,6 +3,8 @@
 - Use `Sedlexing.{Utf8,Utf16}.from_gen` to initialize UTF8 (resp. UTF16) lexing buffers from
   string.
 - Delay raising Malformed until actually reading the malformed part of the imput. (#140)
+- Count lines in all cases (#130). Previously, certain functions for initiating the
+  lexical buffer would disable lines counting.
 
 # 3.1:
 - Fix directly nested sedlex matches (@smuenzel, PR #117, fixes: #12)
