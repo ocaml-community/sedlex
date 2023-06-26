@@ -62,6 +62,9 @@ jobs:
           opam-depext: ${{ !matrix.skip-test }}
           opam-depext-flags: --with-test
 
+      - run: opam pin add dune https://github.com/nojb/dune.git#async_io_self_pipe_win32-3.8.2
+        if: runner.os == 'Windows'
+
       - run: opam install . --best-effort
         if: ${{ matrix.skip-test }}
 
