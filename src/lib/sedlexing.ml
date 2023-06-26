@@ -71,11 +71,7 @@ let dummy_uchar = Uchar.of_int 0
 let nl_uchar = Uchar.of_int 10
 
 let create refill =
-  {
-    empty_lexbuf with
-    refill;
-    buf = Array.make chunk_size dummy_uchar;
-  }
+  { empty_lexbuf with refill; buf = Array.make chunk_size dummy_uchar }
 
 let set_position lexbuf position =
   lexbuf.offset <- position.Lexing.pos_cnum - lexbuf.pos;
