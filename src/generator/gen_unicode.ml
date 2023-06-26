@@ -108,9 +108,22 @@ let split list n =
       | l :: acc, el :: rem when List.length l = n ->
           aux ([el] :: List.rev l :: acc) rem
       | l :: acc, el :: rem -> aux ((el :: l) :: acc) rem
-      | _, [] -> List.rev acc
+      | l :: acc, [] -> List.rev (List.rev l :: acc)
+      | [], [] -> []
   in
   aux [] list
+
+let rec merge_interval = function
+  | [] -> []
+  | [x] -> [x]
+  | (a, b) :: ((c, d) :: l as l') ->
+      assert (a <= b);
+      if a = c then merge_interval ((a, d) :: l)
+      else if b = c || b + 1 = c then merge_interval ((a, d) :: l)
+      else if b >= d then merge_interval ((a, b) :: l)
+      else (
+        if not (b + 1 < c) then failwith (Printf.sprintf "%d-%d %d-%d" a b c d);
+        (a, b) :: merge_interval l')
 
 let print_elements ch hashtbl =
   let cats =
@@ -122,11 +135,11 @@ let print_elements ch hashtbl =
       let entries =
         List.map
           (fun (b, e) -> Printf.sprintf "0x%x, 0x%x" b e)
-          (List.sort_uniq compare (Hashtbl.find_all hashtbl c))
+          (merge_interval (List.sort_uniq compare (Hashtbl.find_all hashtbl c)))
       in
       let entries = List.map (String.concat "; ") (split entries 5) in
       let entries = String.concat ";\n     " entries in
-      Printf.fprintf ch "  let %s =\n    [%s]\n\n" c entries)
+      Printf.fprintf ch "  let %s = Sedlex_cset.of_list\n    [%s]\n\n" c entries)
     cats;
   Printf.fprintf ch "  let list = [\n";
   List.iteri

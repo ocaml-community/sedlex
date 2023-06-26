@@ -4,8 +4,9 @@
 
 (** Representation of sets of unicode code points. *)
 
-type t = (int * int) list
+type t = private (int * int) list
 
+val of_list : (int * int) list -> t
 val min_code : int
 val max_code : int
 val empty : t

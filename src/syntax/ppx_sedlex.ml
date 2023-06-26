@@ -78,7 +78,10 @@ let rec simplify min max = function
 let segments_of_partition p =
   let seg = ref [] in
   Array.iteri
-    (fun i c -> List.iter (fun (a, b) -> seg := (a, b, i) :: !seg) c)
+    (fun i c ->
+      List.iter
+        (fun (a, b) -> seg := (a, b, i) :: !seg)
+        (c : Sedlex_cset.t :> (int * int) list))
     p;
   List.sort (fun (a1, _, _) (a2, _, _) -> compare a1 a2) !seg
 
