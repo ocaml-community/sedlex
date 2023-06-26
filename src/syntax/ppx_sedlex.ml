@@ -114,14 +114,14 @@ let builtin_regexps =
     ([
        ("any", Cset.any);
        ("eof", Cset.eof);
-       ("xml_letter", Cset.letter);
-       ("xml_digit", Cset.digit);
-       ("xml_extender", Cset.extender);
-       ("xml_base_char", Cset.base_char);
-       ("xml_ideographic", Cset.ideographic);
-       ("xml_combining_char", Cset.combining_char);
-       ("xml_blank", Cset.blank);
-       ("tr8876_ident_char", Cset.tr8876_ident_char);
+       ("xml_letter", Xml.letter);
+       ("xml_digit", Xml.digit);
+       ("xml_extender", Xml.extender);
+       ("xml_base_char", Xml.base_char);
+       ("xml_ideographic", Xml.ideographic);
+       ("xml_combining_char", Xml.combining_char);
+       ("xml_blank", Xml.blank);
+       ("tr8876_ident_char", Iso.tr8876_ident_char);
      ]
     @ Unicode.Categories.list @ Unicode.Properties.list)
 

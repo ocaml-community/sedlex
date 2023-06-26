@@ -18,11 +18,3 @@ val is_empty : t -> bool
 val eof : t
 val singleton : int -> t
 val interval : int -> int -> t
-val letter : t
-val digit : t
-val extender : t
-val base_char : t
-val ideographic : t
-val combining_char : t
-val blank : t
-val tr8876_ident_char : t
