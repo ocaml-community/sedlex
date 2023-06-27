@@ -126,7 +126,7 @@ let set_position ?bytes_position lexbuf position =
   lexbuf.curr_bol <- position.Lexing.pos_bol;
   lexbuf.curr_line <- position.Lexing.pos_lnum;
   let bytes_position = Option.value ~default:position bytes_position in
-  lexbuf.bytes_offset <- bytes_position.Lexing.pos_cnum - lexbuf.pos;
+  lexbuf.bytes_offset <- bytes_position.Lexing.pos_cnum - lexbuf.bytes_pos;
   lexbuf.curr_bytes_bol <- bytes_position.Lexing.pos_bol
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
