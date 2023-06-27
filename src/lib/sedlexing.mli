@@ -54,9 +54,8 @@ val create :
   lexbuf
 
 (** set the initial tracked input position, in code point, for [lexbuf].
-        If set to [Lexing.dummy_pos], Sedlexing will not track position
-        information for you. [bytes_position] is optional. If unspecified,
-        byte postion is set to the same value as code point position. *)
+        If unspecified, byte postion is set to the same value as code
+        point position. *)
 val set_position :
   ?bytes_position:Lexing.position -> lexbuf -> Lexing.position -> unit
 
