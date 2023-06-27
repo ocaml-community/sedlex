@@ -6,6 +6,14 @@ exception InvalidCodepoint of int
 exception MalFormed
 
 module Uchar = struct
+  (* This for compatibility with ocaml < 4.14.0 *)
+  let utf_8_byte_length _ = 1
+  let utf_16_byte_length _ = 1
+
+  let () =
+    ignore utf_8_byte_length;
+    ignore utf_16_byte_length
+
   include Uchar
 
   let of_int x =
