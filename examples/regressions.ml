@@ -13,7 +13,8 @@ let test_exception name x =
     List.iter (fun (s, e) -> if s <= x && x <= e then raise Found) l
   with Not_found -> ()
 
-let compare name old_l new_l =
+let compare name (old_l : (int * int) list) (new_l : Sedlex_ppx.Sedlex_cset.t) =
+  let new_l = (new_l :> (int * int) list) in
   let code_points =
     List.fold_left (fun res (s, e) -> res @ interval s e) [] old_l
   in

@@ -4,24 +4,21 @@
 
 (** Representation of sets of unicode code points. *)
 
-type t = (int * int) list
+(** Character sets are represented as lists of intervals.  The
+   intervals must be non-overlapping and not collapsable, and the list
+   must be ordered in increasing order. *)
+type t = private (int * int) list
 
+val of_list : (int * int) list -> t
 val min_code : int
 val max_code : int
 val empty : t
 val any : t
 val union : t -> t -> t
+val union_list : t list -> t
 val difference : t -> t -> t
 val intersection : t -> t -> t
 val is_empty : t -> bool
 val eof : t
 val singleton : int -> t
 val interval : int -> int -> t
-val letter : t
-val digit : t
-val extender : t
-val base_char : t
-val ideographic : t
-val combining_char : t
-val blank : t
-val tr8876_ident_char : t

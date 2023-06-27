@@ -2,7 +2,7 @@
  (name sedlex_ppx)
  (public_name sedlex.ppx)
  (kind ppx_rewriter)
- (libraries ppxlib sedlex)
+ (libraries ppxlib sedlex sedlex.utils)
  (ppx_runtime_libraries sedlex)
  (preprocess
   (pps ppxlib.metaquot))
