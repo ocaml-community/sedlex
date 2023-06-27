@@ -62,10 +62,10 @@ type lexbuf = {
 
 let chunk_size = 512
 
-let empty_lexbuf =
+let empty_lexbuf bytes_per_char =
   {
     refill = (fun _ _ _ -> assert false);
-    bytes_per_char = (fun _ -> assert false);
+    bytes_per_char;
     buf = [||];
     len = 0;
     offset = 0;
@@ -95,9 +95,8 @@ let nl_uchar = Uchar.of_int 10
 
 let create ?(bytes_per_char = fun _ -> 1) refill =
   {
-    empty_lexbuf with
+    (empty_lexbuf bytes_per_char) with
     refill;
-    bytes_per_char;
     buf = Array.make chunk_size dummy_uchar;
   }
 
@@ -138,9 +137,8 @@ let from_int_array ?bytes_per_char a =
 let from_uchar_array ?(bytes_per_char = fun _ -> 1) a =
   let len = Array.length a in
   {
-    empty_lexbuf with
+    (empty_lexbuf bytes_per_char) with
     buf = Array.init len (fun i -> a.(i));
-    bytes_per_char;
     len;
     finished = true;
   }
@@ -369,7 +367,7 @@ module Latin1 = struct
   let from_string s =
     let len = String.length s in
     {
-      empty_lexbuf with
+      (empty_lexbuf (fun _ -> 1)) with
       buf = Array.init len (fun i -> Uchar.of_char s.[i]);
       len;
       finished = true;
