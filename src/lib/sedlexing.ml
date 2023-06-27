@@ -21,24 +21,39 @@ type apos = int
 
 type lexbuf = {
   refill : Uchar.t array -> int -> int -> int;
+  bytes_per_char : Uchar.t -> int;
   mutable buf : Uchar.t array;
   mutable len : int;
-  (* Number of meaningful char in buffer *)
+  (* Number of meaningful uchar in buffer *)
   mutable offset : apos;
-  (* Position of the first char in buffer
+  (* Number of meaningful bytes in buffer *)
+  mutable bytes_offset : apos;
+  (* Position of the first uchar in buffer
       in the input stream *)
   mutable pos : int;
-  (* pos is the index in the buffer *)
+  (* Position of the first byte in buffer
+      in the input stream *)
+  mutable bytes_pos : int;
+  (* pos is the index, in uchar, in the buffer *)
   mutable curr_bol : int;
-  (* bol is the index in the input stream but not buffer *)
+  (* pos is the index, in bytes, in the buffer *)
+  mutable curr_bytes_bol : int;
+  (* bol is the index, in uchar, in the input stream but not buffer *)
   mutable curr_line : int;
-  (* start from 1 *)
+  (* starting position, in uchar. *)
   mutable start_pos : int;
-  (* First char we need to keep visible *)
+  (* starting position, in bytes. *)
+  mutable start_bytes_pos : int;
+  (* First uchar we need to keep visible *)
   mutable start_bol : int;
+  (* First byte we need to keep visible *)
+  mutable start_bytes_bol : int;
+  (* start from 1 *)
   mutable start_line : int;
   mutable marked_pos : int;
+  mutable marked_bytes_pos : int;
   mutable marked_bol : int;
+  mutable marked_bytes_bol : int;
   mutable marked_line : int;
   mutable marked_val : int;
   mutable filename : string;
@@ -50,17 +65,25 @@ let chunk_size = 512
 let empty_lexbuf =
   {
     refill = (fun _ _ _ -> assert false);
+    bytes_per_char = (fun _ -> assert false);
     buf = [||];
     len = 0;
     offset = 0;
+    bytes_offset = 0;
     pos = 0;
+    bytes_pos = 0;
     curr_bol = 0;
+    curr_bytes_bol = 0;
     curr_line = 1;
     start_pos = 0;
+    start_bytes_pos = 0;
     start_bol = 0;
+    start_bytes_bol = 0;
     start_line = 0;
     marked_pos = 0;
+    marked_bytes_pos = 0;
     marked_bol = 0;
+    marked_bytes_bol = 0;
     marked_line = 0;
     marked_val = 0;
     filename = "";
@@ -70,17 +93,25 @@ let empty_lexbuf =
 let dummy_uchar = Uchar.of_int 0
 let nl_uchar = Uchar.of_int 10
 
-let create refill =
-  { empty_lexbuf with refill; buf = Array.make chunk_size dummy_uchar }
+let create ?(bytes_per_char = fun _ -> 1) refill =
+  {
+    empty_lexbuf with
+    refill;
+    bytes_per_char;
+    buf = Array.make chunk_size dummy_uchar;
+  }
 
-let set_position lexbuf position =
+let set_position ?bytes_position lexbuf position =
   lexbuf.offset <- position.Lexing.pos_cnum - lexbuf.pos;
   lexbuf.curr_bol <- position.Lexing.pos_bol;
-  lexbuf.curr_line <- position.Lexing.pos_lnum
+  lexbuf.curr_line <- position.Lexing.pos_lnum;
+  let bytes_position = Option.value ~default:position bytes_position in
+  lexbuf.bytes_offset <- bytes_position.Lexing.pos_cnum - lexbuf.pos;
+  lexbuf.curr_bytes_bol <- bytes_position.Lexing.pos_bol
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let from_gen gen =
+let from_gen ?bytes_per_char gen =
   let malformed = ref false in
   let refill buf pos len =
     let rec loop i =
@@ -98,16 +129,18 @@ let from_gen gen =
     in
     loop 0
   in
-  create refill
+  create ?bytes_per_char refill
 
-let from_int_array a =
-  from_gen (Gen.init ~limit:(Array.length a) (fun i -> Uchar.of_int a.(i)))
+let from_int_array ?bytes_per_char a =
+  from_gen ?bytes_per_char
+    (Gen.init ~limit:(Array.length a) (fun i -> Uchar.of_int a.(i)))
 
-let from_uchar_array a =
+let from_uchar_array ?(bytes_per_char = fun _ -> 1) a =
   let len = Array.length a in
   {
     empty_lexbuf with
     buf = Array.init len (fun i -> a.(i));
+    bytes_per_char;
     len;
     finished = true;
   }
@@ -115,6 +148,7 @@ let from_uchar_array a =
 let refill lexbuf =
   if lexbuf.len + chunk_size > Array.length lexbuf.buf then begin
     let s = lexbuf.start_pos in
+    let s_bytes = lexbuf.start_bytes_pos in
     let ls = lexbuf.len - s in
     if ls + chunk_size <= Array.length lexbuf.buf then
       Array.blit lexbuf.buf s lexbuf.buf 0 ls
@@ -126,16 +160,21 @@ let refill lexbuf =
     end;
     lexbuf.len <- ls;
     lexbuf.offset <- lexbuf.offset + s;
+    lexbuf.bytes_offset <- lexbuf.bytes_offset + s_bytes;
     lexbuf.pos <- lexbuf.pos - s;
+    lexbuf.bytes_pos <- lexbuf.bytes_pos - s_bytes;
     lexbuf.marked_pos <- lexbuf.marked_pos - s;
-    lexbuf.start_pos <- 0
+    lexbuf.marked_bytes_pos <- lexbuf.marked_bytes_pos - s_bytes;
+    lexbuf.start_pos <- 0;
+    lexbuf.start_bytes_pos <- 0
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
   if n = 0 then lexbuf.finished <- true else lexbuf.len <- lexbuf.len + n
 
 let new_line lexbuf =
   lexbuf.curr_line <- lexbuf.curr_line + 1;
-  lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset
+  lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset;
+  lexbuf.curr_bytes_bol <- lexbuf.bytes_pos + lexbuf.bytes_offset
 
 let[@inline always] next_aux some none lexbuf =
   if (not lexbuf.finished) && lexbuf.pos = lexbuf.len then refill lexbuf;
@@ -143,6 +182,7 @@ let[@inline always] next_aux some none lexbuf =
   else begin
     let ret = lexbuf.buf.(lexbuf.pos) in
     lexbuf.pos <- lexbuf.pos + 1;
+    lexbuf.bytes_pos <- lexbuf.bytes_pos + lexbuf.bytes_per_char ret;
     if Uchar.equal ret nl_uchar then new_line lexbuf;
     some ret
   end
@@ -152,31 +192,47 @@ let __private__next_int lexbuf = (next_aux [@inlined]) Uchar.to_int (-1) lexbuf
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
+  lexbuf.marked_bytes_pos <- lexbuf.bytes_pos;
   lexbuf.marked_bol <- lexbuf.curr_bol;
+  lexbuf.marked_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
   lexbuf.marked_val <- i
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
+  lexbuf.start_bytes_pos <- lexbuf.bytes_pos;
   lexbuf.start_bol <- lexbuf.curr_bol;
+  lexbuf.start_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.start_line <- lexbuf.curr_line;
   mark lexbuf (-1)
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
+  lexbuf.bytes_pos <- lexbuf.marked_bytes_pos;
   lexbuf.curr_bol <- lexbuf.marked_bol;
+  lexbuf.curr_bytes_bol <- lexbuf.marked_bytes_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
   lexbuf.marked_val
 
 let rollback lexbuf =
   lexbuf.pos <- lexbuf.start_pos;
+  lexbuf.bytes_pos <- lexbuf.start_bytes_pos;
   lexbuf.curr_bol <- lexbuf.start_bol;
+  lexbuf.curr_bytes_bol <- lexbuf.start_bytes_bol;
   lexbuf.curr_line <- lexbuf.start_line
 
 let lexeme_start lexbuf = lexbuf.start_pos + lexbuf.offset
+let lexeme_bytes_start lexbuf = lexbuf.start_bytes_pos + lexbuf.bytes_offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
+let lexeme_bytes_end lexbuf = lexbuf.bytes_pos + lexbuf.bytes_offset
 let loc lexbuf = (lexbuf.start_pos + lexbuf.offset, lexbuf.pos + lexbuf.offset)
+
+let bytes_loc lexbuf =
+  ( lexbuf.start_bytes_pos + lexbuf.bytes_offset,
+    lexbuf.bytes_pos + lexbuf.bytes_offset )
+
 let lexeme_length lexbuf = lexbuf.pos - lexbuf.start_pos
+let lexeme_bytes_length lexbuf = lexbuf.bytes_pos - lexbuf.start_bytes_pos
 
 let sub_lexeme lexbuf pos len =
   Array.sub lexbuf.buf (lexbuf.start_pos + pos) len
@@ -200,6 +256,24 @@ let lexing_positions lexbuf =
       pos_lnum = lexbuf.curr_line;
       pos_cnum = lexbuf.pos + lexbuf.offset;
       pos_bol = lexbuf.curr_bol;
+    }
+  in
+  (start_p, curr_p)
+
+let lexing_bytes_positions lexbuf =
+  let start_p =
+    {
+      Lexing.pos_fname = lexbuf.filename;
+      pos_lnum = lexbuf.start_line;
+      pos_cnum = lexbuf.start_bytes_pos + lexbuf.bytes_offset;
+      pos_bol = lexbuf.start_bytes_bol;
+    }
+  and curr_p =
+    {
+      Lexing.pos_fname = lexbuf.filename;
+      pos_lnum = lexbuf.curr_line;
+      pos_cnum = lexbuf.bytes_pos + lexbuf.bytes_offset;
+      pos_bol = lexbuf.curr_bytes_bol;
     }
   in
   (start_p, curr_p)
@@ -259,7 +333,8 @@ module Chan = struct
   let raw_pos (t : t) = t.pos
 end
 
-let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
+let make_from_channel ?bytes_per_char ic ~max_bytes_per_uchar
+    ~min_bytes_per_uchar ~read_uchar =
   let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
   let malformed = ref false in
   let refill buf pos len =
@@ -285,10 +360,11 @@ let make_from_channel ic ~max_bytes_per_uchar ~min_bytes_per_uchar ~read_uchar =
     in
     loop 0
   in
-  create refill
+  create ?bytes_per_char refill
 
 module Latin1 = struct
-  let from_gen s = from_gen (Gen.map Uchar.of_char s)
+  let from_gen s =
+    from_gen ~bytes_per_char:(fun _ -> 1) (Gen.map Uchar.of_char s)
 
   let from_string s =
     let len = String.length s in
@@ -300,7 +376,9 @@ module Latin1 = struct
     }
 
   let from_channel ic =
-    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
+    make_from_channel ic
+      ~bytes_per_char:(fun _ -> 1)
+      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
       ~read_uchar:(fun ~can_refill:_ t ->
         let c = Chan.get t 0 in
         Chan.advance t 1;
@@ -434,7 +512,8 @@ module Utf8 = struct
   end
 
   let from_channel ic =
-    make_from_channel ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
+    make_from_channel ic ~bytes_per_char:Uchar.utf_8_byte_length
+      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
       ~read_uchar:(fun ~can_refill t ->
         let w = Helper.width (Chan.get t 0) in
         Chan.ensure_bytes_available t ~can_refill w;
@@ -444,7 +523,9 @@ module Utf8 = struct
         Chan.advance t w;
         Uchar.of_int c)
 
-  let from_gen s = from_gen (Helper.gen_from_char_gen s)
+  let from_gen s =
+    from_gen ~bytes_per_char:Uchar.utf_8_byte_length
+      (Helper.gen_from_char_gen s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
@@ -538,7 +619,8 @@ module Utf16 = struct
 
   let from_channel ic opt_bo =
     let bo = ref opt_bo in
-    make_from_channel ic ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
+    make_from_channel ic ~bytes_per_char:Uchar.utf_16_byte_length
+      ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
       ~read_uchar:(fun ~can_refill t ->
         let n1 = Char.code (Chan.get t 0) in
         let n2 = Char.code (Chan.get t 1) in
@@ -559,7 +641,9 @@ module Utf16 = struct
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed)
 
-  let from_gen s opt_bo = from_gen (Helper.gen_from_char_gen opt_bo s)
+  let from_gen s opt_bo =
+    from_gen ~bytes_per_char:Uchar.utf_16_byte_length
+      (Helper.gen_from_char_gen opt_bo s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
