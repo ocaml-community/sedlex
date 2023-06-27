@@ -226,102 +226,138 @@ let%expect_test "latin1" =
     EOF |}]
 
 let%expect_test "utf8" =
-  let s = "asas 123 + 2asd" in
+  let s = {|as🎉as 123 + 2asd|} in
   test_utf8 s (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
-    code point pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
-    bytes pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
+    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=13]
+    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=16]
     Number 2
-    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=19]
     Ident asd
-    code point pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=19;line=1:bol=0:cnum=19]
     EOF
     == from_gen ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
-    code point pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
-    bytes pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
+    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=13]
+    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=16]
     Number 2
-    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=19]
     Ident asd
-    code point pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=19;line=1:bol=0:cnum=19]
     EOF
     == from_channel ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
-    code point pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
-    bytes pos: [line=1:bol=0:cnum=11;line=1:bol=0:cnum=12]
+    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=13]
+    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=16]
     Number 2
-    code point pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=12;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=19]
     Ident asd
-    code point pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
-    bytes pos: [line=1:bol=0:cnum=15;line=1:bol=0:cnum=15]
+    code point pos: [line=1:bol=0:cnum=16;line=1:bol=0:cnum=16]
+    bytes pos: [line=1:bol=0:cnum=19;line=1:bol=0:cnum=19]
     EOF |}];
-  let s = "asas 123 + 2\129" in
+  let s = {|as🎉as 123 + 2|} ^ "\129" in
   test_utf8 s (fun lb -> token lb);
   [%expect
     {|
     == from_string ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
     MalFormed
     == from_gen ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
     MalFormed
     == from_channel ==
-    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=4]
-    Ident asas
-    code point pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
-    bytes pos: [line=1:bol=0:cnum=5;line=1:bol=0:cnum=8]
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=3]
+    bytes pos: [line=1:bol=0:cnum=2;line=1:bol=0:cnum=6]
+    Any 🎉
+    code point pos: [line=1:bol=0:cnum=3;line=1:bol=0:cnum=5]
+    bytes pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=8]
+    Ident as
+    code point pos: [line=1:bol=0:cnum=6;line=1:bol=0:cnum=9]
+    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=12]
     Number 123
-    code point pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
-    bytes pos: [line=1:bol=0:cnum=9;line=1:bol=0:cnum=10]
+    code point pos: [line=1:bol=0:cnum=10;line=1:bol=0:cnum=11]
+    bytes pos: [line=1:bol=0:cnum=13;line=1:bol=0:cnum=14]
     Op +
     MalFormed |}]
 
