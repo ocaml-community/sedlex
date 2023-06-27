@@ -1,3 +1,4 @@
+let () = set_binary_mode_out stdout true
 let digit = [%sedlex.regexp? '0' .. '9']
 let number = [%sedlex.regexp? Plus digit]
 

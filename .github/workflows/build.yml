@@ -16,14 +16,15 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
+          - macos-latest
         ocaml-compiler:
           - 4.14.x
-        skip-test:
-          - false
+          - 5.0.x
         include:
-          - os: ubuntu-latest
-            ocaml-compiler: 4.8.x
-            skip-test: true
+          - os: windows-latest
+            ocaml-compiler: 4.14.x
+          - os: windows-latest
+            ocaml-compiler: ocaml.5.0.0,ocaml-option-mingw
 
     runs-on: ${{ matrix.os }}
 
@@ -38,27 +39,37 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        if: runner.os == 'Windows'
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          opam-repositories: |
+            dra27: https://github.com/dra27/opam-repository.git#windows-5.0
+            default: https://github.com/ocaml-opam/opam-repository-mingw.git#sunset
+            opam: https://github.com/ocaml/opam-repository.git
+          dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
+          opam-depext: ${{ true }}
+          opam-depext-flags: --with-test
+
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        if: runner.os != 'Windows'
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
-          opam-depext: ${{ !matrix.skip-test }}
+          opam-depext: ${{ true }}
           opam-depext-flags: --with-test
 
-      - run: opam install . --best-effort
-        if: ${{ matrix.skip-test }}
+      - run: opam pin add dune https://github.com/nojb/dune.git#async_io_self_pipe_win32-3.8.2
+        if: runner.os == 'Windows'
 
       - run: opam install . --with-test
-        if: ${{ !matrix.skip-test }}
 
       - run: opam exec -- make build
-        if: ${{ !matrix.skip-test }}
 
       - run: opam exec -- make test
-        if: ${{ !matrix.skip-test }}
 
       - run: opam exec -- git diff --exit-code
-        if: ${{ !matrix.skip-test }}
 
   lint-fmt:
     runs-on: ubuntu-latest
