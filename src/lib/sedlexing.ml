@@ -55,11 +55,11 @@ type lexbuf = {
   (* Position of the first byte in buffer
       in the input stream *)
   mutable bytes_pos : int;
-  (* pos is the index, in uchar, in the buffer *)
+  (* Position of the beginning of the line in the buffer, in uchar *)
   mutable curr_bol : int;
-  (* pos is the index, in bytes, in the buffer *)
+  (* Position of the beginning of the line in the buffer, in bytes *)
   mutable curr_bytes_bol : int;
-  (* bol is the index, in uchar, in the input stream but not buffer *)
+  (* Index of the current line in the input stream. *)
   mutable curr_line : int;
   (* starting position, in uchar. *)
   mutable start_pos : int;
