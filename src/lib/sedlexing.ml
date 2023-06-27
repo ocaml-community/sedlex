@@ -7,8 +7,21 @@ exception MalFormed
 
 module Uchar = struct
   (* This for compatibility with ocaml < 4.14.0 *)
-  let utf_8_byte_length _ = 1
-  let utf_16_byte_length _ = 1
+  let utf_8_byte_length u =
+    match Uchar.to_int u with
+      | u when u < 0 -> assert false
+      | u when u <= 0x007F -> 1
+      | u when u <= 0x07FF -> 2
+      | u when u <= 0xFFFF -> 3
+      | u when u <= 0x10FFFF -> 4
+      | _ -> assert false
+
+  let utf_16_byte_length u =
+    match Uchar.to_int u with
+      | u when u < 0 -> assert false
+      | u when u <= 0xFFFF -> 2
+      | u when u <= 0x10FFFF -> 4
+      | _ -> assert false
 
   let () =
     ignore utf_8_byte_length;
