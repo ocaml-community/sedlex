@@ -20,9 +20,12 @@ jobs:
         ocaml-compiler:
           - 4.14.x
           - 5.0.x
+        skip-test:
+          - false
         include:
           - os: ubuntu-latest
             ocaml-compiler: 4.8.x
+            skip-test: true
           - os: windows-latest
             ocaml-compiler: 4.14.x
           - os: windows-latest
@@ -50,7 +53,7 @@ jobs:
             default: https://github.com/ocaml-opam/opam-repository-mingw.git#sunset
             opam: https://github.com/ocaml/opam-repository.git
           dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
-          opam-depext: ${{ true }}
+          opam-depext: ${{ !matrix.skip-test }}
           opam-depext-flags: --with-test
 
       - name: Use OCaml ${{ matrix.ocaml-compiler }}
@@ -59,14 +62,20 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
-          opam-depext: ${{ true }}
+          opam-depext: ${{ !matrix.skip-test }}
           opam-depext-flags: --with-test
 
+
       - run: opam install . --with-test
+        if: ${{ !matrix.skip-test }}
+
+      - run: opam install .
+        if: ${{ matrix.skip-test }}
 
       - run: opam exec -- make build
 
       - run: opam exec -- make test
+        if: ${{ matrix.skip-test }}
 
       - run: opam exec -- git diff --exit-code
 
