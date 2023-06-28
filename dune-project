@@ -1,4 +1,4 @@
-(lang dune 2.8)
+(lang dune 2.9)
 (version 3.2)
 (name sedlex)
 (source (github ocaml-community/sedlex))
@@ -9,6 +9,7 @@
 (homepage "https://github.com/ocaml-community/sedlex")
 
 (generate_opam_files true)
+(executables_implicit_empty_intf true)
 
 (package
   (name sedlex)

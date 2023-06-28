@@ -14,8 +14,6 @@
  (mode promote-until-clean)
  (deps
   (:gen ../generator/gen_unicode.exe)
-  ../generator/data/DerivedCoreProperties.txt
-  ../generator/data/DerivedGeneralCategory.txt
-  ../generator/data/PropList.txt)
+  (glob_files ../generator/data/*.txt))
  (action
   (run %{gen} %{targets})))
