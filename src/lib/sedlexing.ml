@@ -519,14 +519,13 @@ module Utf8 = struct
         Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f))))
       else raise MalFormed
 
-    let from_uchar_array a apos len =
-      let b = Buffer.create (len * 4) in
+    let to_buffer a apos len b =
       let rec aux apos len =
         if len > 0 then (
           store b (Uchar.to_int a.(apos));
           aux (succ apos) (pred len))
-        else Buffer.contents b
       in
+
       aux apos len
   end
 
@@ -550,7 +549,9 @@ module Utf8 = struct
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lexbuf pos len =
-    Helper.from_uchar_array lexbuf.buf (lexbuf.start_pos + pos) len
+    let buf = Buffer.create (len * 4) in
+    Helper.to_buffer lexbuf.buf (lexbuf.start_pos + pos) len buf;
+    Buffer.contents buf
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
 end
@@ -622,16 +623,13 @@ module Utf16 = struct
         Buffer.add_char buf c3;
         Buffer.add_char buf c4)
 
-    let from_uchar_array bo a apos len bom =
-      let b = Buffer.create ((len * 4) + 2) in
-      (* +2 for the BOM *)
+    let to_buffer bo a apos len bom b =
       if bom then store bo b 0xfeff;
       (* first, store the BOM *)
       let rec aux apos len =
         if len > 0 then (
           store bo b (Uchar.to_int a.(apos));
           aux (succ apos) (pred len))
-        else Buffer.contents b
       in
       aux apos len
   end
@@ -668,7 +666,10 @@ module Utf16 = struct
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lb pos len bo bom =
-    Helper.from_uchar_array bo lb.buf (lb.start_pos + pos) len bom
+    let buf = Buffer.create ((len * 4) + 2) in
+    (* +2 for the BOM *)
+    Helper.to_buffer bo lb.buf (lb.start_pos + pos) len bom buf;
+    Buffer.contents buf
 
   let lexeme lb bo bom = sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
 end
