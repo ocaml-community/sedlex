@@ -502,31 +502,10 @@ module Utf8 = struct
 
     (**************************)
 
-    let store b p =
-      if p <= 0x7f then Buffer.add_char b (Char.chr p)
-      else if p <= 0x7ff then (
-        Buffer.add_char b (Char.chr (0xc0 lor (p lsr 6)));
-        Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f))))
-      else if p <= 0xffff then (
-        if p >= 0xd800 && p < 0xe000 then raise MalFormed;
-        Buffer.add_char b (Char.chr (0xe0 lor (p lsr 12)));
-        Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6) land 0x3f)));
-        Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f))))
-      else if p <= 0x10ffff then (
-        Buffer.add_char b (Char.chr (0xf0 lor (p lsr 18)));
-        Buffer.add_char b (Char.chr (0x80 lor ((p lsr 12) land 0x3f)));
-        Buffer.add_char b (Char.chr (0x80 lor ((p lsr 6) land 0x3f)));
-        Buffer.add_char b (Char.chr (0x80 lor (p land 0x3f))))
-      else raise MalFormed
-
     let to_buffer a apos len b =
-      let rec aux apos len =
-        if len > 0 then (
-          store b (Uchar.to_int a.(apos));
-          aux (succ apos) (pred len))
-      in
-
-      aux apos len
+      for i = apos to apos + len - 1 do
+        Buffer.add_utf_8_uchar b a.(i)
+      done
   end
 
   let from_channel ic =
@@ -567,13 +546,6 @@ module Utf16 = struct
         | Little_endian -> (c2 lsl 8) + c1
         | Big_endian -> (c1 lsl 8) + c2
 
-    let char_pair_of_number bo num =
-      match bo with
-        | Little_endian ->
-            (Char.chr (num land 0xFF), Char.chr ((num lsr 8) land 0xFF))
-        | Big_endian ->
-            (Char.chr ((num lsr 8) land 0xFF), Char.chr (num land 0xFF))
-
     let get_bo bo c1 c2 =
       match !bo with
         | Some o -> o
@@ -608,30 +580,17 @@ module Utf16 = struct
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed
 
-    let store bo buf code =
-      if code < 0x10000 then (
-        let c1, c2 = char_pair_of_number bo code in
-        Buffer.add_char buf c1;
-        Buffer.add_char buf c2)
-      else (
-        let u' = code - 0x10000 in
-        let w1 = 0xd800 + (u' lsr 10) and w2 = 0xdc00 + (u' land 0x3ff) in
-        let c1, c2 = char_pair_of_number bo w1
-        and c3, c4 = char_pair_of_number bo w2 in
-        Buffer.add_char buf c1;
-        Buffer.add_char buf c2;
-        Buffer.add_char buf c3;
-        Buffer.add_char buf c4)
-
     let to_buffer bo a apos len bom b =
-      if bom then store bo b 0xfeff;
-      (* first, store the BOM *)
-      let rec aux apos len =
-        if len > 0 then (
-          store bo b (Uchar.to_int a.(apos));
-          aux (succ apos) (pred len))
+      let store =
+        match bo with
+          | Big_endian -> Buffer.add_utf_16be_uchar b
+          | Little_endian -> Buffer.add_utf_16le_uchar b
       in
-      aux apos len
+      if bom then store (Uchar.of_int 0xfeff);
+      (* first, store the BOM *)
+      for i = apos to apos + len - 1 do
+        store a.(i)
+      done
   end
 
   let from_channel ic opt_bo =
