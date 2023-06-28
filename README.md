@@ -1,6 +1,6 @@
 # sedlex
 
-[![Build Status](https://travis-ci.com/ocaml-community/sedlex.svg?branch=master)](https://travis-ci.com/ocaml-community/sedlex)
+[![build](https://github.com/ocaml-community/sedlex/actions/workflows/build.yml/badge.svg)](https://github.com/ocaml-community/sedlex/actions/workflows/build.yml)
 
 Unicode-friendly lexer generator for OCaml.
 
