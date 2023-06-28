@@ -21,6 +21,8 @@ jobs:
           - 4.14.x
           - 5.0.x
         include:
+          - os: ubuntu-latest
+            ocaml-compiler: 4.8.x
           - os: windows-latest
             ocaml-compiler: 4.14.x
           - os: windows-latest
