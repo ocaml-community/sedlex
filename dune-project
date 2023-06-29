@@ -1,4 +1,4 @@
-(lang dune 2.9)
+(lang dune 3.0)
 (version 3.2)
 (name sedlex)
 (source (github ocaml-community/sedlex))
