@@ -11,8 +11,7 @@
 
 (rule
  (targets unicode.ml)
- (mode
-  (promote (until-clean)))
+ (mode promote)
  (deps
   (:gen ../generator/gen_unicode.exe)
   (glob_files ../generator/data/*.txt))
