@@ -261,40 +261,46 @@ let lexeme lexbuf =
 
 let lexeme_char lexbuf pos = lexbuf.buf.(lexbuf.start_pos + pos)
 
+let lexing_position_start lexbuf =
+  {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.start_line;
+    pos_cnum = lexbuf.start_pos + lexbuf.offset;
+    pos_bol = lexbuf.start_bol;
+  }
+
+let lexing_position_curr lexbuf =
+  {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.curr_line;
+    pos_cnum = lexbuf.pos + lexbuf.offset;
+    pos_bol = lexbuf.curr_bol;
+  }
+
 let lexing_positions lexbuf =
-  let start_p =
-    {
-      Lexing.pos_fname = lexbuf.filename;
-      pos_lnum = lexbuf.start_line;
-      pos_cnum = lexbuf.start_pos + lexbuf.offset;
-      pos_bol = lexbuf.start_bol;
-    }
-  and curr_p =
-    {
-      Lexing.pos_fname = lexbuf.filename;
-      pos_lnum = lexbuf.curr_line;
-      pos_cnum = lexbuf.pos + lexbuf.offset;
-      pos_bol = lexbuf.curr_bol;
-    }
-  in
+  let start_p = lexing_position_start lexbuf
+  and curr_p = lexing_position_curr lexbuf in
   (start_p, curr_p)
 
+let lexing_bytes_position_start lexbuf =
+  {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.start_line;
+    pos_cnum = lexbuf.start_bytes_pos + lexbuf.bytes_offset;
+    pos_bol = lexbuf.start_bytes_bol;
+  }
+
+let lexing_bytes_position_curr lexbuf =
+  {
+    Lexing.pos_fname = lexbuf.filename;
+    pos_lnum = lexbuf.curr_line;
+    pos_cnum = lexbuf.bytes_pos + lexbuf.bytes_offset;
+    pos_bol = lexbuf.curr_bytes_bol;
+  }
+
 let lexing_bytes_positions lexbuf =
-  let start_p =
-    {
-      Lexing.pos_fname = lexbuf.filename;
-      pos_lnum = lexbuf.start_line;
-      pos_cnum = lexbuf.start_bytes_pos + lexbuf.bytes_offset;
-      pos_bol = lexbuf.start_bytes_bol;
-    }
-  and curr_p =
-    {
-      Lexing.pos_fname = lexbuf.filename;
-      pos_lnum = lexbuf.curr_line;
-      pos_cnum = lexbuf.bytes_pos + lexbuf.bytes_offset;
-      pos_bol = lexbuf.curr_bytes_bol;
-    }
-  in
+  let start_p = lexing_bytes_position_start lexbuf
+  and curr_p = lexing_bytes_position_curr lexbuf in
   (start_p, curr_p)
 
 let with_tokenizer lexer' lexbuf =

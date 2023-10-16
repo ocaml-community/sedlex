@@ -1,3 +1,6 @@
+# dev
+- Add API for retrieving start and stop positions separately (#155)
+
 # 3.2 (2023-06-28):
 - Restore compatibility with OCaml 4.08
 - Use `Sedlexing.{Utf8,Utf16}.from_gen` to initialize UTF8 (resp. UTF16) lexing buffers from
