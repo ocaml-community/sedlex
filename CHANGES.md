@@ -1,5 +1,5 @@
 # dev
-- Add API for retriving start and stop positions separatly (#155)
+- Add API for retrieving start and stop positions separately (#155)
 
 # 3.2 (2023-06-28):
 - Restore compatibility with OCaml 4.08
