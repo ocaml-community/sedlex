@@ -91,6 +91,7 @@ let files =
               let interval = parse_interval interval in
               let prop = parse_prop prop in
               Hashtbl.add labels prop interval
+          (* TODO: support non-binary properties? *)
           | _ -> () );
     ( "DerivedGeneralCategory.txt",
       fun s ->
