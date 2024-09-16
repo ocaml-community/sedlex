@@ -1,7 +1,7 @@
 (* This test that unicode_old.ml is a strict sub-set of 
  * new unicode.ml. *)
 
-let test_versions = ("14.0.0", "15.0.0")
+let test_versions = ("15.0.0", "16.0.0")
 let regressions = []
 let interval s e = Array.to_list (Array.init (e - s) (fun pos -> s + pos))
 
@@ -13,7 +13,7 @@ let test_exception name x =
     List.iter (fun (s, e) -> if s <= x && x <= e then raise Found) l
   with Not_found -> ()
 
-let compare name (old_l : (int * int) list) (new_l : Sedlex_ppx.Sedlex_cset.t) =
+let compare name (old_l : (int * int) list) (new_l : Sedlex_utils.Cset.t) =
   let new_l = (new_l :> (int * int) list) in
   let code_points =
     List.fold_left (fun res (s, e) -> res @ interval s e) [] old_l
@@ -32,6 +32,7 @@ let compare name (old_l : (int * int) list) (new_l : Sedlex_ppx.Sedlex_cset.t) =
     code_points
 
 let test new_l (name, old_l) =
+  let old_l = Sedlex_utils.Cset.to_list old_l in
   (* Cn is for unassigned code points, which are allowed to be
    * used in future version. *)
   if name <> "cn" then compare name old_l (List.assoc name new_l)

@@ -46,7 +46,7 @@ let print_elements ch hashtbl cats =
           (fun (b, e) -> Printf.sprintf "0x%x, 0x%x" b e)
           (Cset.union_list (Hashtbl.find_all hashtbl c) :> (int * int) list)
       in
-      Printf.fprintf ch "  let %s = Sedlex_cset.of_list\n    [" c;
+      Printf.fprintf ch "  let %s = Sedlex_utils.Cset.of_list\n    [" c;
       List.iteri
         (fun i x ->
           if i > 0 then
@@ -91,7 +91,7 @@ let files =
               let interval = parse_interval interval in
               let prop = parse_prop prop in
               Hashtbl.add labels prop interval
-          | _ -> assert false );
+          | _ -> () );
     ( "DerivedGeneralCategory.txt",
       fun s ->
         match parse_line s with
