@@ -3,7 +3,7 @@
 
 (** Unicode classes from XML *)
 
-open Sedlex_utils.Cset
+open Sedlex_cset
 
 val letter : t
 val digit : t

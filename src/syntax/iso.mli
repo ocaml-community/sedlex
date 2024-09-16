@@ -1,7 +1,7 @@
 (* The package sedlex is released under the terms of an MIT-like license. *)
 (* See the attached LICENSE file.                                         *)
 
-open Sedlex_utils.Cset
+open Sedlex_cset
 
 (** Letters to be used in identifiers, as specified
     by ISO .... *)
