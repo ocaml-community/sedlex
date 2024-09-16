@@ -2,7 +2,7 @@
 (* See the attached LICENSE file.                                         *)
 (* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
 
-module Cset = Sedlex_utils.Cset
+module Cset = Sedlex_cset
 
 (* NFA *)
 

@@ -7,7 +7,7 @@ open Ast_builder.Default
 
 (* let ocaml_version = Versions.ocaml_408 *)
 
-module Cset = Sedlex_utils.Cset
+module Cset = Sedlex_cset
 
 (* Decision tree for partitions *)
 
@@ -81,7 +81,7 @@ let segments_of_partition p =
     (fun i c ->
       List.iter
         (fun (a, b) -> seg := (a, b, i) :: !seg)
-        (c : Sedlex_utils.Cset.t :> (int * int) list))
+        (c : Sedlex_cset.t :> (int * int) list))
     p;
   List.sort (fun (a1, _, _) (a2, _, _) -> compare a1 a2) !seg
 
