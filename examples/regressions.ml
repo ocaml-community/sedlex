@@ -1,52 +1,58 @@
-(* This test that unicode_old.ml is a strict sub-set of 
- * new unicode.ml. *)
+(* This test that unicode_old.ml is a strict sub-set of new unicode.ml. *)
+
+module CSet = Sedlex_ppx.Sedlex_cset
+module Unicode = Sedlex_ppx.Unicode
 
 let test_versions = ("15.0.0", "16.0.0")
-let regressions = []
-let interval s e = Array.to_list (Array.init (e - s) (fun pos -> s + pos))
 
-exception Found
+let regressions =
+  [ (* Example *)
+    (* ("lt", CSet.union (CSet.singleton 0x1c5) (CSet.singleton (0x0001))) *) ]
 
-let test_exception name x =
-  try
-    let l = List.assoc name regressions in
-    List.iter (fun (s, e) -> if s <= x && x <= e then raise Found) l
-  with Not_found -> ()
-
-let compare name (old_l : (int * int) list) (new_l : Sedlex_utils.Cset.t) =
-  let new_l = (new_l :> (int * int) list) in
-  let code_points =
-    List.fold_left (fun res (s, e) -> res @ interval s e) [] old_l
+let compare name (old_ : CSet.t) (new_ : CSet.t) =
+  let diff = CSet.difference old_ new_ in
+  let regressions =
+    match List.assoc name regressions with
+      | exception Not_found -> CSet.empty
+      | x -> x
   in
-  let test x =
-    try
-      test_exception name x;
-      List.iter (fun (s, e) -> if s <= x && x <= e then raise Found) new_l;
-      false
-    with Found -> true
-  in
-  List.iter
+  let regressions_intersect = CSet.intersection regressions old_ in
+  let regressions = CSet.difference regressions regressions_intersect in
+  let regressions_useless = CSet.difference regressions new_ in
+  let diff = CSet.difference diff regressions in
+  Seq.iter
     (fun x ->
-      if not (test x) then
-        Printf.printf "Code point 0x%x missing in %s!\n" x name)
-    code_points
+      Printf.printf
+        "Invalid regression for 0x%x in %s: already present in old set.\n" x
+        name)
+    (CSet.to_seq regressions_intersect);
+  Seq.iter
+    (fun x ->
+      Printf.printf "Invalid regression for 0x%x in %s: absent in new set.\n" x
+        name)
+    (CSet.to_seq regressions_useless);
+  Seq.iter
+    (fun x -> Printf.printf "Code point 0x%x missing in %s!\n" x name)
+    (CSet.to_seq diff)
 
 let test new_l (name, old_l) =
-  let old_l = Sedlex_utils.Cset.to_list old_l in
   (* Cn is for unassigned code points, which are allowed to be
    * used in future version. *)
-  if name <> "cn" then compare name old_l (List.assoc name new_l)
+  let old_l = CSet.to_list old_l in
+  if name <> "cn" then (
+    let old_l =
+      List.fold_left
+        (fun acc (a, b) -> CSet.union acc (CSet.interval a b))
+        CSet.empty old_l
+    in
+    compare name old_l (List.assoc name new_l))
 
 let () =
-  if (Unicode_old.version, Sedlex_ppx.Unicode.version) <> test_versions then
+  if (Unicode_old.version, Unicode.version) <> test_versions then
     failwith
       (Printf.sprintf "Test written for versions: %s => %s\n%!"
-         Unicode_old.version Sedlex_ppx.Unicode.version);
+         Unicode_old.version Unicode.version);
   Printf.printf "Testing Unicode regression: %s => %s\n%!" Unicode_old.version
-    Sedlex_ppx.Unicode.version;
-  List.iter
-    (test Sedlex_ppx.Unicode.Categories.list)
-    Unicode_old.Categories.list;
-  List.iter
-    (test Sedlex_ppx.Unicode.Properties.list)
-    Unicode_old.Properties.list
+    Unicode.version;
+  List.iter (test Unicode.Categories.list) Unicode_old.Categories.list;
+  List.iter (test Unicode.Properties.list) Unicode_old.Properties.list

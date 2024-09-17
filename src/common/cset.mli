@@ -23,3 +23,4 @@ val is_empty : t -> bool
 val eof : t
 val singleton : int -> t
 val interval : int -> int -> t
+val to_seq : t -> int Seq.t
