@@ -8,6 +8,12 @@
 
 type t = (int * int) list
 
+let rec range_to_seq a b next () =
+  if a = b then Seq.Cons (a, next) else Seq.Cons (a, range_to_seq (a + 1) b next)
+
+let rec to_seq x () =
+  match x with [] -> Seq.Nil | (a, b) :: xs -> range_to_seq a b (to_seq xs) ()
+
 let check_invariant l =
   let rec loop prev = function
     | [] -> ()
