@@ -232,7 +232,7 @@ let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:(pexp_function ~loc [case ~lhs ~guard:None ~rhs:body]);
+        ~expr:(pexp_function_cases ~loc [case ~lhs ~guard:None ~rhs:body]);
     ]
   in
   match best_final final with
