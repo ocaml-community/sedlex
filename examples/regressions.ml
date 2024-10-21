@@ -38,14 +38,7 @@ let compare name (old_ : CSet.t) (new_ : CSet.t) =
 let test new_l (name, old_l) =
   (* Cn is for unassigned code points, which are allowed to be
    * used in future version. *)
-  let old_l = CSet.to_list old_l in
-  if name <> "cn" then (
-    let old_l =
-      List.fold_left
-        (fun acc (a, b) -> CSet.union acc (CSet.interval a b))
-        CSet.empty old_l
-    in
-    compare name old_l (List.assoc name new_l))
+  if name <> "cn" then compare name old_l (List.assoc name new_l)
 
 let () =
   if (Unicode_old.version, Unicode.version) <> test_versions then
