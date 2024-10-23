@@ -241,3 +241,6 @@ The `examples/` subdirectory contains several samples of sedlex in use.
   - improvements to the build system
   - switched parts of ppx_sedlex to using concrete syntax (with ppx_metaquot)
 - Steffen Smolka: port to dune
+- Romain Beauxis:
+  - Implementation of the unicode table extractors
+  - General maintenance

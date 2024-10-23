@@ -1,4 +1,5 @@
 # dev
+- Add support for unicode `16.0.0`
 - Add API for retrieving start and stop positions separately (#155)
 
 # 3.2 (2023-06-28):

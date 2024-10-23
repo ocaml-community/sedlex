@@ -3,7 +3,7 @@
 module CSet = Sedlex_ppx.Sedlex_cset
 module Unicode = Sedlex_ppx.Unicode
 
-let test_versions = ("14.0.0", "15.0.0")
+let test_versions = ("15.0.0", "16.0.0")
 
 let regressions =
   [ (* Example *)
@@ -38,6 +38,7 @@ let compare name (old_ : CSet.t) (new_ : CSet.t) =
 let test new_l (name, old_l) =
   (* Cn is for unassigned code points, which are allowed to be
    * used in future version. *)
+  let old_l = Sedlex_utils.Cset.to_list old_l in
   if name <> "cn" then (
     let old_l =
       List.fold_left
