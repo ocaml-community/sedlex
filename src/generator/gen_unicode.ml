@@ -13,8 +13,7 @@ let parse_line l =
   let l =
     match String.index_opt l '#' with None -> l | Some i -> String.sub l 0 i
   in
-  String.split_on_char ';' l
-  |> List.map String.trim
+  String.split_on_char ';' l |> List.map String.trim
 
 let parse_code s =
   try int_of_string (Printf.sprintf "0x%s" s)
@@ -92,11 +91,10 @@ let files =
               let interval = parse_interval interval in
               let prop = parse_prop prop in
               Hashtbl.add labels prop interval
-          | [_interval; ("InCB"); ("Extend"|"Consonant"|"Linker")] ->
-             (* TODO: support non-binary properties? *)
-             ()
-          | _ ->
-             assert false);
+          | [_interval; "InCB"; ("Extend" | "Consonant" | "Linker")] ->
+              (* TODO: support non-binary properties? *)
+              ()
+          | _ -> assert false );
     ( "DerivedGeneralCategory.txt",
       fun s ->
         match parse_line s with
