@@ -112,7 +112,7 @@ with a length different from one.
 
 
 Note:
- - The OCaml source is assumed to be encoded in Latin1 (for string
+ - The OCaml source is assumed to be encoded in utf8 (for string
    and character literals).
 
 
