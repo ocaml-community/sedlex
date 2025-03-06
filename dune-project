@@ -21,6 +21,6 @@ extension.")
  (depends
    (ocaml (>= 4.08))
    dune
-   (ppxlib (>= 0.26.0))
+   (ppxlib (>= 0.36.0))
    gen
    (ppx_expect :with-test)))
