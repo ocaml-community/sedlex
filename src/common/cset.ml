@@ -39,6 +39,7 @@ let of_list l =
   check_invariant l;
   l
 
+let to_list l = l
 let max_code = 0x10ffff (* must be < max_int *)
 let min_code = -1
 let empty = []

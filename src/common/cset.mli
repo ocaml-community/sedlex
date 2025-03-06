@@ -10,6 +10,7 @@
 type t = private (int * int) list
 
 val of_list : (int * int) list -> t
+val to_list : t -> (int * int) list
 val min_code : int
 val max_code : int
 val empty : t

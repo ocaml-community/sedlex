@@ -1,6 +1,7 @@
 name: build
 
 on:
+  merge_group:
   pull_request:
   push:
     branches:
@@ -8,6 +9,10 @@ on:
   schedule:
     # Prime the caches every Monday
     - cron: 0 1 * * MON
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,21 +22,10 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+          - windows-latest
         ocaml-compiler:
           - 4.14.x
-          - 5.0.x
-        skip-test:
-          - false
-        include:
-          - os: ubuntu-latest
-            ocaml-compiler: 4.8.x
-            skip-test: true
-          - os: windows-latest
-            ocaml-compiler: 4.14.x
-            skip-test: false
-          - os: windows-latest
-            ocaml-compiler: ocaml.5.0.0,ocaml-option-mingw
-            skip-test: false
+          - 5.x
 
     runs-on: ${{ matrix.os }}
 
@@ -43,41 +37,19 @@ jobs:
           git config --global core.ignorecase false
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Use OCaml ${{ matrix.ocaml-compiler }}
-        if: runner.os == 'Windows'
-        uses: ocaml/setup-ocaml@v2
-        with:
-          ocaml-compiler: ${{ matrix.ocaml-compiler }}
-          opam-repositories: |
-            dra27: https://github.com/dra27/opam-repository.git#windows-5.0
-            default: https://github.com/ocaml-opam/opam-repository-mingw.git#sunset
-            opam: https://github.com/ocaml/opam-repository.git
-          dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
-          opam-depext: ${{ !matrix.skip-test }}
-          opam-depext-flags: --with-test
-
-      - name: Use OCaml ${{ matrix.ocaml-compiler }}
-        if: runner.os != 'Windows'
-        uses: ocaml/setup-ocaml@v2
+        uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: ${{ matrix.os == 'ubuntu-latest' }}
-          opam-depext: ${{ !matrix.skip-test }}
-          opam-depext-flags: --with-test
-
 
       - run: opam install . --with-test
-        if: ${{ !matrix.skip-test }}
-
-      - run: opam install .
-        if: ${{ matrix.skip-test }}
 
       - run: opam exec -- make build
 
       - run: opam exec -- make test
-        if: ${{ !matrix.skip-test }}
 
       - run: opam exec -- git diff --exit-code
 
@@ -85,13 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Use OCaml 4.14.x
-        uses: ocaml/setup-ocaml@v2
+        uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 4.14.x
           dune-cache: true
 
       - name: Lint fmt
-        uses: ocaml/setup-ocaml/lint-fmt@v2
+        uses: ocaml/setup-ocaml/lint-fmt@v3
