@@ -1,3 +1,6 @@
+# dev
+- Add utf8 support for string literal (#127)
+
 # 3.3 (2024-10-29)
 - Add support for unicode `16.0.0` (#157)
 - Add API for retrieving start and stop positions separately (#155)
