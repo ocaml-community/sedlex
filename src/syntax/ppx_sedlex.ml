@@ -4,6 +4,7 @@
 
 open Ppxlib
 open Ast_builder.Default
+open Ast_helper
 
 (* let ocaml_version = Versions.ocaml_408 *)
 
@@ -232,7 +233,7 @@ let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
     [
       value_binding ~loc
         ~pat:(pvar ~loc (state_fun i))
-        ~expr:(pexp_function ~loc [case ~lhs ~guard:None ~rhs:body]);
+        ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
     ]
   in
   match best_final final with
