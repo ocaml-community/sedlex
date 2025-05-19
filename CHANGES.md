@@ -1,3 +1,6 @@
+# dev
+- Implement Corrigendum #1: UTF-8 Shortest Form
+
 # 3.4 (2025-03-28)
 - Make the library compatibility with ppxlib.0.36 (#166)
 
