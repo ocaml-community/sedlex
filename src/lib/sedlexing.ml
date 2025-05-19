@@ -448,7 +448,7 @@ module Utf8 = struct
         if n2 < 0xa0 || 0xbf < n2 then raise MalFormed;
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed)
       else (
-        if 0xe1 < n1 || 0xef < n1 then raise MalFormed;
+        if n1 < 0xe1 || 0xef < n1 then raise MalFormed;
         if n2 < 0x80 || 0xbf < n2 then raise MalFormed;
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed);
       if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
@@ -468,7 +468,7 @@ module Utf8 = struct
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed;
         if n4 < 0x80 || 0xbf < n4 then raise MalFormed)
       else (
-        if 0xf1 < n1 || 0xf3 < n1 then raise MalFormed;
+        if n1 < 0xf1 || 0xf3 < n1 then raise MalFormed;
         if n2 < 0x80 || 0x8f < n2 then raise MalFormed;
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed;
         if n4 < 0x80 || 0xbf < n4 then raise MalFormed);
@@ -482,10 +482,7 @@ module Utf8 = struct
     let next s i =
       let c1 = s.[i] in
       match width c1 with
-        | 1 ->
-            let c = Char.code c1 in
-            if c > 0x7f then raise MalFormed;
-            c
+        | 1 -> Char.code c1
         | 2 ->
             let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
