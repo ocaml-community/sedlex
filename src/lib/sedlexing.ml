@@ -448,7 +448,7 @@ module Utf8 = struct
         if n2 < 0xa0 || 0xbf < n2 then raise MalFormed;
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed)
       else (
-        if 0xe1 < n1 || 0xef < n1 then raise MalFormed;
+        if n1 < 0xe1 || 0xef < n1 then raise MalFormed;
         if n2 < 0x80 || 0xbf < n2 then raise MalFormed;
         if n3 < 0x80 || 0xbf < n3 then raise MalFormed);
       if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
