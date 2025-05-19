@@ -482,10 +482,7 @@ module Utf8 = struct
     let next s i =
       let c1 = s.[i] in
       match width c1 with
-        | 1 ->
-            let c = Char.code c1 in
-            if c > 0x7f then raise MalFormed;
-            c
+        | 1 -> Char.code c1
         | 2 ->
             let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
