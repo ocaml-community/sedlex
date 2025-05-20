@@ -23,5 +23,4 @@ extension.")
    dune
    (ppxlib (>= 0.26.0))
    gen
-   (ppx_blob :with-test)
    (ppx_expect :with-test)))
