@@ -436,6 +436,49 @@ module Utf8 = struct
       | '\240' .. '\247' -> 4
       | _ -> raise MalFormed
 
+    (* https://www.unicode.org/versions/corrigendum1.html *)
+    let check_two n1 n2 =
+      if n1 < 0xc2 || 0xdf < n1 then raise MalFormed;
+      if n2 < 0x80 || 0xbf < n2 then raise MalFormed;
+      if n2 lsr 6 != 0b10 then raise MalFormed;
+      ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
+
+    let check_three n1 n2 n3 =
+      if n1 = 0xe0 then (
+        if n2 < 0xa0 || 0xbf < n2 then raise MalFormed;
+        if n3 < 0x80 || 0xbf < n3 then raise MalFormed)
+      else (
+        if n1 < 0xe1 || 0xef < n1 then raise MalFormed;
+        if n2 < 0x80 || 0xbf < n2 then raise MalFormed;
+        if n3 < 0x80 || 0xbf < n3 then raise MalFormed);
+      if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
+      let p =
+        ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
+      in
+      if p >= 0xd800 && p <= 0xdf00 then raise MalFormed;
+      p
+
+    let check_four n1 n2 n3 n4 =
+      if n1 = 0xf0 then (
+        if n2 < 0x90 || 0xbf < n2 then raise MalFormed;
+        if n3 < 0x80 || 0xbf < n3 then raise MalFormed;
+        if n4 < 0x80 || 0xbf < n4 then raise MalFormed)
+      else if n1 = 0xf4 then (
+        if n2 < 0x80 || 0x8f < n2 then raise MalFormed;
+        if n3 < 0x80 || 0xbf < n3 then raise MalFormed;
+        if n4 < 0x80 || 0xbf < n4 then raise MalFormed)
+      else (
+        if n1 < 0xf1 || 0xf3 < n1 then raise MalFormed;
+        if n2 < 0x80 || 0x8f < n2 then raise MalFormed;
+        if n3 < 0x80 || 0xbf < n3 then raise MalFormed;
+        if n4 < 0x80 || 0xbf < n4 then raise MalFormed);
+      if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
+        raise MalFormed;
+      ((n1 land 0x07) lsl 18)
+      lor ((n2 land 0x3f) lsl 12)
+      lor ((n3 land 0x3f) lsl 6)
+      lor (n4 land 0x3f)
+
     let next s i =
       let c1 = s.[i] in
       match width c1 with
@@ -443,31 +486,18 @@ module Utf8 = struct
         | 2 ->
             let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
-            if n2 lsr 6 != 0b10 then raise MalFormed;
-            ((n1 land 0x1f) lsl 6) lor (n2 land 0x3f)
+            check_two n1 n2
         | 3 ->
             let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
             let n3 = Char.code s.[i + 2] in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
-            let p =
-              ((n1 land 0x0f) lsl 12)
-              lor ((n2 land 0x3f) lsl 6)
-              lor (n3 land 0x3f)
-            in
-            if p >= 0xd800 && p <= 0xdf00 then raise MalFormed;
-            p
+            check_three n1 n2 n3
         | 4 ->
             let n1 = Char.code c1 in
             let n2 = Char.code s.[i + 1] in
             let n3 = Char.code s.[i + 2] in
             let n4 = Char.code s.[i + 3] in
-            if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
-              raise MalFormed;
-            ((n1 land 0x07) lsl 18)
-            lor ((n2 land 0x3f) lsl 12)
-            lor ((n3 land 0x3f) lsl 6)
-            lor (n4 land 0x3f)
+            check_four n1 n2 n3 n4
         | _ -> assert false
 
     let gen_from_char_gen s =
@@ -481,29 +511,18 @@ module Utf8 = struct
           | 2 ->
               let n1 = Char.code c1 in
               let n2 = next_or_fail () in
-              if n2 lsr 6 != 0b10 then raise MalFormed;
-              Uchar.of_int (((n1 land 0x1f) lsl 6) lor (n2 land 0x3f))
+              Uchar.of_int (check_two n1 n2)
           | 3 ->
               let n1 = Char.code c1 in
               let n2 = next_or_fail () in
               let n3 = next_or_fail () in
-              if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 then raise MalFormed;
-              Uchar.of_int
-                (((n1 land 0x0f) lsl 12)
-                lor ((n2 land 0x3f) lsl 6)
-                lor (n3 land 0x3f))
+              Uchar.of_int (check_three n1 n2 n3)
           | 4 ->
               let n1 = Char.code c1 in
               let n2 = next_or_fail () in
               let n3 = next_or_fail () in
               let n4 = next_or_fail () in
-              if n2 lsr 6 != 0b10 || n3 lsr 6 != 0b10 || n4 lsr 6 != 0b10 then
-                raise MalFormed;
-              Uchar.of_int
-                (((n1 land 0x07) lsl 18)
-                lor ((n2 land 0x3f) lsl 12)
-                lor ((n3 land 0x3f) lsl 6)
-                lor (n4 land 0x3f))
+              Uchar.of_int (check_four n1 n2 n3 n4)
           | _ -> raise MalFormed
 
     (**************************)
