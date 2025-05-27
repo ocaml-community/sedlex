@@ -274,6 +274,13 @@ module Utf8 : sig
 
   (** As [Sedlexing.sub_lexeme] with a result encoded in UTF-8. *)
   val sub_lexeme : lexbuf -> int -> int -> string
+
+  module Helper : sig
+    val width : char -> int
+    val check_two : int -> int -> int
+    val check_three : int -> int -> int -> int
+    val check_four : int -> int -> int -> int -> int
+  end
 end
 
 module Utf16 : sig

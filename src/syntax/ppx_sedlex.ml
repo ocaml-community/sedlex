@@ -13,7 +13,6 @@ module Cset = Sedlex_cset
 (* Decision tree for partitions *)
 
 let default_loc = Location.none
-let lident_loc ~loc s = { loc; txt = lident s }
 
 type decision_tree =
   | Lte of int * decision_tree * decision_tree
@@ -286,14 +285,8 @@ let codepoint i =
     failwith (Printf.sprintf "Invalid Unicode code point: %i" i);
   i
 
-let regexp_for_char c = Sedlex.chars (Cset.singleton (Char.code c))
-
-let regexp_for_string s =
-  let rec aux n =
-    if n = String.length s then Sedlex.eps
-    else Sedlex.seq (regexp_for_char s.[n]) (aux (succ n))
-  in
-  aux 0
+let char c = Cset.singleton (Char.code c)
+let uchar c = Cset.singleton (Uchar.to_int c)
 
 let err loc fmt =
   Printf.ksprintf
@@ -301,37 +294,77 @@ let err loc fmt =
       raise (Location.Error (Location.Error.createf ~loc "Sedlex: %s" s)))
     fmt
 
+type encoding = Utf8 | Latin1 | Ascii
+
+let string_of_encoding = function
+  | Utf8 -> "UTF-8"
+  | Latin1 -> "Latin-1"
+  | Ascii -> "ASCII"
+
+let rev_csets_of_string ~loc ~encoding s =
+  match encoding with
+    | Utf8 ->
+        Utf8.fold
+          ~f:(fun acc _ x ->
+            match x with
+              | `Malformed _ ->
+                  err loc "Malformed %s string" (string_of_encoding encoding)
+              | `Uchar c -> uchar c :: acc)
+          [] s
+    | Latin1 ->
+        let l = ref [] in
+        for i = 0 to String.length s - 1 do
+          l := char s.[i] :: !l
+        done;
+        !l
+    | Ascii ->
+        let l = ref [] in
+        for i = 0 to String.length s - 1 do
+          match s.[i] with
+            | '\x00' .. '\x7F' as c -> l := char c :: !l
+            | _ -> err loc "Malformed %s string" (string_of_encoding encoding)
+        done;
+        !l
+
 let rec repeat r = function
   | 0, 0 -> Sedlex.eps
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
 let regexp_of_pattern env =
-  let rec char_pair_op func name p tuple =
+  let rec char_pair_op func name ~encoding p tuple =
     (* Construct something like Sub(a,b) *)
     match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
-          match func (aux p0) (aux p1) with
+          match func (aux ~encoding p0) (aux ~encoding p1) with
             | Some r -> r
             | None ->
                 err p.ppat_loc
-                  "the %s operator can only applied to single-character length \
-                   regexps"
+                  "the %s operator can only applied to single-character \
+                   length regexps"
                   name
         end
       | _ ->
           err p.ppat_loc "the %s operator requires two arguments, like %s(a,b)"
             name name
-  and aux p =
+  and aux ~encoding p =
     (* interpret one pattern node *)
     match p.ppat_desc with
-      | Ppat_or (p1, p2) -> Sedlex.alt (aux p1) (aux p2)
+      | Ppat_or (p1, p2) -> Sedlex.alt (aux ~encoding p1) (aux ~encoding p2)
       | Ppat_tuple (p :: pl) ->
-          List.fold_left (fun r p -> Sedlex.seq r (aux p)) (aux p) pl
+          List.fold_left
+            (fun r p -> Sedlex.seq r (aux ~encoding p))
+            (aux ~encoding p) pl
       | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
-          Sedlex.rep (aux p)
+          Sedlex.rep (aux ~encoding p)
       | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
-          Sedlex.plus (aux p)
+          Sedlex.plus (aux ~encoding p)
+      | Ppat_construct ({ txt = Lident "Utf8" }, Some (_, p)) ->
+          aux ~encoding:Utf8 p
+      | Ppat_construct ({ txt = Lident "Latin1" }, Some (_, p)) ->
+          aux ~encoding:Latin1 p
+      | Ppat_construct ({ txt = Lident "Ascii" }, Some (_, p)) ->
+          aux ~encoding:Ascii p
       | Ppat_construct
           ( { txt = Lident "Rep" },
             Some
@@ -351,7 +384,7 @@ let regexp_of_pattern env =
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then repeat (aux p0) (i1, i2)
+                if 0 <= i1 && i1 <= i2 then repeat (aux ~encoding p0) (i1, i2)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
@@ -359,11 +392,11 @@ let regexp_of_pattern env =
       | Ppat_construct ({ txt = Lident "Rep" }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
       | Ppat_construct ({ txt = Lident "Opt" }, Some (_, p)) ->
-          Sedlex.alt Sedlex.eps (aux p)
+          Sedlex.alt Sedlex.eps (aux ~encoding p)
       | Ppat_construct ({ txt = Lident "Compl" }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
-                match Sedlex.compl (aux p0) with
+                match Sedlex.compl (aux ~encoding p0) with
                   | Some r -> r
                   | None ->
                       err p.ppat_loc
@@ -373,10 +406,10 @@ let regexp_of_pattern env =
             | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
       | Ppat_construct ({ txt = Lident "Sub" }, arg) ->
-          char_pair_op Sedlex.subtract "Sub" p
+          char_pair_op ~encoding Sedlex.subtract "Sub" p
             (Option.map (fun (_, arg) -> arg) arg)
       | Ppat_construct ({ txt = Lident "Intersect" }, arg) ->
-          char_pair_op Sedlex.intersection "Intersect" p
+          char_pair_op ~encoding Sedlex.intersection "Intersect" p
             (Option.map (fun (_, arg) -> arg) arg)
       | Ppat_construct ({ txt = Lident "Chars" }, arg) -> (
           let const =
@@ -386,16 +419,26 @@ let regexp_of_pattern env =
           in
           match const with
             | Some (Pconst_string (s, _, _)) ->
-                let c = ref Cset.empty in
-                for i = 0 to String.length s - 1 do
-                  c := Cset.union !c (Cset.singleton (Char.code s.[i]))
-                done;
-                Sedlex.chars !c
+                let l = rev_csets_of_string ~loc:p.ppat_loc ~encoding s in
+                let chars = List.fold_left Cset.union Cset.empty l in
+                Sedlex.chars chars
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
       | Ppat_interval (i_start, i_end) -> begin
           match (i_start, i_end) with
             | Pconst_char c1, Pconst_char c2 ->
+                let valid =
+                  match encoding with
+                    (* utf8 char interval can only match ascii because
+                       of the OCaml lexer. *)
+                    | Ascii | Utf8 -> (
+                        function '\x00' .. '\x7f' -> true | _ -> false)
+                    | Latin1 -> ( function _ -> true)
+                in
+                if not (valid c1 && valid c2) then
+                  err p.ppat_loc
+                    "this pattern is not a valid %s interval regexp"
+                    (string_of_encoding encoding);
                 Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 Sedlex.chars
@@ -406,8 +449,12 @@ let regexp_of_pattern env =
         end
       | Ppat_constant const -> begin
           match const with
-            | Pconst_string (s, _, _) -> regexp_for_string s
-            | Pconst_char c -> regexp_for_char c
+            | Pconst_string (s, _, _) ->
+                let rev_l = rev_csets_of_string s ~loc:p.ppat_loc ~encoding in
+                List.fold_left
+                  (fun acc cset -> Sedlex.seq (Sedlex.chars cset) acc)
+                  Sedlex.eps rev_l
+            | Pconst_char c -> Sedlex.chars (char c)
             | Pconst_integer (i, _) ->
                 Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
@@ -418,7 +465,7 @@ let regexp_of_pattern env =
         end
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
-  aux
+  aux ~encoding:Ascii
 
 let previous = ref []
 let regexps = ref []
