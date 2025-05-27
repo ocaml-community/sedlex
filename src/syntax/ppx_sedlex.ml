@@ -295,8 +295,11 @@ let regexp_for_string s =
   in
   aux 0
 
-let err loc s =
-  raise (Location.Error (Location.Error.createf ~loc "Sedlex: %s" s))
+let err loc fmt =
+  Printf.ksprintf
+    (fun s ->
+      raise (Location.Error (Location.Error.createf ~loc "Sedlex: %s" s)))
+    fmt
 
 let rec repeat r = function
   | 0, 0 -> Sedlex.eps
@@ -311,13 +314,14 @@ let regexp_of_pattern env =
           match func (aux p0) (aux p1) with
             | Some r -> r
             | None ->
-                err p.ppat_loc @@ "the " ^ name
-                ^ " operator can only applied to single-character length \
+                err p.ppat_loc
+                  "the %s operator can only applied to single-character length \
                    regexps"
+                  name
         end
       | _ ->
-          err p.ppat_loc @@ "the " ^ name
-          ^ " operator requires two arguments, like " ^ name ^ "(a,b)"
+          err p.ppat_loc "the %s operator requires two arguments, like %s(a,b)"
+            name name
   and aux p =
     (* interpret one pattern node *)
     match p.ppat_desc with
@@ -410,8 +414,7 @@ let regexp_of_pattern env =
         end
       | Ppat_var { txt = x } -> begin
           try StringMap.find x env
-          with Not_found ->
-            err p.ppat_loc (Printf.sprintf "unbound regexp %s" x)
+          with Not_found -> err p.ppat_loc "unbound regexp %s" x
         end
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
@@ -468,7 +471,7 @@ let mapper =
             (this#define_regexp name p)#expression body
         | [%expr [%sedlex [%e? _]]] ->
             err e.pexp_loc
-              "the %sedlex extension is only recognized on match expressions"
+              "the %%sedlex extension is only recognized on match expressions"
         | _ -> super#expression e
 
     val toplevel = true
