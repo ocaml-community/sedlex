@@ -84,7 +84,7 @@ The actions can call functions from the Sedlexing module to extract
 
 Regular expressions are syntactically OCaml patterns:
 
-- `"...."` (string constant): recognize the specified string
+- `"...."` (string constant): recognize the specified string.
 - `'....'` (character constant) : recognize the specified character
 - `i` (integer constant) : recognize the specified codepoint
 - `'...' .. '...'`: character range
@@ -103,6 +103,9 @@ Regular expressions are syntactically OCaml patterns:
   and recognize the set of items in `R1` but not in `R2` ("subtract")
 - `Intersect (R1,R2)` : assume that `R` is a single-character length regexp (see
   below) and recognize the set of items which are in both `R1` and `R2`
+- `Utf8 R` : string literals inside R are assumed to be utf-8 encoded.
+- `Latin1 R` : string literals inside R are assumed to be latin1 encoded.
+- `Ascii R` : string literals inside R are assumed to be ascii encoded.
 - `lid` (lowercase identifier) : reference a named regexp (see below)
 
 A single-character length regexp is a regexp which does not contain (after
@@ -112,8 +115,9 @@ with a length different from one.
 
 
 Note:
- - The OCaml source is assumed to be encoded in Latin1 (for string
-   and character literals).
+ - The OCaml source is assumed to be encoded in UTF-8.
+ - Strings and chars litterals will be interpreted in ASCII unless otherwise
+   specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
 
 
 It is possible to define named regular expressions with the following
