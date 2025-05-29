@@ -1,4 +1,4 @@
-# dev
+# 3.5 (2025-05-29)
 - Implement Corrigendum #1: UTF-8 Shortest Form
 - Add utf8 support for string literal (#127)
 
