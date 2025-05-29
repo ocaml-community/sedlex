@@ -3,8 +3,7 @@
 
 open Sedlex_cset
 
-(** Letters to be used in identifiers, as specified
-    by ISO .... *)
+(** Letters to be used in identifiers, as specified by ISO .... *)
 
 (* Data provided by John M. Skaller *)
 

@@ -4,9 +4,9 @@
 
 (** Representation of sets of unicode code points. *)
 
-(** Character sets are represented as lists of intervals.  The
-   intervals must be non-overlapping and not collapsable, and the list
-   must be ordered in increasing order. *)
+(** Character sets are represented as lists of intervals. The intervals must be
+    non-overlapping and not collapsable, and the list must be ordered in
+    increasing order. *)
 type t = private (int * int) list
 
 val of_list : (int * int) list -> t

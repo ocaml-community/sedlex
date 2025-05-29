@@ -334,14 +334,14 @@ let rec repeat r = function
 let regexp_of_pattern env =
   let rec char_pair_op func name ~encoding p tuple =
     (* Construct something like Sub(a,b) *)
-    match tuple with
+      match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
           match func (aux ~encoding p0) (aux ~encoding p1) with
             | Some r -> r
             | None ->
                 err p.ppat_loc
-                  "the %s operator can only applied to single-character \
-                   length regexps"
+                  "the %s operator can only applied to single-character length \
+                   regexps"
                   name
         end
       | _ ->
@@ -349,7 +349,7 @@ let regexp_of_pattern env =
             name name
   and aux ~encoding p =
     (* interpret one pattern node *)
-    match p.ppat_desc with
+      match p.ppat_desc with
       | Ppat_or (p1, p2) -> Sedlex.alt (aux ~encoding p1) (aux ~encoding p2)
       | Ppat_tuple (p :: pl) ->
           List.fold_left
