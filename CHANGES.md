@@ -1,3 +1,8 @@
+# dev
+- Fixed one of the ranges implementing
+  Implement Corrigendum #1: UTF-8 Shortest Form
+  for 4-bytes long characters (#171)
+
 # 3.5 (2025-05-29)
 - Implement Corrigendum #1: UTF-8 Shortest Form
 - Add utf8 support for string literal (#127)
