@@ -1,4 +1,4 @@
-# dev
+# 3.6 (2025-01-05)
 - Fixed one of the ranges implementing
   Implement Corrigendum #1: UTF-8 Shortest Form
   for 4-bytes long characters (#171)
