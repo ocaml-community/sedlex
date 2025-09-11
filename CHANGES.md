@@ -1,3 +1,6 @@
+# 3.7 (unreleased)
+- Update to unicode 17.0.0
+
 # 3.6 (2025-01-05)
 - Fixed one of the ranges implementing
   Implement Corrigendum #1: UTF-8 Shortest Form
