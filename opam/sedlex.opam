@@ -38,4 +38,3 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocaml-community/sedlex.git"
-doc: "https://ocaml-community.github.io/sedlex/index.html"
