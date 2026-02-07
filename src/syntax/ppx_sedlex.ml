@@ -198,14 +198,14 @@ let best_final final =
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
 let call_state lexbuf auto state =
-  let trans, final = auto.(state) in
+  let { Sedlex.trans; finals } = auto.(state) in
   if Array.length trans = 0 then (
-    match best_final final with
+    match best_final finals with
       | Some i -> eint ~loc:default_loc i
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
-let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
+let gen_state (lexbuf_name, lexbuf) auto i { Sedlex.trans; finals } =
   let loc = default_loc in
   let partition = Array.map fst trans in
   let cases =
@@ -235,7 +235,7 @@ let gen_state (lexbuf_name, lexbuf) auto i (trans, final) =
         ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
     ]
   in
-  match best_final final with
+  match best_final finals with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
     | Some i ->
@@ -249,12 +249,11 @@ let gen_recflag auto =
      in states with no further transitions. *)
   try
     Array.iter
-      (fun (trans_i, _) ->
+      (fun { Sedlex.trans } ->
         Array.iter
           (fun (_, j) ->
-            let trans_j, _ = auto.(j) in
-            if Array.length trans_j > 0 then raise Exit)
-          trans_i)
+            if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
+          trans)
       auto;
     Nonrecursive
   with Exit -> Recursive
