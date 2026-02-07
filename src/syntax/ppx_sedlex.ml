@@ -259,15 +259,10 @@ let gen_recflag auto =
     Nonrecursive
   with Exit -> Recursive
 
-let gen_definition ((_, lexbuf) as lexbuf_with_name) l error =
+let gen_definition ((_, lexbuf) as lexbuf_with_name) auto l error =
   let loc = default_loc in
-  let brs = Array.of_list l in
-  let auto = Sedlex.compile (Array.map fst brs) in
   let cases =
-    Array.to_list
-      (Array.mapi
-         (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e)
-         brs)
+    List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
   in
   let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
@@ -502,7 +497,9 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
             err e.pexp_loc "'when' guards are not supported")
       cases
   in
-  gen_definition lexbuf cases error
+  let brs = Array.of_list cases in
+  let auto = Sedlex.compile (Array.map fst brs) in
+  (gen_definition lexbuf auto cases error, auto)
 
 let previous = ref []
 let regexps = ref []
@@ -519,7 +516,7 @@ let mapper =
     method! expression e =
       match e with
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _ } as match_expr]]] ->
-            handle_sedlex_match ~env ~map_rhs:this#expression match_expr
+            fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name } }] =
               [%sedlex.regexp? [%p? p]]

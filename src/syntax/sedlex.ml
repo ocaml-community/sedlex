@@ -139,3 +139,56 @@ let compile rs =
   let i = aux !init in
   assert (i = 0);
   Array.init !counter (Hashtbl.find states_def)
+
+let cset_to_label cset =
+  let escape_dot c =
+    match c with
+      | '"' -> "\\\""
+      | '\\' -> "\\\\"
+      | '<' -> "\\<"
+      | '>' -> "\\>"
+      | _ -> String.make 1 c
+  in
+  let format_interval (lo, hi) =
+    if lo = -1 && hi = -1 then "EOF"
+    else if lo = hi then
+      if lo >= 32 && lo <= 126 then "'" ^ escape_dot (Char.chr lo) ^ "'"
+      else Printf.sprintf "U+%04X" lo
+    else if lo >= 32 && lo <= 126 && hi >= 32 && hi <= 126 then
+      "'" ^ escape_dot (Char.chr lo) ^ "'-'" ^ escape_dot (Char.chr hi) ^ "'"
+    else Printf.sprintf "U+%04X-U+%04X" lo hi
+  in
+  String.concat ", "
+    (List.map format_interval (cset : Cset.t :> (int * int) list))
+
+let dfa_to_dot dfa =
+  let buf = Buffer.create 1024 in
+  let bprintf = Printf.bprintf in
+  bprintf buf "digraph {\n";
+  bprintf buf "  rankdir=LR;\n";
+  bprintf buf "  node [shape=circle];\n\n";
+  bprintf buf "  _start [shape=point];\n";
+  bprintf buf "  _start -> state0;\n\n";
+  Array.iteri
+    (fun i (trans, finals) ->
+      let accepted =
+        let acc = ref [] in
+        for r = Array.length finals - 1 downto 0 do
+          if finals.(r) then acc := r :: !acc
+        done;
+        !acc
+      in
+      (match accepted with
+        | [] -> bprintf buf "  state%d [label=\"%d\"];\n" i i
+        | rules ->
+            bprintf buf
+              "  state%d [label=\"%d\\n[rule %s]\", shape=doublecircle];\n" i i
+              (String.concat "," (List.map string_of_int rules)));
+      Array.iter
+        (fun (cset, target) ->
+          let label = cset_to_label cset in
+          bprintf buf "  state%d -> state%d [label=\"%s\"];\n" i target label)
+        trans)
+    dfa;
+  bprintf buf "}\n";
+  Buffer.contents buf
