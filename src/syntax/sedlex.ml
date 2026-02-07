@@ -117,6 +117,9 @@ let transition (state : state) =
   Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
   t
 
+type dfa_state = { trans : (Cset.t * int) array; finals : bool array }
+type dfa = dfa_state array
+
 let compile rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
@@ -131,7 +134,7 @@ let compile rs =
       let trans = transition state in
       let trans = Array.map (fun (p, t) -> (p, aux t)) trans in
       let finals = Array.map (fun (_, f) -> List.memq f state) rs in
-      Hashtbl.add states_def i (trans, finals);
+      Hashtbl.add states_def i { trans; finals };
       i
   in
   let init = ref [] in
@@ -170,7 +173,7 @@ let dfa_to_dot dfa =
   bprintf buf "  _start [shape=point];\n";
   bprintf buf "  _start -> state0;\n\n";
   Array.iteri
-    (fun i (trans, finals) ->
+    (fun i { trans; finals } ->
       let accepted =
         let acc = ref [] in
         for r = Array.length finals - 1 downto 0 do

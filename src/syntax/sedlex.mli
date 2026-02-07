@@ -22,5 +22,8 @@ val intersection : regexp -> regexp -> regexp option
 (* If each argument is a single [chars] regexp, returns a regexp
    which matches the intersection set.  Otherwise returns [None]. *)
 
-val compile : regexp array -> ((Sedlex_cset.t * int) array * bool array) array
-val dfa_to_dot : ((Sedlex_cset.t * int) array * bool array) array -> string
+type dfa_state = { trans : (Sedlex_cset.t * int) array; finals : bool array }
+type dfa = dfa_state array
+
+val compile : regexp array -> dfa
+val dfa_to_dot : dfa -> string
