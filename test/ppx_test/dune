@@ -1,0 +1,6 @@
+(library
+ (name ppx_sedlex_test)
+ (kind ppx_rewriter)
+ (libraries ppxlib sedlex_ppx)
+ (preprocess
+  (pps ppxlib.metaquot)))

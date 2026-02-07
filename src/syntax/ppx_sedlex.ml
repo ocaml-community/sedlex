@@ -467,6 +467,43 @@ let regexp_of_pattern env =
   in
   aux ~encoding:Ascii
 
+let handle_sedlex_match ~env ~map_rhs match_expr =
+  let lexbuf =
+    match match_expr with
+      | { pexp_desc = Pexp_match (lexbuf, _) } -> (
+          match lexbuf with
+            | { pexp_desc = Pexp_ident { txt = Lident txt } } -> (txt, lexbuf)
+            | _ ->
+                err lexbuf.pexp_loc
+                  "the matched expression must be a single identifier")
+      | _ ->
+          err match_expr.pexp_loc
+            "the %%sedlex extension is only recognized on match expressions"
+  in
+  let cases =
+    match match_expr with
+      | { pexp_desc = Pexp_match (_, cases) } -> cases
+      | _ -> assert false
+  in
+  let cases = List.rev cases in
+  let error =
+    match List.hd cases with
+      | { pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None } -> map_rhs e
+      | { pc_lhs = p } ->
+          err p.ppat_loc "the last branch must be a catch-all error case"
+  in
+  let cases = List.rev (List.tl cases) in
+  let cases =
+    List.map
+      (function
+        | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
+            (regexp_of_pattern env p, map_rhs e)
+        | { pc_guard = Some e } ->
+            err e.pexp_loc "'when' guards are not supported")
+      cases
+  in
+  gen_definition lexbuf cases error
+
 let previous = ref []
 let regexps = ref []
 let should_set_cookies = ref false
@@ -481,35 +518,8 @@ let mapper =
 
     method! expression e =
       match e with
-        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match (lexbuf, cases) }]]] ->
-            let lexbuf =
-              match lexbuf with
-                | { pexp_desc = Pexp_ident { txt = Lident txt } } ->
-                    (txt, lexbuf)
-                | _ ->
-                    err lexbuf.pexp_loc
-                      "the matched expression must be a single identifier"
-            in
-            let cases = List.rev cases in
-            let error =
-              match List.hd cases with
-                | { pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None } ->
-                    this#expression e
-                | { pc_lhs = p } ->
-                    err p.ppat_loc
-                      "the last branch must be a catch-all error case"
-            in
-            let cases = List.rev (List.tl cases) in
-            let cases =
-              List.map
-                (function
-                  | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-                      (regexp_of_pattern env p, this#expression e)
-                  | { pc_guard = Some e } ->
-                      err e.pexp_loc "'when' guards are not supported")
-                cases
-            in
-            gen_definition lexbuf cases error
+        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _ } as match_expr]]] ->
+            handle_sedlex_match ~env ~map_rhs:this#expression match_expr
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name } }] =
               [%sedlex.regexp? [%p? p]]
