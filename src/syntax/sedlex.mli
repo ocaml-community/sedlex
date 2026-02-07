@@ -23,3 +23,4 @@ val intersection : regexp -> regexp -> regexp option
    which matches the intersection set.  Otherwise returns [None]. *)
 
 val compile : regexp array -> ((Sedlex_cset.t * int) array * bool array) array
+val dfa_to_dot : ((Sedlex_cset.t * int) array * bool array) array -> string
