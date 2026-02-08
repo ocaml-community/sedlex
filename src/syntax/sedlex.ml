@@ -18,9 +18,11 @@
    2. Tags for `as` bindings (Laurikari-style)
       NFA nodes may carry a tag operation (Set_position or Set_value).
       [bind] wraps a sub-regexp with start/end tagged epsilon nodes so the
-      DFA can record sub-match positions at runtime. Discriminator tags
-      (Set_value) disambiguate or-patterns where multiple branches bind the
-      same name.
+      DFA can record sub-match positions at runtime. When the PPX can
+      compute one boundary from a known offset (see [pos_expr] in
+      ppx_sedlex.ml), [bind_start_only] or [bind_end_only] is used instead,
+      saving a memory cell. Discriminator tags (Set_value) disambiguate
+      or-patterns where multiple branches bind the same name.
 
    3. Determinization (compile)
       Classic subset construction, extended to handle tags (Laurikari, NFAs
@@ -40,20 +42,18 @@
 
       In general, tagged determinization must resolve conflicts when multiple
       active NFA paths write different values to the same tag (Laurikari uses
-      per-path tag valuations and priority ordering). Sedlex avoids this:
-      each [as] binding gets unique tag IDs, and [as] is rejected inside
-      repetition operators, so no two active NFA paths ever write to the
-      same tag. Tags can therefore be collected as a flat list with no
-      conflict resolution.
+      per-path tag valuations and priority ordering). Sedlex largely avoids
+      this: each [as] binding gets unique tag IDs, and [as] is rejected
+      inside repetition operators, so no two active NFA paths ever write to
+      the same position tag. The one exception is discriminator cells
+      (Set_value): both branches of an alt may be simultaneously active in
+      a DFA state; [dedup_tags] resolves this by keeping the lowest value
+      (first-branch-wins).
 
    Possible future optimizations (see #175)
    -----------------------------------------
 
    Tag optimizations for `as` bindings:
-   - Known-offset elision: when a sub-match boundary is at a fixed offset
-     from the start or end of the overall match, replace the tag with a
-     computed offset and eliminate the memory cell entirely. This is the
-     most impactful optimization since constant offsets are the common case.
    - Self-loop tag delay: tags on self-loops that also appear on all
      entering transitions can be removed from those transitions and emitted
      as a "set previous position" on exit. This turns O(n) tag writes in
@@ -174,6 +174,25 @@ let bind r =
   in
   (wrapped, start_tag, end_tag)
 
+let bind_start_only r =
+  let start_tag = new_tag () in
+  let wrapped succ =
+    let inner = r succ in
+    let start_node = new_tagged_node (Set_position start_tag) in
+    start_node.eps <- [inner];
+    start_node
+  in
+  (wrapped, start_tag)
+
+let bind_end_only r =
+  let end_tag = new_tag () in
+  let wrapped succ =
+    let end_node = new_tagged_node (Set_position end_tag) in
+    end_node.eps <- [succ];
+    r end_node
+  in
+  (wrapped, end_tag)
+
 let new_disc_cell () = new_tag ()
 
 let bind_disc r cell value =
@@ -208,6 +227,25 @@ let rec add_node (state, tags) node =
     add_nodes (node :: state, tags) node.eps)
 
 and add_nodes acc nodes = List.fold_left add_node acc nodes
+
+(* When multiple Set_value ops target the same cell (because both branches
+   of an alt are simultaneously active in a DFA state), keep only the one
+   with the lowest value — this gives first-branch-wins semantics. *)
+let dedup_tags tags =
+  let dominated = Hashtbl.create 4 in
+  List.iter
+    (function
+      | Set_value (cell, value) -> (
+          match Hashtbl.find_opt dominated cell with
+            | Some v when v <= value -> ()
+            | _ -> Hashtbl.replace dominated cell value)
+      | Set_position _ -> ())
+    tags;
+  List.filter
+    (function
+      | Set_value (cell, value) -> Hashtbl.find dominated cell = value
+      | Set_position _ -> true)
+    tags
 
 (* [transition state] computes all outgoing DFA transitions from a DFA state.
    Three phases:
@@ -245,7 +283,7 @@ let transition (state : state) =
     List.map
       (fun (c, ns) ->
         let state, tags = add_nodes ([], []) ns in
-        (c, state, tags))
+        (c, state, dedup_tags tags))
       t
   in
 
@@ -292,7 +330,7 @@ let compile rs =
   assert (i = 0);
   {
     dfa = Array.init !counter (Hashtbl.find states_def);
-    init_tags;
+    init_tags = dedup_tags init_tags;
     num_tags = !cur_tag;
   }
 
@@ -343,15 +381,16 @@ let dfa_to_dot dfa =
       Array.iter
         (fun (cset, target, tags) ->
           let label = cset_to_label cset in
-          let tag_str op =
-            match op with
-              | Set_position t -> "t" ^ string_of_int t
-              | Set_value (c, v) ->
-                  "d" ^ string_of_int c ^ "=" ^ string_of_int v
+          let tag_op_to_string = function
+            | Set_position t -> "t" ^ string_of_int t
+            | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
           in
           let label =
             if tags = [] then label
-            else label ^ " {" ^ String.concat "," (List.map tag_str tags) ^ "}"
+            else
+              label ^ " {"
+              ^ String.concat "," (List.map tag_op_to_string tags)
+              ^ "}"
           in
           bprintf buf "  state%d -> state%d [label=\"%s\"];\n" i target label)
         trans)
