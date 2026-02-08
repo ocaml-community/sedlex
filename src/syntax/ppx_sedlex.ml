@@ -199,7 +199,7 @@ let best_final final =
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
-let call_state lexbuf auto state =
+let call_state lexbuf (auto : Sedlex.dfa) state =
   let { Sedlex.trans; finals } = auto.(state) in
   if Array.length trans = 0 then (
     match best_final finals with
@@ -207,13 +207,31 @@ let call_state lexbuf auto state =
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
-let gen_state (lexbuf_name, lexbuf) auto i { Sedlex.trans; finals } =
+let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
-  let partition = Array.map fst trans in
+  List.fold_right
+    (fun (op : Sedlex.tag_op) acc ->
+      match op with
+        | Set_position t ->
+            [%expr
+              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc t];
+              [%e acc]]
+        | Set_value (cell, value) ->
+            [%expr
+              Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc cell]
+                [%e eint ~loc value];
+              [%e acc]])
+    ops cont
+
+let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
+    { Sedlex.trans; finals } =
+  let loc = default_loc in
+  let partition = Array.map (fun (cs, _, _) -> cs) trans in
   let cases =
     Array.mapi
-      (fun i (_, j) ->
-        case ~lhs:(pint ~loc i) ~guard:None ~rhs:(call_state lexbuf auto j))
+      (fun i (_, j, tags) ->
+        let rhs = gen_tag_ops lexbuf tags (call_state lexbuf auto j) in
+        case ~lhs:(pint ~loc i) ~guard:None ~rhs)
       trans
   in
   let cases = Array.to_list cases in
@@ -246,33 +264,50 @@ let gen_state (lexbuf_name, lexbuf) auto i { Sedlex.trans; finals } =
             Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
             [%e body ()]]
 
-let gen_recflag auto =
+let gen_recflag (auto : Sedlex.dfa) =
   (* The generated function is not recursive if the transitions end
      in states with no further transitions. *)
   try
     Array.iter
       (fun { Sedlex.trans; _ } ->
         Array.iter
-          (fun (_, j) ->
+          (fun (_, j, _) ->
             if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
           trans)
       auto;
     Nonrecursive
   with Exit -> Recursive
 
-let gen_definition ((_, lexbuf) as lexbuf_with_name) auto l error =
+let gen_definition ((_, lexbuf) as lexbuf_with_name)
+    (compiled : Sedlex.compiled) l error =
   let loc = default_loc in
+  let auto = compiled.dfa in
   let cases =
     List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
   in
   let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
+  let start_expr =
+    if compiled.num_tags > 0 then (
+      let init_mem =
+        [%expr
+          Sedlexing.__private__init_mem [%e lexbuf]
+            [%e eint ~loc compiled.num_tags]]
+      in
+      let set_init_tags =
+        gen_tag_ops lexbuf compiled.init_tags (appfun (state_fun 0) [lexbuf])
+      in
+      pexp_sequence ~loc
+        [%expr Sedlexing.start [%e lexbuf]]
+        (pexp_sequence ~loc init_mem set_init_tags))
+    else
+      pexp_sequence ~loc
+        [%expr Sedlexing.start [%e lexbuf]]
+        (appfun (state_fun 0) [lexbuf])
+  in
   pexp_let ~loc (gen_recflag auto) states
-    (pexp_sequence ~loc
-       [%expr Sedlexing.start [%e lexbuf]]
-       (pexp_match ~loc
-          (appfun (state_fun 0) [lexbuf])
-          (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])))
+    (pexp_match ~loc start_expr
+       (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))
 
 (* Lexer specification parser *)
 
@@ -327,13 +362,92 @@ let rec repeat r = function
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
+type tag_info = {
+  name : string;
+  start_tag : int;
+  end_tag : int;
+  disc : (int * int) list;
+}
+
+let gen_sub_lexeme lexbuf st et =
+  let loc = default_loc in
+  [%expr
+    let __s = Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc st] in
+    let __e = Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc et] in
+    { Sedlexing.lexbuf = [%e lexbuf]; pos = __s; len = __e - __s }]
+
+let gen_binding_code lexbuf (tag_info : tag_info list) action =
+  let loc = default_loc in
+  ignore loc;
+  if tag_info = [] then action
+  else (
+    (* Group tag_info by variable name *)
+    let by_name =
+      let tbl = Hashtbl.create 8 in
+      let order = ref [] in
+      List.iter
+        (fun { name; start_tag; end_tag; disc } ->
+          if not (Hashtbl.mem tbl name) then order := name :: !order;
+          let existing = try Hashtbl.find tbl name with Not_found -> [] in
+          Hashtbl.replace tbl name (existing @ [(start_tag, end_tag, disc)]))
+        tag_info;
+      List.rev_map (fun name -> (name, Hashtbl.find tbl name)) !order
+    in
+    List.fold_right
+      (fun (name, entries) acc ->
+        match entries with
+          | [(st, et, _)] ->
+              [%expr
+                let [%p pvar ~loc name] = [%e gen_sub_lexeme lexbuf st et] in
+                [%e acc]]
+          | _ ->
+              let gen_disc_cond discs =
+                let check (cell, value) =
+                  [%expr
+                    Sedlexing.__private__mem_value [%e lexbuf]
+                      [%e eint ~loc cell]
+                    = [%e eint ~loc value]]
+                in
+                match discs with
+                  | [] -> assert false
+                  | [d] -> check d
+                  | d :: ds ->
+                      List.fold_left
+                        (fun acc d -> [%expr [%e acc] && [%e check d]])
+                        (check d) ds
+              in
+              let rec gen_checks = function
+                | [(st, et, _)] -> gen_sub_lexeme lexbuf st et
+                | (st, et, discs) :: rest ->
+                    if discs = [] then
+                      failwith
+                        "discriminator required for or-pattern with multiple \
+                         bindings";
+                    [%expr
+                      if [%e gen_disc_cond discs] then
+                        [%e gen_sub_lexeme lexbuf st et]
+                      else [%e gen_checks rest]]
+                | [] -> assert false
+              in
+              [%expr
+                let [%p pvar ~loc name] = [%e gen_checks entries] in
+                [%e acc]])
+      by_name action)
+
 let regexp_of_pattern env =
+  let no_tags r = (r, ([] : tag_info list)) in
+  let reject_tags loc ctx (r, tags) =
+    if tags <> [] then err loc "'as' bindings are not supported inside %s" ctx;
+    r
+  in
   let rec char_pair_op func name ~encoding ~loc tuple =
     (* Construct something like Sub(a,b) *)
       match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1]; _ } -> begin
-          match func (aux ~encoding p0) (aux ~encoding p1) with
-            | Some r -> r
+          let r0 = reject_tags p0.ppat_loc name (aux ~encoding p0) in
+          let r1 = reject_tags p1.ppat_loc name (aux ~encoding p1) in
+          match func r0 r1 with
+            | Some r -> no_tags r
             | None ->
                 err loc
                   "the %s operator can only applied to single-character length \
@@ -346,19 +460,49 @@ let regexp_of_pattern env =
   and aux ~encoding p =
     (* interpret one pattern node *)
       match p.ppat_desc with
+      (* name as x — named sub-match binding *)
+      | Ppat_alias (inner, { txt = name; _ }) ->
+          let r, tags = aux ~encoding inner in
+          let wrapped, start_tag, end_tag = Sedlex.bind r in
+          (wrapped, { name; start_tag; end_tag; disc = [] } :: tags)
       (* p1 | p2 — alternation *)
-      | Ppat_or (p1, p2) -> Sedlex.alt (aux ~encoding p1) (aux ~encoding p2)
+      | Ppat_or (p1, p2) ->
+          let r1, tags1 = aux ~encoding p1 in
+          let r2, tags2 = aux ~encoding p2 in
+          if tags1 <> [] || tags2 <> [] then begin
+            let names tags =
+              List.map (fun ti -> ti.name) tags |> List.sort_uniq String.compare
+            in
+            if names tags1 <> names tags2 then
+              err p.ppat_loc
+                "both sides of '|' must bind the same names with 'as'";
+            let stamp disc_cell value tags =
+              List.map
+                (fun ti -> { ti with disc = (disc_cell, value) :: ti.disc })
+                tags
+            in
+            let disc_cell = Sedlex.new_disc_cell () in
+            let r1w = Sedlex.bind_disc r1 disc_cell 0 in
+            let r2w = Sedlex.bind_disc r2 disc_cell 1 in
+            ( Sedlex.alt r1w r2w,
+              stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2 )
+          end
+          else (Sedlex.alt r1 r2, tags1 @ tags2)
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
           List.fold_left
-            (fun r p -> Sedlex.seq r (aux ~encoding p))
+            (fun (r, tags) p ->
+              let r', tags' = aux ~encoding p in
+              (Sedlex.seq r r', tags @ tags'))
             (aux ~encoding p) pl
       (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
-          Sedlex.rep (aux ~encoding p)
+          let r = reject_tags p.ppat_loc "Star" (aux ~encoding p) in
+          no_tags (Sedlex.rep r)
       (* Plus p — one-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Plus"; _ }, Some (_, p)) ->
-          Sedlex.plus (aux ~encoding p)
+          let r = reject_tags p.ppat_loc "Plus" (aux ~encoding p) in
+          no_tags (Sedlex.plus r)
       (* Utf8 p — switch to UTF-8 encoding *)
       | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
           aux ~encoding:Utf8 p
@@ -386,11 +530,12 @@ let regexp_of_pattern env =
                       ];
                   _;
                 } ) ) -> begin
+          let r = reject_tags p0.ppat_loc "Rep" (aux ~encoding p0) in
           match (i1, i2) with
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then repeat (aux ~encoding p0) (i1, i2)
+                if 0 <= i1 && i1 <= i2 then no_tags (repeat r (i1, i2))
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
@@ -400,13 +545,15 @@ let regexp_of_pattern env =
           err p.ppat_loc "the Rep operator takes 2 arguments"
       (* Opt p — optional (zero or one) *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
-          Sedlex.alt Sedlex.eps (aux ~encoding p)
+          let r = reject_tags p.ppat_loc "Opt" (aux ~encoding p) in
+          no_tags (Sedlex.alt Sedlex.eps r)
       (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
-                match Sedlex.compl (aux ~encoding p0) with
-                  | Some r -> r
+                let r = reject_tags p0.ppat_loc "Compl" (aux ~encoding p0) in
+                match Sedlex.compl r with
+                  | Some r -> no_tags r
                   | None ->
                       err p.ppat_loc
                         "the Compl operator can only applied to a \
@@ -433,7 +580,7 @@ let regexp_of_pattern env =
             | Some (Pconst_string (s, _, _)) ->
                 let l = rev_csets_of_string ~loc:p.ppat_loc ~encoding s in
                 let chars = List.fold_left Cset.union Cset.empty l in
-                Sedlex.chars chars
+                no_tags (Sedlex.chars chars)
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
       (* 'a' .. 'z' or 0x41 .. 0x5a — character/codepoint range *)
@@ -452,12 +599,14 @@ let regexp_of_pattern env =
                   err p.ppat_loc
                     "this pattern is not a valid %s interval regexp"
                     (string_of_encoding encoding);
-                Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2))
+                no_tags
+                  (Sedlex.chars (Cset.interval (Char.code c1) (Char.code c2)))
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
-                Sedlex.chars
-                  (Cset.interval
-                     (codepoint (int_of_string i1))
-                     (codepoint (int_of_string i2)))
+                no_tags
+                  (Sedlex.chars
+                     (Cset.interval
+                        (codepoint (int_of_string i1))
+                        (codepoint (int_of_string i2))))
             | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end
       (* "string" or 'c' or 0x42 — literal string, char, or codepoint *)
@@ -465,17 +614,19 @@ let regexp_of_pattern env =
           match const with
             | Pconst_string (s, _, _) ->
                 let rev_l = rev_csets_of_string s ~loc:p.ppat_loc ~encoding in
-                List.fold_left
-                  (fun acc cset -> Sedlex.seq (Sedlex.chars cset) acc)
-                  Sedlex.eps rev_l
-            | Pconst_char c -> Sedlex.chars (char c)
+                no_tags
+                  (List.fold_left
+                     (fun acc cset -> Sedlex.seq (Sedlex.chars cset) acc)
+                     Sedlex.eps rev_l)
+            | Pconst_char c -> no_tags (Sedlex.chars (char c))
             | Pconst_integer (i, _) ->
-                Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
+                no_tags
+                  (Sedlex.chars (Cset.singleton (codepoint (int_of_string i))))
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end
       (* name — reference to a previously defined regexp *)
       | Ppat_var { txt = x; _ } -> begin
-          try StringMap.find x env
+          try no_tags (StringMap.find x env)
           with Not_found -> err p.ppat_loc "unbound regexp %s" x
         end
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
@@ -509,18 +660,30 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
           err p.ppat_loc "the last branch must be a catch-all error case"
   in
   let cases = List.rev (List.tl cases) in
-  let cases =
+  Sedlex.reset_tags ();
+  let cases_parsed =
     List.map
       (function
         | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-            (regexp_of_pattern env p, map_rhs e)
+            let regexp, tag_info = regexp_of_pattern env p in
+            (regexp, tag_info, e)
         | { pc_guard = Some e; _ } ->
             err e.pexp_loc "'when' guards are not supported")
       cases
   in
-  let brs = Array.of_list cases in
-  let auto = Sedlex.compile (Array.map fst brs) in
-  (gen_definition lexbuf auto cases error, auto)
+  let compiled =
+    Sedlex.compile (Array.of_list (List.map (fun (r, _, _) -> r) cases_parsed))
+  in
+  (* map_rhs is called after compile so that nested match%sedlex blocks
+     (which call reset_tags) cannot corrupt the outer tag counter. *)
+  let cases =
+    List.map
+      (fun (_, tag_info, e) ->
+        let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
+        ((), action))
+      cases_parsed
+  in
+  (gen_definition lexbuf compiled cases error, compiled.dfa)
 
 let handle_sedlex_match match_expr =
   handle_sedlex_match_ ~env:builtin_regexps ~map_rhs:Fun.id match_expr
@@ -538,14 +701,22 @@ let mapper =
     method eval_regexp_expr e =
       match e with
         (* [%sedlex.regexp? <pattern>] *)
-        | [%expr [%sedlex.regexp? [%p? p]]] -> Some (regexp_of_pattern env p)
+        | [%expr [%sedlex.regexp? [%p? p]]] ->
+            let r, tags = regexp_of_pattern env p in
+            if tags <> [] then
+              err p.ppat_loc
+                "'as' bindings are not allowed in regexp definitions";
+            Some r
         (* let <name> = [%sedlex.regexp? <pattern>] in <body> *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
               [%sedlex.regexp? [%p? p]]
             in
             [%e? body]] ->
-            let r = regexp_of_pattern env p in
+            let r, tags = regexp_of_pattern env p in
+            if tags <> [] then
+              err p.ppat_loc
+                "'as' bindings are not allowed in regexp definitions";
             (this#define_regexp name r)#eval_regexp_expr body
         | _ -> None
 

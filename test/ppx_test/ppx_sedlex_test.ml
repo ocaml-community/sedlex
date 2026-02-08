@@ -4,6 +4,7 @@ module S = Sedlex_ppx.Sedlex
 
 let expand ~ctxt:_ expr =
   P.reset_state ();
+  S.reset_tags ();
   let loc = Location.none in
   let code_expr, auto = P.handle_sedlex_match expr in
   let code_str = Pprintast.string_of_expression code_expr in
