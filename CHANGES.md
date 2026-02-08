@@ -1,5 +1,5 @@
 # dev
-- Add support for named captured group (#177)
+- Add support for named captured group (#177, #178)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0

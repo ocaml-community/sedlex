@@ -102,6 +102,25 @@ let bind r =
   in
   (wrapped, start_tag, end_tag)
 
+let bind_start_only r =
+  let start_tag = new_tag () in
+  let wrapped succ =
+    let inner = r succ in
+    let start_node = new_tagged_node (Set_position start_tag) in
+    start_node.eps <- [inner];
+    start_node
+  in
+  (wrapped, start_tag)
+
+let bind_end_only r =
+  let end_tag = new_tag () in
+  let wrapped succ =
+    let end_node = new_tagged_node (Set_position end_tag) in
+    end_node.eps <- [succ];
+    r end_node
+  in
+  (wrapped, end_tag)
+
 let new_disc_cell () = new_tag ()
 
 let bind_disc r cell value =
@@ -128,6 +147,25 @@ let rec add_node (state, tags) node =
     add_nodes (node :: state, tags) node.eps)
 
 and add_nodes acc nodes = List.fold_left add_node acc nodes
+
+(* When multiple Set_value ops target the same cell (because both branches
+   of an alt are simultaneously active in a DFA state), keep only the one
+   with the lowest value — this gives first-branch-wins semantics. *)
+let dedup_tags tags =
+  let dominated = Hashtbl.create 4 in
+  List.iter
+    (function
+      | Set_value (cell, value) -> (
+          match Hashtbl.find_opt dominated cell with
+            | Some v when v <= value -> ()
+            | _ -> Hashtbl.replace dominated cell value)
+      | Set_position _ -> ())
+    tags;
+  List.filter
+    (function
+      | Set_value (cell, value) -> Hashtbl.find dominated cell = value
+      | Set_position _ -> true)
+    tags
 
 let transition (state : state) =
   (* Merge transition with the same target *)
@@ -157,7 +195,7 @@ let transition (state : state) =
     List.map
       (fun (c, ns) ->
         let state, tags = add_nodes ([], []) ns in
-        (c, state, tags))
+        (c, state, dedup_tags tags))
       t
   in
 
@@ -198,7 +236,7 @@ let compile rs =
   assert (i = 0);
   {
     dfa = Array.init !counter (Hashtbl.find states_def);
-    init_tags;
+    init_tags = dedup_tags init_tags;
     num_tags = !cur_tag;
   }
 
@@ -249,15 +287,16 @@ let dfa_to_dot dfa =
       Array.iter
         (fun (cset, target, tags) ->
           let label = cset_to_label cset in
-          let tag_str op =
-            match op with
-              | Set_position t -> "t" ^ string_of_int t
-              | Set_value (c, v) ->
-                  "d" ^ string_of_int c ^ "=" ^ string_of_int v
+          let tag_op_to_string = function
+            | Set_position t -> "t" ^ string_of_int t
+            | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
           in
           let label =
             if tags = [] then label
-            else label ^ " {" ^ String.concat "," (List.map tag_str tags) ^ "}"
+            else
+              label ^ " {"
+              ^ String.concat "," (List.map tag_op_to_string tags)
+              ^ "}"
           in
           bprintf buf "  state%d -> state%d [label=\"%s\"];\n" i target label)
         trans)
