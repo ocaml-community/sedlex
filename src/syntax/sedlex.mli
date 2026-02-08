@@ -37,7 +37,13 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+type compiled = {
+  dfa : dfa;
+  init_tags : tag_op list;
+  num_tags : int;
+  tag_map : int array;
+}
 
 val compile : regexp array -> compiled
 val dfa_to_dot : dfa -> string

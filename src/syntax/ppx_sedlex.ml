@@ -376,6 +376,19 @@ type tag_info = {
   disc : (int * int) list;
 }
 
+let remap_tag_info (tag_map : int array) (ti : tag_info) =
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = tag_map.(tag); offset }
+    | Start_plus _ as pe -> pe
+    | End_minus _ as pe -> pe
+  in
+  {
+    ti with
+    start_pos = remap_pos ti.start_pos;
+    end_pos = remap_pos ti.end_pos;
+    disc = List.map (fun (cell, v) -> (tag_map.(cell), v)) ti.disc;
+  }
+
 let advance pe len =
   match (pe, len) with
     | Some (Start_plus n), Some l -> Some (Start_plus (n + l))
@@ -906,6 +919,7 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
   let cases =
     List.map
       (fun (_, tag_info, e) ->
+        let tag_info = List.map (remap_tag_info compiled.tag_map) tag_info in
         let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
         ((), action))
       cases_parsed
