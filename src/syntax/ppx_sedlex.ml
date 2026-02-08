@@ -470,6 +470,19 @@ type tag_info = {
          distinct value in the shared discriminator cell. *)
 }
 
+let remap_tag_info (tag_map : int array) (ti : tag_info) =
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = tag_map.(tag); offset }
+    | Start_plus _ as pe -> pe
+    | End_minus _ as pe -> pe
+  in
+  {
+    ti with
+    start_pos = remap_pos ti.start_pos;
+    end_pos = remap_pos ti.end_pos;
+    disc = List.map (fun (cell, v) -> (tag_map.(cell), v)) ti.disc;
+  }
+
 (* [advance pe len] shifts a position expression forward by [len] code
    points. Returns [None] if either argument is unknown. *)
 let advance pe len =
@@ -1054,6 +1067,7 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
   let cases =
     List.map
       (fun (_, tag_info, e) ->
+        let tag_info = List.map (remap_tag_info compiled.tag_map) tag_info in
         let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
         ((), action))
       cases_parsed

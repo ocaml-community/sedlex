@@ -110,6 +110,7 @@ type compiled = {
   num_tags : int;
       (** Total number of memory cells needed at runtime. When [num_tags = 0],
           no memory is allocated (pattern has no [as] bindings). *)
+  tag_map : int array;
 }
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using

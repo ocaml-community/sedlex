@@ -64,8 +64,6 @@
    - Intra-rule tag coalescing: tags with identical occurrence signatures
      (same presence in init_tags and same set of transitions) can share a
      single memory cell.
-   - Cross-rule cell sharing: memory cells from non-interfering rules can
-     share the same physical slot via liveness analysis and graph coloring.
 
    DFA construction:
    - DFA minimization: the generated DFA is not minimized. Hopcroft's or
@@ -311,7 +309,13 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+type compiled = {
+  dfa : dfa;
+  init_tags : tag_op list;
+  num_tags : int;
+  tag_map : int array;
+}
 
 (* [compute_sccs num_states raw_dfa] computes strongly connected components
    using Tarjan's algorithm. Returns [(scc_id, scc_count)] where
@@ -487,19 +491,44 @@ let apply_tag_delay raw_dfa delayed_at scc_id =
             (cs, target, tags @ delayed_ops))
           trans
       in
-      { trans; finals })
+      (trans, finals))
     raw_dfa
 
 let tag_cell = function
   | Set_position { cell; _ } -> cell
   | Set_value (cell, _) -> cell
 
-(* [tag_owners num_tags rs] maps each tag cell to the rule that owns it.
-   Walks the NFA of each rule to discover which tags it created.
-   Returns an array where [result.(t)] is the rule index for tag [t],
-   or -1 if the tag was not found in any rule's NFA. *)
-let tag_owners num_tags rs =
-  let tag_to_rule = Array.make num_tags (-1) in
+(* [remap_cells slot_of num_slots tag_map raw_dfa init_tags] rewrites all tag cell
+   references in the DFA and init_tags through [slot_of], and composes
+   [tag_map] with the remapping. Returns [(num_slots, tag_map, raw_dfa, init_tags)]. *)
+let remap_cells slot_of num_slots tag_map raw_dfa init_tags =
+  let tag_map = Array.map (fun c -> slot_of.(c)) tag_map in
+  let remap_op = function
+    | Set_position { cell; offset } ->
+        Set_position { cell = slot_of.(cell); offset }
+    | Set_value (c, v) -> Set_value (slot_of.(c), v)
+  in
+  let raw_dfa =
+    Array.map
+      (fun (trans, finals) ->
+        let trans =
+          Array.map
+            (fun (cs, target, tags) ->
+              (cs, target, List.sort_uniq compare (List.map remap_op tags)))
+            trans
+        in
+        (trans, finals))
+      raw_dfa
+  in
+  let init_tags = List.sort_uniq compare (List.map remap_op init_tags) in
+  (num_slots, tag_map, raw_dfa, init_tags)
+
+(* [cell_owners num_tags rs tag_map] maps each cell to the rule that owns
+   it: -1 = unused, >= 0 = single rule, -2 = multiple rules. Walks the
+   NFA of each rule to discover which tags it created. *)
+let cell_owners num_tags rs tag_map =
+  let num_tags_raw = Array.length tag_map in
+  let tag_to_rule = Array.make num_tags_raw (-1) in
   Array.iteri
     (fun r (start, _) ->
       let visited = Hashtbl.create 31 in
@@ -514,7 +543,95 @@ let tag_owners num_tags rs =
       in
       visit start)
     rs;
-  tag_to_rule
+  let cell_to_rule = Array.make num_tags (-1) in
+  for t = 0 to num_tags_raw - 1 do
+    if tag_to_rule.(t) >= 0 then (
+      let c = tag_map.(t) in
+      let r = tag_to_rule.(t) in
+      if cell_to_rule.(c) = -1 then cell_to_rule.(c) <- r
+      else if cell_to_rule.(c) <> r then cell_to_rule.(c) <- -2)
+  done;
+  cell_to_rule
+
+(* [forward_reachable num_tags num_states raw_dfa init_tags] computes,
+   for each cell [c], the set of DFA states reachable from any transition
+   that writes to [c]. Two cells whose reachable sets overlap may be
+   simultaneously live and must not share a slot. *)
+let forward_reachable num_tags num_states raw_dfa init_tags =
+  let fwd = Array.init num_tags (fun _ -> Array.make num_states false) in
+  (* Seed: mark the target of each transition that writes to cell c. *)
+  for s = 0 to num_states - 1 do
+    let trans, _ = raw_dfa.(s) in
+    Array.iter
+      (fun (_, target, tags) ->
+        List.iter (fun op -> fwd.(tag_cell op).(target) <- true) tags)
+      trans
+  done;
+  List.iter (fun op -> fwd.(tag_cell op).(0) <- true) init_tags;
+  (* BFS: propagate reachability along DFA transitions. *)
+  for c = 0 to num_tags - 1 do
+    let queue = Queue.create () in
+    for s = 0 to num_states - 1 do
+      if fwd.(c).(s) then Queue.push s queue
+    done;
+    while not (Queue.is_empty queue) do
+      let s = Queue.pop queue in
+      let trans, _ = raw_dfa.(s) in
+      Array.iter
+        (fun (_, target, _) ->
+          if not fwd.(c).(target) then (
+            fwd.(c).(target) <- true;
+            Queue.push target queue))
+        trans
+    done
+  done;
+  fwd
+
+(* [color_cells num_tags num_states cell_to_rule fwd] assigns each cell to the
+   lowest-numbered slot that does not conflict with any previously
+   assigned cell. Two cells conflict when they belong to the same rule,
+   when either is shared across rules, or when their forward-reachable
+   sets overlap.
+   Returns [(slot_of, num_slots)]. *)
+let color_cells num_tags num_states cell_to_rule fwd =
+  let slot_of = Array.make num_tags 0 in
+  let max_slot = ref 0 in
+  for c = 0 to num_tags - 1 do
+    let used = Hashtbl.create 8 in
+    for c' = 0 to c - 1 do
+      let conflict =
+        cell_to_rule.(c) < 0
+        || cell_to_rule.(c') < 0
+        || cell_to_rule.(c) = cell_to_rule.(c')
+        ||
+        let overlap = ref false in
+        for s = 0 to num_states - 1 do
+          if fwd.(c).(s) && fwd.(c').(s) then overlap := true
+        done;
+        !overlap
+      in
+      if conflict then Hashtbl.replace used slot_of.(c') ()
+    done;
+    let slot = ref 0 in
+    while Hashtbl.mem used !slot do
+      incr slot
+    done;
+    slot_of.(c) <- !slot;
+    if !slot > !max_slot then max_slot := !slot
+  done;
+  (slot_of, !max_slot + 1)
+
+(* [share_cells] merges non-interfering tag cells from different rules
+   into shared physical slots.
+   Returns [(num_tags, tag_map, raw_dfa, init_tags)] with remapped cells,
+   or the inputs unchanged if no sharing is possible. *)
+let share_cells num_tags num_states rs raw_dfa init_tags tag_map =
+  let cell_to_rule = cell_owners num_tags rs tag_map in
+  let fwd = forward_reachable num_tags num_states raw_dfa init_tags in
+  let slot_of, num_slots = color_cells num_tags num_states cell_to_rule fwd in
+  if num_slots < num_tags then
+    remap_cells slot_of num_slots tag_map raw_dfa init_tags
+  else (num_tags, tag_map, raw_dfa, init_tags)
 
 (* [compile rs] determinizes the NFA for an array of regexp rules.
    Each rule is compiled to an NFA (entry node, final node) pair. The initial
@@ -558,14 +675,25 @@ let compile rs =
           })
         raw_dfa
     in
-    { dfa; init_tags = []; num_tags = 0 })
+    { dfa; init_tags = []; num_tags = 0; tag_map = [||] })
   else
-    let tag_to_rule = tag_owners num_tags_raw rs in
+    let tag_to_rule = cell_owners num_tags_raw rs (Array.init num_tags_raw Fun.id) in
     let delayed_at, scc_id =
       find_delayable_tags num_states num_rules raw_dfa tag_to_rule
     in
-    let dfa = apply_tag_delay raw_dfa delayed_at scc_id in
-    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw }
+    let raw_dfa = apply_tag_delay raw_dfa delayed_at scc_id in
+    let tag_map = Array.init num_tags_raw Fun.id in
+    let num_tags, tag_map, raw_dfa, init_tags =
+      if num_tags_raw <= 1 || num_rules <= 1 then
+        (num_tags_raw, tag_map, raw_dfa, init_tags)
+      else share_cells num_tags_raw num_states rs raw_dfa init_tags tag_map
+    in
+    let dfa =
+      Array.map
+        (fun (trans, finals) -> { trans; finals })
+        raw_dfa
+    in
+    { dfa; init_tags = dedup_tags init_tags; num_tags; tag_map }
 
 let cset_to_label cset =
   let escape_dot c =

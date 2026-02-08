@@ -1,14 +1,12 @@
 (* Realistic multi-rule lexer exercising many patterns simultaneously.
-   Current: init_mem 2.
+   Current: init_mem 1 (rules 0,1 share cell via cross-rule graph coloring).
    - Rule 0: (Plus 'a'..'z' as ns), '.', (Plus 'a'..'z' as name) → 1 tag
      (ns: start=0, end=tag0; name: start=tag0+1 via Tag offset, end=lexeme_length)
    - Rule 1: (Plus 'A'..'Z' as label), '=', (Plus '0'..'9' as value) → 1 tag
-     (label: start=0, end=tag1; value: start=tag1+1 via Tag offset, end=lexeme_length)
+     (label: start=0, end=tag0; value: start=tag0+1 via Tag offset, end=lexeme_length)
    - Rule 2: "0x", (Plus hex as hex), ';' → 0 tags (prefix=2, suffix=1)
    - Rule 3: '(', ('a'..'z' as x), ',', ('a'..'z' as y), ')' → 0 tags (all fixed offsets)
-   - Rule 4: (Plus digits as tok) | (Plus letters as tok) → 0 tags (discriminator elided)
-   Remaining optimization goals:
-   - Cross-rule cell sharing → rules 0,1 share cells (init_mem 2 → 1) *)
+   - Rule 4: (Plus digits as tok) | (Plus letters as tok) → 0 tags (discriminator elided) *)
 let%expect_test "realistic: multi-token lexer" =
   (match%sedlex_test buf with
     | (Plus 'a' .. 'z' as ns), '.', (Plus 'a' .. 'z' as name) ->
@@ -56,7 +54,7 @@ let%expect_test "realistic: multi-token lexer" =
       state9 -> state10 [label="';'"];
       state10 [label="10\n[rule 2]", shape=doublecircle];
       state11 [label="11"];
-      state11 -> state12 [label="'=' {t1-1}"];
+      state11 -> state12 [label="'=' {t0-1}"];
       state11 -> state11 [label="'A'-'Z'"];
       state12 [label="12"];
       state12 -> state13 [label="'0'-'9'"];
@@ -117,7 +115,7 @@ let%expect_test "realistic: multi-token lexer" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_11 buf =
       match __sedlex_partition_9 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1 1; __sedlex_state_12 buf)
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 0 1; __sedlex_state_12 buf)
       | 1 -> __sedlex_state_11 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_12 buf =
@@ -145,7 +143,7 @@ let%expect_test "realistic: multi-token lexer" =
        | 0 -> __sedlex_state_16 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__init_mem buf 1;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -161,10 +159,10 @@ let%expect_test "realistic: multi-token lexer" =
     | 1 ->
         let label =
           let __s = 0 in
-          let __e = Sedlexing.__private__mem_pos buf 1 in
+          let __e = Sedlexing.__private__mem_pos buf 0 in
           { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         let value =
-          let __s = (Sedlexing.__private__mem_pos buf 1) + 1 in
+          let __s = (Sedlexing.__private__mem_pos buf 0) + 1 in
           let __e = Sedlexing.lexeme_length buf in
           { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore (label, value)
