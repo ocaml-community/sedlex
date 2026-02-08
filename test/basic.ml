@@ -1303,7 +1303,7 @@ let%expect_test "as_bindings" =
           (Sedlexing.Utf8.of_submatch y)
     | _ -> assert false);
   [%expect {| x=d y=gh |}];
-  (* Test 11: Set_prev with backtracking (Opt at end) *)
+  (* Test 11: Delayed tag with backtracking (Opt at end) *)
   let buf = Sedlexing.Utf8.from_string "aabba" in
   (match%sedlex buf with
     | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) ->
@@ -1475,3 +1475,63 @@ let%expect_test "as_bindings_nested_sedlex" =
     | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
   [%expect {| mem_cells=0 |}]
+
+let%expect_test "as_bindings_multi_state_cycle" =
+  (* Plus "ab" creates a 2-state cycle; tag delay should still be correct *)
+  let buf = Sedlexing.Utf8.from_string "aaababcc" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), (Plus "ab" as y), (Plus 'c' as z) ->
+        Printf.printf "x=%s y=%s z=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+          (Sedlexing.Utf8.of_submatch z)
+    | _ -> assert false);
+  [%expect {| x=aaa y=bab z=cc |}];
+  (* Single iteration of the cycle *)
+  let buf = Sedlexing.Utf8.from_string "aabc" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), (Plus "ab" as y), (Plus 'c' as z) ->
+        Printf.printf "x=%s y=%s z=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+          (Sedlexing.Utf8.of_submatch z)
+    | _ -> assert false);
+  [%expect {| x=aa y=b z=c |}];
+  (* Many iterations *)
+  let buf = Sedlexing.Utf8.from_string "aabababababccc" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), (Plus "ab" as y), (Plus 'c' as z) ->
+        Printf.printf "x=%s y=%s z=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+          (Sedlexing.Utf8.of_submatch z)
+    | _ -> assert false);
+  [%expect {| x=aa y=babababab z=ccc |}]
+
+let%expect_test "as_bindings_multi_exit_tag_delay" =
+  (* Opt 'b' shifts Plus "ab" to share a cycle with Plus "ba".
+     The cycle has exits from two states; tag delay relies on the
+     generalized reachability check. *)
+  let buf = Sedlexing.Utf8.from_string "ababccc" in
+  (match%sedlex buf with
+    | Opt 'b', (Plus ('a', 'b') as x), Plus 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | Opt 'a', Plus ('b', 'a'), 'd' -> Printf.printf "rule1\n"
+    | _ -> assert false);
+  [%expect {| x=abab |}];
+  (* With the optional 'b' prefix *)
+  let buf = Sedlexing.Utf8.from_string "bababc" in
+  (match%sedlex buf with
+    | Opt 'b', (Plus ('a', 'b') as x), Plus 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | Opt 'a', Plus ('b', 'a'), 'd' -> Printf.printf "rule1\n"
+    | _ -> assert false);
+  [%expect {| x=abab |}];
+  (* Rule 1 match (exits from the other cycle state) *)
+  let buf = Sedlexing.Utf8.from_string "abad" in
+  (match%sedlex buf with
+    | Opt 'b', (Plus ('a', 'b') as x), Plus 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | Opt 'a', Plus ('b', 'a'), 'd' -> Printf.printf "rule1\n"
+    | _ -> assert false);
+  [%expect {| rule1 |}]

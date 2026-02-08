@@ -242,18 +242,19 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
-   operation calls. Each [Set_position t] becomes a call to
-   [__private__set_mem_pos], and each [Set_value (cell, v)] becomes a call to
-   [__private__set_mem_value]. Operations are folded right so they execute
-   before [cont]. *)
+   operation calls. Each [Set_position] becomes a call to
+   [__private__set_mem_pos] and each [Set_value (cell, v)] becomes a call
+   to [__private__set_mem_value]. Operations are folded right so they
+   execute before [cont]. *)
 let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
   List.fold_right
     (fun (op : Sedlex.tag_op) acc ->
       match op with
-        | Set_position t ->
+        | Set_position { cell; offset } ->
             [%expr
-              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc t];
+              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc cell]
+                [%e eint ~loc offset];
               [%e acc]]
         | Set_value (cell, value) ->
             [%expr

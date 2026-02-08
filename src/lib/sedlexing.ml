@@ -298,7 +298,10 @@ let __private__init_mem lexbuf n =
     Array.fill lexbuf.__private__mem_saved 0 n (-1)
   end
 
-let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
+let __private__set_mem_pos lexbuf i offset =
+  assert (offset >= 0);
+  assert (lexbuf.pos - offset >= 0);
+  lexbuf.__private__mem.(i) <- lexbuf.pos - offset
 
 let __private__set_mem_value lexbuf i v =
   assert (v >= 0);
