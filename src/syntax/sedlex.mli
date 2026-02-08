@@ -27,6 +27,8 @@ type tag_op = Set_position of int | Set_value of int * int
 val bind : regexp -> regexp * int * int
 val new_disc_cell : unit -> int
 val bind_disc : regexp -> int -> int -> regexp
+val bind_start_only : regexp -> regexp * int
+val bind_end_only : regexp -> regexp * int
 val reset_tags : unit -> unit
 
 type dfa_state = {

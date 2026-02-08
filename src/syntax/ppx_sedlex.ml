@@ -109,7 +109,7 @@ end)
 
 let builtin_regexps =
   List.fold_left
-    (fun acc (n, c) -> StringMap.add n (Sedlex.chars c) acc)
+    (fun acc (n, c) -> StringMap.add n (Sedlex.chars c, Some 1) acc)
     StringMap.empty
     ([
        ("any", Cset.any);
@@ -360,18 +360,53 @@ let rec repeat r = function
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
+type pos_expr =
+  | Tag of { tag : int; offset : int }
+  | Start_plus of int
+  | End_minus of int
+
 type tag_info = {
   name : string;
-  start_tag : int;
-  end_tag : int;
+  start_pos : pos_expr;
+  end_pos : pos_expr;
   disc : (int * int) list;
 }
+
+let advance pe len =
+  match (pe, len) with
+    | Some (Start_plus n), Some l -> Some (Start_plus (n + l))
+    | Some (End_minus n), Some l -> Some (End_minus (n - l))
+    | Some (Tag { tag; offset }), Some l ->
+        Some (Tag { tag; offset = offset + l })
+    | _ -> None
+
+let retreat pe len =
+  match (pe, len) with
+    | Some (End_minus n), Some l -> Some (End_minus (n + l))
+    | Some (Start_plus n), Some l -> Some (Start_plus (n - l))
+    | Some (Tag { tag; offset }), Some l ->
+        Some (Tag { tag; offset = offset - l })
+    | _ -> None
+
+let gen_pos_expr lexbuf pe =
+  let loc = default_loc in
+  match pe with
+    | Tag { tag; offset = 0 } ->
+        [%expr Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc tag]]
+    | Tag { tag; offset } ->
+        [%expr
+          Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc tag]
+          + [%e eint ~loc offset]]
+    | Start_plus n -> eint ~loc n
+    | End_minus 0 -> [%expr Sedlexing.lexeme_length [%e lexbuf]]
+    | End_minus n ->
+        [%expr Sedlexing.lexeme_length [%e lexbuf] - [%e eint ~loc n]]
 
 let gen_sub_lexeme lexbuf st et =
   let loc = default_loc in
   [%expr
-    let __s = Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc st] in
-    let __e = Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc et] in
+    let __s = [%e gen_pos_expr lexbuf st] in
+    let __e = [%e gen_pos_expr lexbuf et] in
     { Sedlexing.lexbuf = [%e lexbuf]; pos = __s; len = __e - __s }]
 
 let gen_binding_code lexbuf (tag_info : tag_info list) action =
@@ -384,10 +419,10 @@ let gen_binding_code lexbuf (tag_info : tag_info list) action =
       let tbl = Hashtbl.create 8 in
       let order = ref [] in
       List.iter
-        (fun { name; start_tag; end_tag; disc } ->
+        (fun { name; start_pos; end_pos; disc } ->
           if not (Hashtbl.mem tbl name) then order := name :: !order;
           let existing = try Hashtbl.find tbl name with Not_found -> [] in
-          Hashtbl.replace tbl name (existing @ [(start_tag, end_tag, disc)]))
+          Hashtbl.replace tbl name (existing @ [(start_pos, end_pos, disc)]))
         tag_info;
       List.rev_map (fun name -> (name, Hashtbl.find tbl name)) !order
     in
@@ -432,6 +467,75 @@ let gen_binding_code lexbuf (tag_info : tag_info list) action =
                 [%e acc]])
       by_name action)
 
+let codepoint_count ~encoding s =
+  match encoding with
+    | Latin1 | Ascii -> String.length s
+    | Utf8 ->
+        let n = ref 0 in
+        String.iter (fun c -> if Char.code c land 0xC0 <> 0x80 then incr n) s;
+        !n
+
+let rec fixed_length env ~encoding p =
+  match p.ppat_desc with
+    | Ppat_alias (inner, _) -> fixed_length env ~encoding inner
+    | Ppat_or (p1, p2) -> (
+        match
+          (fixed_length env ~encoding p1, fixed_length env ~encoding p2)
+        with
+          | Some n1, Some n2 when n1 = n2 -> Some n1
+          | _ -> None)
+    | Ppat_tuple (p :: pl) ->
+        List.fold_left
+          (fun acc p ->
+            match (acc, fixed_length env ~encoding p) with
+              | Some a, Some b -> Some (a + b)
+              | _ -> None)
+          (fixed_length env ~encoding p)
+          pl
+    | Ppat_constant (Pconst_string (s, _, _)) ->
+        Some (codepoint_count ~encoding s)
+    | Ppat_constant (Pconst_char _) -> Some 1
+    | Ppat_constant (Pconst_integer _) -> Some 1
+    | Ppat_interval _ -> Some 1
+    | Ppat_construct ({ txt = Lident "Chars"; _ }, _) -> Some 1
+    | Ppat_construct ({ txt = Lident "Compl"; _ }, _) -> Some 1
+    | Ppat_construct ({ txt = Lident "Sub"; _ }, _) -> Some 1
+    | Ppat_construct ({ txt = Lident "Intersect"; _ }, _) -> Some 1
+    | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
+        fixed_length env ~encoding:Utf8 p
+    | Ppat_construct ({ txt = Lident "Latin1"; _ }, Some (_, p)) ->
+        fixed_length env ~encoding:Latin1 p
+    | Ppat_construct ({ txt = Lident "Ascii"; _ }, Some (_, p)) ->
+        fixed_length env ~encoding:Ascii p
+    | Ppat_construct
+        ( { txt = Lident "Rep"; _ },
+          Some
+            ( _,
+              {
+                ppat_desc =
+                  Ppat_tuple
+                    [
+                      p0;
+                      {
+                        ppat_desc =
+                          Ppat_constant (i1 as i2) | Ppat_interval (i1, i2);
+                        _;
+                      };
+                    ];
+                _;
+              } ) ) -> (
+        match (i1, i2) with
+          | Pconst_integer (i1, _), Pconst_integer (i2, _) when i1 = i2 -> (
+              match fixed_length env ~encoding p0 with
+                | Some l -> Some (int_of_string i1 * l)
+                | None -> None)
+          | _ -> None)
+    | Ppat_var { txt = x; _ } -> (
+        match StringMap.find_opt x env with
+          | Some (_, len) -> len
+          | None -> None)
+    | _ -> None
+
 let regexp_of_pattern env =
   let no_tags r = (r, ([] : tag_info list)) in
   let reject_tags loc ctx (r, tags) =
@@ -442,8 +546,14 @@ let regexp_of_pattern env =
     (* Construct something like Sub(a,b) *)
       match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1]; _ } -> begin
-          let r0 = reject_tags p0.ppat_loc name (aux ~encoding p0) in
-          let r1 = reject_tags p1.ppat_loc name (aux ~encoding p1) in
+          let r0 =
+            reject_tags p0.ppat_loc name
+              (aux ~left:None ~right:None ~encoding p0)
+          in
+          let r1 =
+            reject_tags p1.ppat_loc name
+              (aux ~left:None ~right:None ~encoding p1)
+          in
           match func r0 r1 with
             | Some r -> no_tags r
             | None ->
@@ -455,18 +565,51 @@ let regexp_of_pattern env =
       | _ ->
           err loc "the %s operator requires two arguments, like %s(a,b)" name
             name
-  and aux ~encoding p =
-    (* interpret one pattern node *)
+  and aux ~left ~right ~encoding p =
+    (* [left]: known position at the start of this pattern element
+       (Start_plus n | Tag {tag; offset} | None).
+       [right]: known position at the end of this pattern element
+       (End_minus n | Tag {tag; offset} | None). *)
       match p.ppat_desc with
       (* name as x — named sub-match binding *)
       | Ppat_alias (inner, { txt = name; _ }) ->
-          let r, tags = aux ~encoding inner in
-          let wrapped, start_tag, end_tag = Sedlex.bind r in
-          (wrapped, { name; start_tag; end_tag; disc = [] } :: tags)
+          let r, tags = aux ~left ~right ~encoding inner in
+          let elem_len = fixed_length env ~encoding inner in
+          let known_start =
+            match left with Some _ -> left | None -> retreat right elem_len
+          in
+          let known_end =
+            match right with
+              | Some _ -> right
+              | None -> advance known_start elem_len
+          in
+          let st, et, r =
+            match (known_start, known_end) with
+              | Some st, Some et -> (st, et, r)
+              | Some st, None ->
+                  let wrapped, end_tag = Sedlex.bind_end_only r in
+                  (st, Tag { tag = end_tag; offset = 0 }, wrapped)
+              | None, Some et ->
+                  let wrapped, start_tag = Sedlex.bind_start_only r in
+                  (Tag { tag = start_tag; offset = 0 }, et, wrapped)
+              | None, None -> (
+                  match elem_len with
+                    | Some len ->
+                        let wrapped, start_tag = Sedlex.bind_start_only r in
+                        ( Tag { tag = start_tag; offset = 0 },
+                          Tag { tag = start_tag; offset = len },
+                          wrapped )
+                    | None ->
+                        let wrapped, start_tag, end_tag = Sedlex.bind r in
+                        ( Tag { tag = start_tag; offset = 0 },
+                          Tag { tag = end_tag; offset = 0 },
+                          wrapped ))
+          in
+          (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
       (* p1 | p2 — alternation *)
       | Ppat_or (p1, p2) ->
-          let r1, tags1 = aux ~encoding p1 in
-          let r2, tags2 = aux ~encoding p2 in
+          let r1, tags1 = aux ~left ~right ~encoding p1 in
+          let r2, tags2 = aux ~left ~right ~encoding p2 in
           if tags1 <> [] || tags2 <> [] then begin
             let names tags =
               List.map (fun ti -> ti.name) tags |> List.sort_uniq String.compare
@@ -474,42 +617,115 @@ let regexp_of_pattern env =
             if names tags1 <> names tags2 then
               err p.ppat_loc
                 "both sides of '|' must bind the same names with 'as'";
-            let stamp disc_cell value tags =
-              List.map
-                (fun ti -> { ti with disc = (disc_cell, value) :: ti.disc })
-                tags
-            in
-            let disc_cell = Sedlex.new_disc_cell () in
-            let r1w = Sedlex.bind_disc r1 disc_cell 0 in
-            let r2w = Sedlex.bind_disc r2 disc_cell 1 in
-            ( Sedlex.alt r1w r2w,
-              stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2 )
+            if tags1 = tags2 then (Sedlex.alt r1 r2, tags1)
+            else (
+              let stamp disc_cell value tags =
+                List.map
+                  (fun ti -> { ti with disc = (disc_cell, value) :: ti.disc })
+                  tags
+              in
+              let reusable_cell =
+                match tags1 with
+                  | [] | { disc = []; _ } :: _ -> None
+                  | { disc = (c, _) :: _; _ } :: rest ->
+                      if
+                        List.for_all
+                          (fun ti ->
+                            match ti.disc with
+                              | (c2, _) :: _ -> c2 = c
+                              | [] -> false)
+                          rest
+                      then Some c
+                      else None
+              in
+              match reusable_cell with
+                | Some disc_cell ->
+                    let max_val =
+                      List.fold_left
+                        (fun acc ti ->
+                          match ti.disc with
+                            | (_, v) :: _ -> max acc v
+                            | [] -> acc)
+                        (-1) tags1
+                    in
+                    let new_val = max_val + 1 in
+                    let r2w = Sedlex.bind_disc r2 disc_cell new_val in
+                    (Sedlex.alt r1 r2w, tags1 @ stamp disc_cell new_val tags2)
+                | None ->
+                    let disc_cell = Sedlex.new_disc_cell () in
+                    let r1w = Sedlex.bind_disc r1 disc_cell 0 in
+                    let r2w = Sedlex.bind_disc r2 disc_cell 1 in
+                    ( Sedlex.alt r1w r2w,
+                      stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2 ))
           end
           else (Sedlex.alt r1 r2, tags1 @ tags2)
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
-          List.fold_left
-            (fun (r, tags) p ->
-              let r', tags' = aux ~encoding p in
-              (Sedlex.seq r r', tags @ tags'))
-            (aux ~encoding p) pl
+          let all = p :: pl in
+          let n = List.length all in
+          let lengths = List.map (fun p -> fixed_length env ~encoding p) all in
+          let lengths_arr = Array.of_list lengths in
+          (* Compute right positions (right-to-left) *)
+          let rights = Array.make n None in
+          let () =
+            let acc = ref right in
+            for i = n - 1 downto 0 do
+              rights.(i) <- !acc;
+              acc := retreat !acc lengths_arr.(i)
+            done
+          in
+          (* Extract end-position anchor from a direct Ppat_alias element *)
+          let left_from_end_tag p tags' =
+            match p.ppat_desc with
+              | Ppat_alias _ -> (
+                  match tags' with
+                    | { end_pos = Tag _ as et; _ } :: _ -> Some et
+                    | _ -> None)
+              | _ -> None
+          in
+          (* Update left after processing element i *)
+          let update_left cur i p tags' =
+            match advance cur lengths_arr.(i) with
+              | Some _ as s -> s
+              | None -> left_from_end_tag p tags'
+          in
+          let r0, tags0 = aux ~left ~right:rights.(0) ~encoding p in
+          let left0 = update_left left 0 p tags0 in
+          let _, _, result =
+            List.fold_left
+              (fun (i, cur_left, (r, tags)) p ->
+                let r', tags' =
+                  aux ~left:cur_left ~right:rights.(i) ~encoding p
+                in
+                let new_left = update_left cur_left i p tags' in
+                (i + 1, new_left, (Sedlex.seq r r', tags @ tags')))
+              (1, left0, (r0, tags0))
+              pl
+          in
+          result
       (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
-          let r = reject_tags p.ppat_loc "Star" (aux ~encoding p) in
+          let r =
+            reject_tags p.ppat_loc "Star"
+              (aux ~left:None ~right:None ~encoding p)
+          in
           no_tags (Sedlex.rep r)
       (* Plus p — one-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Plus"; _ }, Some (_, p)) ->
-          let r = reject_tags p.ppat_loc "Plus" (aux ~encoding p) in
+          let r =
+            reject_tags p.ppat_loc "Plus"
+              (aux ~left:None ~right:None ~encoding p)
+          in
           no_tags (Sedlex.plus r)
       (* Utf8 p — switch to UTF-8 encoding *)
       | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
-          aux ~encoding:Utf8 p
+          aux ~left ~right ~encoding:Utf8 p
       (* Latin1 p — switch to Latin-1 encoding *)
       | Ppat_construct ({ txt = Lident "Latin1"; _ }, Some (_, p)) ->
-          aux ~encoding:Latin1 p
+          aux ~left ~right ~encoding:Latin1 p
       (* Ascii p — switch to ASCII encoding *)
       | Ppat_construct ({ txt = Lident "Ascii"; _ }, Some (_, p)) ->
-          aux ~encoding:Ascii p
+          aux ~left ~right ~encoding:Ascii p
       (* Rep (p, n..m) — bounded repetition *)
       | Ppat_construct
           ( { txt = Lident "Rep"; _ },
@@ -528,7 +744,10 @@ let regexp_of_pattern env =
                       ];
                   _;
                 } ) ) -> begin
-          let r = reject_tags p0.ppat_loc "Rep" (aux ~encoding p0) in
+          let r =
+            reject_tags p0.ppat_loc "Rep"
+              (aux ~left:None ~right:None ~encoding p0)
+          in
           match (i1, i2) with
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
@@ -543,13 +762,19 @@ let regexp_of_pattern env =
           err p.ppat_loc "the Rep operator takes 2 arguments"
       (* Opt p — optional (zero or one) *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
-          let r = reject_tags p.ppat_loc "Opt" (aux ~encoding p) in
+          let r =
+            reject_tags p.ppat_loc "Opt"
+              (aux ~left:None ~right:None ~encoding p)
+          in
           no_tags (Sedlex.alt Sedlex.eps r)
       (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
-                let r = reject_tags p0.ppat_loc "Compl" (aux ~encoding p0) in
+                let r =
+                  reject_tags p0.ppat_loc "Compl"
+                    (aux ~left:None ~right:None ~encoding p0)
+                in
                 match Sedlex.compl r with
                   | Some r -> no_tags r
                   | None ->
@@ -624,12 +849,12 @@ let regexp_of_pattern env =
         end
       (* name — reference to a previously defined regexp *)
       | Ppat_var { txt = x; _ } -> begin
-          try no_tags (StringMap.find x env)
+          try no_tags (fst (StringMap.find x env))
           with Not_found -> err p.ppat_loc "unbound regexp %s" x
         end
       | _ -> err p.ppat_loc "this pattern is not a valid regexp"
   in
-  aux ~encoding:Ascii
+  aux ~left:(Some (Start_plus 0)) ~right:(Some (End_minus 0)) ~encoding:Ascii
 
 let handle_sedlex_match ~env ~map_rhs match_expr =
   let lexbuf =
@@ -691,7 +916,7 @@ let mapper =
   object (this)
     inherit Ast_traverse.map as super
     val env = builtin_regexps
-    method define_regexp name r = {<env = StringMap.add name r env>}
+    method define_regexp name r_len = {<env = StringMap.add name r_len env>}
 
     method eval_regexp_expr e =
       match e with
@@ -701,7 +926,8 @@ let mapper =
             if tags <> [] then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
-            Some r
+            let len = fixed_length env ~encoding:Ascii p in
+            Some (r, len)
         (* let <name> = [%sedlex.regexp? <pattern>] in <body> *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
@@ -712,7 +938,8 @@ let mapper =
             if tags <> [] then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
-            (this#define_regexp name r)#eval_regexp_expr body
+            let len = fixed_length env ~encoding:Ascii p in
+            (this#define_regexp name (r, len))#eval_regexp_expr body
         | _ -> None
 
     method! expression e =
