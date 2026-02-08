@@ -220,6 +220,10 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
             Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc cell]
               [%e eint ~loc value];
             [%e acc]]
+      | Sedlex.Set_prev t ->
+          [%expr
+            Sedlexing.__private__set_mem_prev [%e lexbuf] [%e eint ~loc t];
+            [%e acc]]
   in
   let cases =
     Array.mapi
@@ -300,6 +304,10 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
               [%expr
                 Sedlexing.__private__set_mem_value [%e lexbuf]
                   [%e eint ~loc cell] [%e eint ~loc value];
+                [%e acc]]
+          | Sedlex.Set_prev t ->
+              [%expr
+                Sedlexing.__private__set_mem_prev [%e lexbuf] [%e eint ~loc t];
                 [%e acc]]
       in
       let set_init_tags =

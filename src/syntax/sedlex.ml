@@ -6,7 +6,7 @@ module Cset = Sedlex_cset
 
 (* NFA *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op = Set_position of int | Set_value of int * int | Set_prev of int
 
 type node = {
   id : int;
@@ -159,12 +159,12 @@ let dedup_tags tags =
           match Hashtbl.find_opt dominated cell with
             | Some v when v <= value -> ()
             | _ -> Hashtbl.replace dominated cell value)
-      | Set_position _ -> ())
+      | Set_position _ | Set_prev _ -> ())
     tags;
   List.filter
     (function
       | Set_value (cell, value) -> Hashtbl.find dominated cell = value
-      | Set_position _ -> true)
+      | Set_position _ | Set_prev _ -> true)
     tags
 
 let transition (state : state) =
@@ -210,10 +210,17 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+type compiled = {
+  dfa : dfa;
+  init_tags : tag_op list;
+  num_tags : int;
+  tag_map : int array;
+}
 
 let compile rs =
   let rs = Array.map compile_re rs in
+  let num_tags_raw = !cur_tag in
   let counter = ref 0 in
   let states = Hashtbl.create 31 in
   let states_def = Hashtbl.create 31 in
@@ -226,7 +233,7 @@ let compile rs =
       let trans = transition state in
       let trans = Array.map (fun (p, t, tags) -> (p, aux t, tags)) trans in
       let finals = Array.map (fun (_, f) -> List.memq f state) rs in
-      Hashtbl.add states_def i { trans; finals };
+      Hashtbl.add states_def i (trans, finals);
       i
   in
   let init = ref ([], []) in
@@ -234,11 +241,74 @@ let compile rs =
   let init_state, init_tags = !init in
   let i = aux init_state in
   assert (i = 0);
-  {
-    dfa = Array.init !counter (Hashtbl.find states_def);
-    init_tags = dedup_tags init_tags;
-    num_tags = !cur_tag;
-  }
+  let num_states = !counter in
+  let raw_dfa = Array.init num_states (Hashtbl.find states_def) in
+  if num_tags_raw = 0 then (
+    let dfa =
+      Array.map
+        (fun (trans, finals) ->
+          {
+            trans = Array.map (fun (cs, target, _) -> (cs, target, [])) trans;
+            finals;
+          })
+        raw_dfa
+    in
+    { dfa; init_tags = []; num_tags = 0; tag_map = [||] })
+  else (
+    (* Self-loop tag delay: tags on a self-loop s→s that also appear on ALL
+       entering transitions to s are removed and set as Set_prev on exit. *)
+    let delayed_at = Array.make num_states [] in
+    for s = 0 to num_states - 1 do
+      let trans, _ = raw_dfa.(s) in
+      let sl_tags = ref [] in
+      Array.iter
+        (fun (_, target, tags) -> if target = s then sl_tags := tags)
+        trans;
+      match !sl_tags with
+        | [] -> ()
+        | sl ->
+            let entering = ref [] in
+            for s' = 0 to num_states - 1 do
+              if s' <> s then (
+                let trans', _ = raw_dfa.(s') in
+                Array.iter
+                  (fun (_, target, tags) ->
+                    if target = s then entering := tags :: !entering)
+                  trans')
+            done;
+            if !entering <> [] then
+              delayed_at.(s) <-
+                List.filter (fun t -> List.for_all (List.mem t) !entering) sl
+    done;
+    let dfa =
+      Array.mapi
+        (fun s (trans, finals) ->
+          let trans =
+            Array.map
+              (fun (cs, target, tags) ->
+                let tags =
+                  List.filter
+                    (fun t -> not (List.mem t delayed_at.(target)))
+                    tags
+                in
+                let delayed_ops =
+                  if target <> s then
+                    List.filter_map
+                      (fun op ->
+                        match op with
+                          | Set_position t -> Some (Set_prev t)
+                          | _ -> None)
+                      delayed_at.(s)
+                  else []
+                in
+                (cs, target, tags @ delayed_ops))
+              trans
+          in
+          { trans; finals })
+        raw_dfa
+    in
+    let tag_map = Array.init num_tags_raw Fun.id in
+    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw; tag_map })
 
 let cset_to_label cset =
   let escape_dot c =
@@ -290,6 +360,7 @@ let dfa_to_dot dfa =
           let tag_op_to_string = function
             | Set_position t -> "t" ^ string_of_int t
             | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
+            | Set_prev t -> "t" ^ string_of_int t ^ "'"
           in
           let label =
             if tags = [] then label

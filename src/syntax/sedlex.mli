@@ -22,7 +22,7 @@ val intersection : regexp -> regexp -> regexp option
 (* If each argument is a single [chars] regexp, returns a regexp
    which matches the intersection set.  Otherwise returns [None]. *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op = Set_position of int | Set_value of int * int | Set_prev of int
 
 val bind : regexp -> regexp * int * int
 val new_disc_cell : unit -> int
@@ -37,7 +37,13 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+type compiled = {
+  dfa : dfa;
+  init_tags : tag_op list;
+  num_tags : int;
+  tag_map : int array;
+}
 
 val compile : regexp array -> compiled
 val dfa_to_dot : dfa -> string
