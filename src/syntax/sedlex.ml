@@ -255,6 +255,123 @@ let compile rs =
     in
     { dfa; init_tags = []; num_tags = 0; tag_map = [||] })
   else (
+    let tag_cell = function
+      | Set_position t | Set_value (t, _) -> t
+      | Set_prev _ -> assert false
+    in
+    let num_tags = num_tags_raw in
+    let tag_map = Array.init num_tags_raw Fun.id in
+    (* Cross-rule cell sharing: non-interfering cells from different rules
+       can share the same physical memory slot. *)
+    let num_tags, tag_map, raw_dfa, init_tags =
+      if num_tags <= 1 || Array.length rs <= 1 then
+        (num_tags, tag_map, raw_dfa, init_tags)
+      else (
+        let tag_to_rule = Array.make num_tags_raw (-1) in
+        Array.iteri
+          (fun r (start, _) ->
+            let visited = Hashtbl.create 31 in
+            let rec visit node =
+              if not (Hashtbl.mem visited node.id) then (
+                Hashtbl.add visited node.id ();
+                (match node.tag with
+                  | Some op -> tag_to_rule.(tag_cell op) <- r
+                  | None -> ());
+                List.iter visit node.eps;
+                List.iter (fun (_, n) -> visit n) node.trans)
+            in
+            visit start)
+          rs;
+        let cell_to_rule = Array.make num_tags (-1) in
+        for t = 0 to num_tags_raw - 1 do
+          if tag_to_rule.(t) >= 0 then (
+            let c = tag_map.(t) in
+            let r = tag_to_rule.(t) in
+            if cell_to_rule.(c) = -1 then cell_to_rule.(c) <- r
+            else if cell_to_rule.(c) <> r then cell_to_rule.(c) <- -2)
+        done;
+        (* Forward reachability from each cell's write transitions *)
+        let fwd = Array.init num_tags (fun _ -> Array.make num_states false) in
+        for s = 0 to num_states - 1 do
+          let trans, _ = raw_dfa.(s) in
+          Array.iter
+            (fun (_, target, tags) ->
+              List.iter (fun op -> fwd.(tag_cell op).(target) <- true) tags)
+            trans
+        done;
+        List.iter (fun op -> fwd.(tag_cell op).(0) <- true) init_tags;
+        for c = 0 to num_tags - 1 do
+          let queue = Queue.create () in
+          for s = 0 to num_states - 1 do
+            if fwd.(c).(s) then Queue.push s queue
+          done;
+          while not (Queue.is_empty queue) do
+            let s = Queue.pop queue in
+            let trans, _ = raw_dfa.(s) in
+            Array.iter
+              (fun (_, target, _) ->
+                if not fwd.(c).(target) then (
+                  fwd.(c).(target) <- true;
+                  Queue.push target queue))
+              trans
+          done
+        done;
+        (* Greedy graph coloring: cells interfere if same rule, multi-rule,
+           or overlapping forward-reachable sets *)
+        let slot_of = Array.make num_tags 0 in
+        let max_slot = ref 0 in
+        for c = 0 to num_tags - 1 do
+          let used = Hashtbl.create 8 in
+          for c' = 0 to c - 1 do
+            let conflict =
+              cell_to_rule.(c) < 0
+              || cell_to_rule.(c') < 0
+              || cell_to_rule.(c) = cell_to_rule.(c')
+              ||
+              let overlap = ref false in
+              for s = 0 to num_states - 1 do
+                if fwd.(c).(s) && fwd.(c').(s) then overlap := true
+              done;
+              !overlap
+            in
+            if conflict then Hashtbl.replace used slot_of.(c') ()
+          done;
+          let slot = ref 0 in
+          while Hashtbl.mem used !slot do
+            incr slot
+          done;
+          slot_of.(c) <- !slot;
+          if !slot > !max_slot then max_slot := !slot
+        done;
+        let num_slots = !max_slot + 1 in
+        if num_slots < num_tags then (
+          let tag_map = Array.map (fun c -> slot_of.(c)) tag_map in
+          let remap_slot = function
+            | Set_position t -> Set_position slot_of.(t)
+            | Set_value (c, v) -> Set_value (slot_of.(c), v)
+            | Set_prev _ -> assert false
+          in
+          let raw_dfa =
+            Array.map
+              (fun (trans, finals) ->
+                let trans =
+                  Array.map
+                    (fun (cs, target, tags) ->
+                      let tags =
+                        List.sort_uniq compare (List.map remap_slot tags)
+                      in
+                      (cs, target, tags))
+                    trans
+                in
+                (trans, finals))
+              raw_dfa
+          in
+          let init_tags =
+            List.sort_uniq compare (List.map remap_slot init_tags)
+          in
+          (num_slots, tag_map, raw_dfa, init_tags))
+        else (num_tags, tag_map, raw_dfa, init_tags))
+    in
     (* Self-loop tag delay: tags on a self-loop s→s that also appear on ALL
        entering transitions to s are removed and set as Set_prev on exit. *)
     let delayed_at = Array.make num_states [] in
@@ -307,8 +424,7 @@ let compile rs =
           { trans; finals })
         raw_dfa
     in
-    let tag_map = Array.init num_tags_raw Fun.id in
-    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw; tag_map })
+    { dfa; init_tags = dedup_tags init_tags; num_tags; tag_map })
 
 let cset_to_label cset =
   let escape_dot c =
