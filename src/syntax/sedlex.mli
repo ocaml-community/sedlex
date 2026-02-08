@@ -22,7 +22,7 @@ val intersection : regexp -> regexp -> regexp option
 (* If each argument is a single [chars] regexp, returns a regexp
    which matches the intersection set.  Otherwise returns [None]. *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op = Set_position of int | Set_value of int * int | Set_prev of int
 
 val bind : regexp -> regexp * int * int
 val new_disc_cell : unit -> int

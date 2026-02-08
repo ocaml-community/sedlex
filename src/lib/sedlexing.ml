@@ -270,6 +270,10 @@ let __private__init_mem lexbuf n =
 
 let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
 let __private__set_mem_value lexbuf i v = lexbuf.__private__mem.(i) <- -(v + 2)
+
+let __private__set_mem_prev lexbuf i =
+  lexbuf.__private__mem.(i) <- lexbuf.pos - 1
+
 let __private__mem_pos lexbuf i = lexbuf.__private__mem.(i) - lexbuf.start_pos
 let __private__mem_value lexbuf i = -(lexbuf.__private__mem.(i) + 2)
 let __private__num_mem_cells lexbuf = Array.length lexbuf.__private__mem
