@@ -153,6 +153,17 @@ The same syntax can be used for local binding:
 
 The scope of "lid" is the body expression.
 
+Named regexp definitions can be nested using `let..in`:
+
+```ocaml
+  let hex_digit =
+    let digit = [%sedlex.regexp? '0' .. '9'] in
+    let hex_letter = [%sedlex.regexp? 'a' .. 'f' | 'A' .. 'F'] in
+    [%sedlex.regexp? digit | hex_letter]
+```
+
+This works both at the structure level and inside expressions.
+
 
 ## Predefined regexps
 

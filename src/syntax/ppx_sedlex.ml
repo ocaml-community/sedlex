@@ -511,9 +511,19 @@ let mapper =
   object (this)
     inherit Ast_traverse.map as super
     val env = builtin_regexps
+    method define_regexp name r = {<env = StringMap.add name r env>}
 
-    method define_regexp name p =
-      {<env = StringMap.add name (regexp_of_pattern env p) env>}
+    method eval_regexp_expr e =
+      match e with
+        | [%expr [%sedlex.regexp? [%p? p]]] -> Some (regexp_of_pattern env p)
+        | [%expr
+            let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
+              [%sedlex.regexp? [%p? p]]
+            in
+            [%e? body]] ->
+            let r = regexp_of_pattern env p in
+            (this#define_regexp name r)#eval_regexp_expr body
+        | _ -> None
 
     method! expression e =
       match e with
@@ -521,11 +531,11 @@ let mapper =
           ->
             fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
         | [%expr
-            let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
-              [%sedlex.regexp? [%p? p]]
-            in
-            [%e? body]] ->
-            (this#define_regexp name p)#expression body
+            let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] = [%e? rhs] in
+            [%e? _body]] -> (
+            match this#eval_regexp_expr rhs with
+              | Some r -> (this#define_regexp name r)#expression _body
+              | None -> super#expression e)
         | [%expr [%sedlex [%e? _]]] ->
             err e.pexp_loc
               "the %%sedlex extension is only recognized on match expressions"
@@ -542,10 +552,14 @@ let mapper =
              (function
                | [%stri
                    let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
-                     [%sedlex.regexp? [%p? p]]] as i ->
-                   regexps := i :: !regexps;
-                   mapper := !mapper#define_regexp name p;
-                   []
+                     [%e? e]]
+                 as i -> (
+                   match !mapper#eval_regexp_expr e with
+                     | Some r ->
+                         regexps := i :: !regexps;
+                         mapper := !mapper#define_regexp name r;
+                         []
+                     | None -> [!mapper#structure_item i])
                | i -> [!mapper#structure_item i])
              l)
       in

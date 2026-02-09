@@ -2,6 +2,11 @@ let () = set_binary_mode_out stdout true
 let digit = [%sedlex.regexp? '0' .. '9']
 let number = [%sedlex.regexp? Plus digit]
 
+let hex_digit =
+  let digit = [%sedlex.regexp? '0' .. '9'] in
+  let hex_letter = [%sedlex.regexp? 'a' .. 'f' | 'A' .. 'F'] in
+  [%sedlex.regexp? digit | hex_letter]
+
 let print_pos buf =
   let f { Lexing.pos_lnum; pos_bol; pos_cnum; _ } =
     Printf.sprintf "line=%d:bol=%d:cnum=%d" pos_lnum pos_bol pos_cnum
@@ -1080,3 +1085,46 @@ let%expect_test "utf8 surrogate rejection" =
     rejected
     rejected
     rejected |}]
+
+let%expect_test "nested_let_regexp" =
+  let int_lit =
+    let digit = [%sedlex.regexp? '0' .. '9'] in
+    [%sedlex.regexp? Plus digit]
+  in
+  let buf = Sedlexing.Utf8.from_string "123abc" in
+  let rec loop () =
+    match%sedlex buf with
+      | int_lit ->
+          Printf.printf "Int: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | Plus 'a' .. 'z' ->
+          Printf.printf "Word: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | eof -> Printf.printf "EOF\n"
+      | _ -> assert false
+  in
+  loop ();
+  [%expect {|
+    Int: 123
+    Word: abc
+    EOF |}]
+
+let%expect_test "nested_let_regexp_toplevel" =
+  let buf = Sedlexing.Utf8.from_string "0xDEAD rest" in
+  let rec loop () =
+    match%sedlex buf with
+      | "0x", Plus hex_digit ->
+          Printf.printf "Hex: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | Plus 'a' .. 'z' ->
+          Printf.printf "Word: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | ' ' -> loop ()
+      | eof -> Printf.printf "EOF\n"
+      | _ -> assert false
+  in
+  loop ();
+  [%expect {|
+    Hex: 0xDEAD
+    Word: rest
+    EOF |}]
