@@ -1,0 +1,14 @@
+(executable
+ (name main)
+ (libraries sedlex)
+ (preprocess
+  (pps sedlex.ppx)))
+
+(rule
+ (alias runtest)
+ (deps
+  (:< main.exe))
+ (action
+  (run %{<})))
+
+(ocamlyacc parser)

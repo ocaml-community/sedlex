@@ -1,0 +1,16 @@
+(executable
+ (name main)
+ (libraries sedlex menhirLib)
+ (preprocess
+  (pps sedlex.ppx)))
+
+(rule
+ (alias runtest)
+ (deps
+  (:< main.exe))
+ (action
+  (run %{<})))
+
+(menhir
+ (modules parser)
+ (flags --table))

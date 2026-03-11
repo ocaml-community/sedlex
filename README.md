@@ -233,6 +233,58 @@ Once sedlex is installed as per above, simply type
 #require "sedlex.ppx";;
 ```
 
+## Integration with ocamlyacc and menhir
+
+sedlex uses its own `Sedlexing.lexbuf` type, while ocamlyacc and menhir
+(classic API) expect a lexer function of type `Lexing.lexbuf -> token`.
+To bridge the two, create a dummy `Lexing.lexbuf` and update its position
+fields after each token:
+
+```ocaml
+(* In lexer.ml — the sedlex lexer *)
+let rec token buf =
+  match%sedlex buf with
+    | Plus ('0'..'9') -> Parser.INT (int_of_string (Sedlexing.Utf8.lexeme buf))
+    | '+' -> Parser.PLUS
+    | Plus white_space -> token buf
+    | eof -> Parser.EOF
+    | _ -> failwith "Unexpected character"
+
+(* Wrap for ocamlyacc / menhir classic API *)
+let tokenize buf =
+  let lexbuf = Lexing.from_string "" in
+  let tokenize lexbuf =
+    let tok = token buf in
+    let start_pos, end_pos = Sedlexing.lexing_positions buf in
+    lexbuf.Lexing.lex_start_p <- start_pos;
+    lexbuf.Lexing.lex_curr_p <- end_pos;
+    tok
+  in
+  (tokenize, lexbuf)
+
+(* In main.ml *)
+let () =
+  let buf = Sedlexing.Utf8.from_string "1 + 2" in
+  let tokenize, lexbuf = Lexer.tokenize buf in
+  let result = Parser.main tokenize lexbuf in
+  ...
+```
+
+For menhir's **incremental API**, use `Sedlexing.with_tokenizer` which
+returns a `unit -> token * position * position` supplier directly:
+
+```ocaml
+let supplier = Sedlexing.with_tokenizer token buf in
+let result =
+  Parser.MenhirInterpreter.loop supplier
+    (Parser.Incremental.main Lexing.dummy_pos)
+in
+...
+```
+
+Complete working examples are in `examples/with_ocamlyacc/` and
+`examples/with_menhir/`.
+
 ## Examples
 
 The `examples/` subdirectory contains several samples of sedlex in use.
