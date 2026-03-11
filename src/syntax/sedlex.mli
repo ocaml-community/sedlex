@@ -22,8 +22,22 @@ val intersection : regexp -> regexp -> regexp option
 (* If each argument is a single [chars] regexp, returns a regexp
    which matches the intersection set.  Otherwise returns [None]. *)
 
-type dfa_state = { trans : (Sedlex_cset.t * int) array; finals : bool array }
-type dfa = dfa_state array
+type tag_op = Set_position of int | Set_value of int * int
 
-val compile : regexp array -> dfa
+val bind : regexp -> regexp * int * int
+val new_disc_cell : unit -> int
+val bind_disc : regexp -> int -> int -> regexp
+val bind_start_only : regexp -> regexp * int
+val bind_end_only : regexp -> regexp * int
+val reset_tags : unit -> unit
+
+type dfa_state = {
+  trans : (Sedlex_cset.t * int * tag_op list) array;
+  finals : bool array;
+}
+
+type dfa = dfa_state array
+type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+val compile : regexp array -> compiled
 val dfa_to_dot : dfa -> string
