@@ -2,11 +2,11 @@ open Ppxlib
 module P = Sedlex_ppx.Ppx_sedlex
 module S = Sedlex_compiler.Sedlex
 
-let expand ~ctxt:_ expr =
+let expand_with ~shortest ~ctxt:_ expr =
   P.reset_state ();
   S.reset_tags ();
   let loc = Location.none in
-  let code_expr, auto = P.handle_sedlex_match expr in
+  let code_expr, auto = P.handle_sedlex_match ~shortest expr in
   let code_str = Pprintast.string_of_expression code_expr in
   let dot_str = S.dfa_to_dot auto in
   P.reset_state ();
@@ -51,7 +51,12 @@ let expand_error ~ctxt:_ expr =
 let ext =
   Extension.V3.declare "sedlex_test" Extension.Context.expression
     Ast_pattern.(single_expr_payload __)
-    expand
+    (expand_with ~shortest:false)
+
+let ext_shortest =
+  Extension.V3.declare "sedlex_test_shortest" Extension.Context.expression
+    Ast_pattern.(single_expr_payload __)
+    (expand_with ~shortest:true)
 
 let ext_error =
   Extension.V3.declare "compile_error" Extension.Context.expression
@@ -59,4 +64,5 @@ let ext_error =
     expand_error
 
 let () =
-  Driver.register_transformation "sedlex_test" ~extensions:[ext; ext_error]
+  Driver.register_transformation "sedlex_test"
+    ~extensions:[ext; ext_shortest; ext_error]

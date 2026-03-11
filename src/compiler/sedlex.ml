@@ -563,8 +563,34 @@ and transitions (ctx : ctx) (configs : stored) :
       (cset, num, ops))
     pieces
 
+(* [stop_at_accept dfa] is [dfa] for shortest match: accepting states lose
+   their transitions, and states reachable only through them are dropped. *)
+let stop_at_accept (dfa : dfa) : dfa =
+  let n = Array.length dfa in
+  let remap = Array.make n (-1) in
+  let order = Array.make n 0 in
+  let next = ref 0 in
+  let rec visit i =
+    if remap.(i) = -1 then (
+      remap.(i) <- !next;
+      order.(!next) <- i;
+      incr next;
+      if dfa.(i).accept = None then
+        Array.iter (fun (_, j, _) -> visit j) dfa.(i).trans)
+  in
+  visit 0;
+  Array.init !next (fun k ->
+      let st = dfa.(order.(k)) in
+      match st.accept with
+        | Some _ -> { st with trans = [||] }
+        | None ->
+            let trans =
+              Array.map (fun (c, j, ops) -> (c, remap.(j), ops)) st.trans
+            in
+            { st with trans })
+
 (* See the implementation overview at the top of this file. *)
-let compile (rs : regexp array) : compiled =
+let compile ?(shortest = false) (rs : regexp array) : compiled =
   let rules = Array.map compile_re rs in
   let ctx =
     {
@@ -582,10 +608,9 @@ let compile (rs : regexp array) : compiled =
   assert (num0 = 0);
   (* The writes of the initial closure are delayed like any other. *)
   assert (ops = []);
-  {
-    dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
-    num_tags = Registers.count ctx.regs;
-  }
+  let dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs) in
+  let dfa = if shortest then stop_at_accept dfa else dfa in
+  { dfa; num_tags = Registers.count ctx.regs }
 
 (* High-level compilation from IR.
 
@@ -779,7 +804,7 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
         in
         (r_acc, tags_acc)
 
-let compile_ir (rules : Ir.t array) =
+let compile_ir ?shortest (rules : Ir.t array) =
   Array.iter (fun ir -> Ir.check_invariant ir) rules;
   reset_tags ();
   let lowered =
@@ -790,7 +815,7 @@ let compile_ir (rules : Ir.t array) =
   in
   let regexps = Array.map fst lowered in
   let bindings = Array.map snd lowered in
-  let compiled = compile regexps in
+  let compiled = compile ?shortest regexps in
   { dfa = compiled.dfa; num_tags = compiled.num_tags; bindings }
 
 let cset_to_label cset =
