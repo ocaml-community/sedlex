@@ -125,6 +125,21 @@ A single-character length regexp is a regexp which does not contain (after
 expansion of references) concatenation, Star, Plus, Opt or string constants
 with a length different from one.
 
+### Precedence
+
+Since sedlex regular expressions are encoded as OCaml patterns, they follow
+OCaml's pattern precedence rules. From lowest to highest:
+
+| Precedence | Operator | Example | Parses as |
+|---|---|---|---|
+| lowest | `\|` (alternation) | `'a' \| 'b', 'c'` | `'a' \| ('b', 'c')` |
+| | `,` (concatenation) | `"ab", Star 'c'` | `"ab", (Star 'c')` |
+| highest | Constructor application (`Star`, `Plus`, `Opt`, ...) | `Star 'a' \| 'b'` | `(Star 'a') \| 'b'` |
+
+In particular, `Star r1, r2` is `(Star r1), r2` (not `Star (r1, r2)`),
+and `r1 | r2, r3` is `r1 | (r2, r3)` (not `(r1 | r2), r3`).
+Use parentheses to override: `Star (r1, r2)`, `(r1 | r2), r3`.
+
 
 
 Note:
