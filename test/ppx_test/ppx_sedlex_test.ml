@@ -14,6 +14,7 @@ let clear_tables () =
 
 let expand ~ctxt:_ expr =
   reset_state ();
+  S.reset_tags ();
   let loc = Location.none in
   let code_expr, auto =
     P.handle_sedlex_match ~env:P.builtin_regexps ~map_rhs:Fun.id expr
