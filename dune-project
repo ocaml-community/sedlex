@@ -1,4 +1,5 @@
 (lang dune 3.18)
+(using menhir 2.1)
 (version 3.7)
 (name sedlex)
 (source (github ocaml-community/sedlex))
@@ -25,4 +26,5 @@ extension.")
    dune
    (ppxlib (>= 0.26.0))
    gen
-   (ppx_expect :with-test)))
+   (ppx_expect :with-test)
+   (menhir :with-test)))
