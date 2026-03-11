@@ -1,5 +1,6 @@
 # unreleased
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
+- Add shortest match support via `match%sedlex.shortest` (#180)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0

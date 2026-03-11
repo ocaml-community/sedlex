@@ -25,5 +25,5 @@ val intersection : regexp -> regexp -> regexp option
 type dfa_state = { trans : (Sedlex_cset.t * int) array; finals : bool array }
 type dfa = dfa_state array
 
-val compile : regexp array -> dfa
+val compile : ?shortest:bool -> regexp array -> dfa
 val dfa_to_dot : dfa -> string

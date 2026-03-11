@@ -1128,3 +1128,87 @@ let%expect_test "nested_let_regexp_toplevel" =
     Hex: 0xDEAD
     Word: rest
     EOF |}]
+
+let%expect_test "shortest match" =
+  (* "ab" | "abc" with input "abc": shortest should match "ab" (rule 0) *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  let result =
+    match%sedlex.shortest buf with
+      | "ab" -> "matched ab"
+      | "abc" -> "matched abc"
+      | _ -> "error"
+  in
+  Printf.printf "%s\n" result;
+  Printf.printf "lexeme: %s\n" (Sedlexing.Utf8.lexeme buf);
+  [%expect {|
+    matched ab
+    lexeme: ab |}];
+  (* Longest match for comparison *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  let result =
+    match%sedlex buf with
+      | "ab" -> "matched ab"
+      | "abc" -> "matched abc"
+      | _ -> "error"
+  in
+  Printf.printf "%s\n" result;
+  Printf.printf "lexeme: %s\n" (Sedlexing.Utf8.lexeme buf);
+  [%expect {|
+    matched abc
+    lexeme: abc |}]
+
+let%expect_test "shortest match priority" =
+  (* Two rules matching same shortest prefix: first rule wins *)
+  let buf = Sedlexing.Utf8.from_string "ab" in
+  let result =
+    match%sedlex.shortest buf with
+      | "ab" -> "rule 0"
+      | "ab" | "abc" -> "rule 1"
+      | _ -> "error"
+  in
+  Printf.printf "%s\n" result;
+  [%expect {| rule 0 |}]
+
+let%expect_test "shortest match no match" =
+  (* No match: error case *)
+  let buf = Sedlexing.Utf8.from_string "xyz" in
+  let result =
+    match%sedlex.shortest buf with "ab" -> "matched" | _ -> "no match"
+  in
+  Printf.printf "%s\n" result;
+  [%expect {| no match |}]
+
+let%expect_test "shortest match with star" =
+  (* Plus 'a' with input "aaa": shortest matches single 'a' *)
+  let buf = Sedlexing.Utf8.from_string "aaa" in
+  let result =
+    match%sedlex.shortest buf with Plus 'a' -> "matched" | _ -> "error"
+  in
+  Printf.printf "%s\n" result;
+  Printf.printf "lexeme: %s\n" (Sedlexing.Utf8.lexeme buf);
+  [%expect {|
+    matched
+    lexeme: a |}]
+
+let%expect_test "shortest match repeated" =
+  (* Use shortest match in a loop to tokenize *)
+  let buf = Sedlexing.Utf8.from_string "aabab" in
+  let rec loop () =
+    match%sedlex.shortest buf with
+      | Plus 'a' ->
+          Printf.printf "a+: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | "b" ->
+          Printf.printf "b: %s\n" (Sedlexing.Utf8.lexeme buf);
+          loop ()
+      | eof -> Printf.printf "done\n"
+      | _ -> Printf.printf "error\n"
+  in
+  loop ();
+  [%expect {|
+    a+: a
+    a+: a
+    b: b
+    a+: a
+    b: b
+    done |}]
