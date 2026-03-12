@@ -1060,3 +1060,23 @@ let%expect_test "utf16-le" =
     code point pos: [line=1:bol=0:cnum=7;line=1:bol=0:cnum=7]
     bytes pos: [line=1:bol=0:cnum=14;line=1:bol=0:cnum=14]
     EOF |}]
+
+let%expect_test "utf8 surrogate rejection" =
+  (* UTF-16 surrogates (U+D800..U+DFFF) must be rejected as invalid UTF-8 *)
+  let test s =
+    try
+      let lb = Sedlexing.Utf8.from_string s in
+      ignore (Sedlexing.__private__next_int lb);
+      Printf.printf "accepted (BUG)\n"
+    with Sedlexing.MalFormed -> Printf.printf "rejected\n"
+  in
+  (* U+D800: first high surrogate *)
+  test "\xED\xA0\x80";
+  (* U+DF01: low surrogate *)
+  test "\xED\xBC\x81";
+  (* U+DFFF: last low surrogate *)
+  test "\xED\xBF\xBF";
+  [%expect {|
+    rejected
+    rejected
+    rejected |}]

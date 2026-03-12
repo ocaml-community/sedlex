@@ -437,6 +437,7 @@ module Utf8 = struct
       | _ -> raise MalFormed
 
     (* https://www.unicode.org/versions/corrigendum1.html *)
+    (* U+0080..U+07FF — no surrogate check needed, below U+D800 *)
     let check_two n1 n2 =
       if n1 < 0xc2 || 0xdf < n1 then raise MalFormed;
       if n2 < 0x80 || 0xbf < n2 then raise MalFormed;
@@ -455,9 +456,11 @@ module Utf8 = struct
       let p =
         ((n1 land 0x0f) lsl 12) lor ((n2 land 0x3f) lsl 6) lor (n3 land 0x3f)
       in
-      if p >= 0xd800 && p <= 0xdf00 then raise MalFormed;
+      (* Reject UTF-16 surrogates (U+D800..U+DFFF) *)
+      if p >= 0xd800 && p <= 0xdfff then raise MalFormed;
       p
 
+    (* U+10000..U+10FFFF — no surrogate check needed, above U+DFFF *)
     let check_four n1 n2 n3 n4 =
       if n1 = 0xf0 then (
         if n2 < 0x90 || 0xbf < n2 then raise MalFormed;
