@@ -43,6 +43,7 @@ if you use camlp4 or camlp5, with the standard or revised syntax.
 
 ## Lexer specifications
 
+### Match rules
 
 sedlex adds a new kind of expression to OCaml: lexer definitions.
 The syntax for the new construction is:
@@ -58,7 +59,7 @@ The syntax for the new construction is:
 or:
 
 ```ocaml
-  [%sedlex match lexbuf with 
+  [%sedlex match lexbuf with
   | R1 -> e1
   ...
   | Rn -> en
@@ -94,6 +95,8 @@ Like ocamllex, sedlex uses **longest match** with **first rule priority**:
 
 The actions can call functions from the Sedlexing module to extract
 (parts of) the matched lexeme, in the desired encoding.
+
+### Regexp syntax
 
 Regular expressions are syntactically OCaml patterns:
 
@@ -140,13 +143,13 @@ In particular, `Star r1, r2` is `(Star r1), r2` (not `Star (r1, r2)`),
 and `r1 | r2, r3` is `r1 | (r2, r3)` (not `(r1 | r2), r3`).
 Use parentheses to override: `Star (r1, r2)`, `(r1 | r2), r3`.
 
+### Encoding
 
+- The OCaml source is assumed to be encoded in UTF-8.
+- Strings and chars litterals will be interpreted in ASCII unless otherwise
+  specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
 
-Note:
- - The OCaml source is assumed to be encoded in UTF-8.
- - Strings and chars litterals will be interpreted in ASCII unless otherwise
-   specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
-
+### Named regexps
 
 It is possible to define named regular expressions with the following
 construction, that can appear in place of a structure item:
