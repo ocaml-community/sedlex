@@ -79,6 +79,19 @@ where:
 Unlike ocamllex, lexers work on stream of Unicode codepoints, not
 bytes.
 
+Like ocamllex, sedlex uses **longest match** with **first rule priority**:
+
+- The lexer always tries to match the longest possible prefix of the
+  input.  It does so by continuing to read characters as long as some
+  rule can still match a longer string, while remembering the last
+  position at which a rule did match.
+
+- When two or more rules match the same longest prefix (a tie), the
+  rule that appears first in the `match%sedlex` definition wins.  For
+  example, given the rules `| "if" -> ...` and `| Plus ('a'..'z') -> ...`,
+  the input `"if"` is matched by the first rule because it is listed
+  first, even though the second rule also accepts `"if"`.
+
 The actions can call functions from the Sedlexing module to extract
 (parts of) the matched lexeme, in the desired encoding.
 
