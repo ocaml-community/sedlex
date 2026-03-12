@@ -1,4 +1,4 @@
-(lang dune 3.0)
+(lang dune 3.18)
 (version 3.7)
 (name sedlex)
 (source (github ocaml-community/sedlex))
@@ -7,6 +7,8 @@
          "https://github.com/ocaml-community/sedlex/graphs/contributors")
 (maintainers "Alain Frisch <alain.frisch@lexifi.com>")
 (homepage "https://github.com/ocaml-community/sedlex")
+(maintenance_intent "(latest)")
+(documentation "https://ocaml-community.github.io/sedlex/index.html")
 
 (generate_opam_files true)
 (executables_implicit_empty_intf true)
