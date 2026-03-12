@@ -191,16 +191,16 @@ sedlex provides a set of predefined regexps:
 
 ## Running a lexer
 
-See the interface of the Sedlexing module for a description of how to
+See the interface of the `Sedlexing` module for a description of how to
 create lexbuf values (from strings, stream or channels encoded in
 Latin1, utf8 or utf16, or from integer arrays or streams representing
 Unicode code points).
 
 It is possible to work with a custom implementation for lex buffers.
-To do this, you just have to ensure that a module called Sedlexing is
+To do this, you just have to ensure that a module called `Sedlexing` is
 in scope of your lexer specifications, and that it defines at least
-the following functions: start, next, mark, backtrack.  See the interface
-of the Sedlexing module for more information.
+the following functions: `start`, `next`, `mark`, `backtrack`.  See the interface
+of the `Sedlexing` module for more information.
 
 
 
