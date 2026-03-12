@@ -5,9 +5,7 @@
  (libraries ppxlib sedlex sedlex.utils)
  (ppx_runtime_libraries sedlex)
  (preprocess
-  (pps ppxlib.metaquot))
- (flags
-  (:standard -w -9)))
+  (pps ppxlib.metaquot)))
 
 (rule
  (targets unicode.ml)
