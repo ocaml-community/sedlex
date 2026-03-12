@@ -25,7 +25,7 @@ let new_node () =
 let seq r1 r2 succ = r1 (r2 succ)
 
 let is_chars final = function
-  | { eps = []; trans = [(c, f)] } when f == final -> Some c
+  | { eps = []; trans = [(c, f)]; _ } when f == final -> Some c
   | _ -> None
 
 let chars c succ =

@@ -249,7 +249,7 @@ let gen_recflag auto =
      in states with no further transitions. *)
   try
     Array.iter
-      (fun { Sedlex.trans } ->
+      (fun { Sedlex.trans; _ } ->
         Array.iter
           (fun (_, j) ->
             if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
@@ -326,21 +326,21 @@ let rec repeat r = function
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
 
 let regexp_of_pattern env =
-  let rec char_pair_op func name ~encoding p tuple =
+  let rec char_pair_op func name ~encoding ~loc tuple =
     (* Construct something like Sub(a,b) *)
       match tuple with
-      | Some { ppat_desc = Ppat_tuple [p0; p1] } -> begin
+      | Some { ppat_desc = Ppat_tuple [p0; p1]; _ } -> begin
           match func (aux ~encoding p0) (aux ~encoding p1) with
             | Some r -> r
             | None ->
-                err p.ppat_loc
+                err loc
                   "the %s operator can only applied to single-character length \
                    regexps"
                   name
         end
       | _ ->
-          err p.ppat_loc "the %s operator requires two arguments, like %s(a,b)"
-            name name
+          err loc "the %s operator requires two arguments, like %s(a,b)" name
+            name
   and aux ~encoding p =
     (* interpret one pattern node *)
       match p.ppat_desc with
@@ -349,18 +349,18 @@ let regexp_of_pattern env =
           List.fold_left
             (fun r p -> Sedlex.seq r (aux ~encoding p))
             (aux ~encoding p) pl
-      | Ppat_construct ({ txt = Lident "Star" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
           Sedlex.rep (aux ~encoding p)
-      | Ppat_construct ({ txt = Lident "Plus" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Plus"; _ }, Some (_, p)) ->
           Sedlex.plus (aux ~encoding p)
-      | Ppat_construct ({ txt = Lident "Utf8" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
           aux ~encoding:Utf8 p
-      | Ppat_construct ({ txt = Lident "Latin1" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Latin1"; _ }, Some (_, p)) ->
           aux ~encoding:Latin1 p
-      | Ppat_construct ({ txt = Lident "Ascii" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Ascii"; _ }, Some (_, p)) ->
           aux ~encoding:Ascii p
       | Ppat_construct
-          ( { txt = Lident "Rep" },
+          ( { txt = Lident "Rep"; _ },
             Some
               ( _,
                 {
@@ -371,8 +371,10 @@ let regexp_of_pattern env =
                         {
                           ppat_desc =
                             Ppat_constant (i1 as i2) | Ppat_interval (i1, i2);
+                          _;
                         };
                       ];
+                  _;
                 } ) ) -> begin
           match (i1, i2) with
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
@@ -383,11 +385,11 @@ let regexp_of_pattern env =
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
         end
-      | Ppat_construct ({ txt = Lident "Rep" }, _) ->
+      | Ppat_construct ({ txt = Lident "Rep"; _ }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
-      | Ppat_construct ({ txt = Lident "Opt" }, Some (_, p)) ->
+      | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
           Sedlex.alt Sedlex.eps (aux ~encoding p)
-      | Ppat_construct ({ txt = Lident "Compl" }, arg) -> begin
+      | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
                 match Sedlex.compl (aux ~encoding p0) with
@@ -399,16 +401,16 @@ let regexp_of_pattern env =
               end
             | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
-      | Ppat_construct ({ txt = Lident "Sub" }, arg) ->
-          char_pair_op ~encoding Sedlex.subtract "Sub" p
+      | Ppat_construct ({ txt = Lident "Sub"; _ }, arg) ->
+          char_pair_op ~encoding Sedlex.subtract "Sub" ~loc:p.ppat_loc
             (Option.map (fun (_, arg) -> arg) arg)
-      | Ppat_construct ({ txt = Lident "Intersect" }, arg) ->
-          char_pair_op ~encoding Sedlex.intersection "Intersect" p
+      | Ppat_construct ({ txt = Lident "Intersect"; _ }, arg) ->
+          char_pair_op ~encoding Sedlex.intersection "Intersect" ~loc:p.ppat_loc
             (Option.map (fun (_, arg) -> arg) arg)
-      | Ppat_construct ({ txt = Lident "Chars" }, arg) -> (
+      | Ppat_construct ({ txt = Lident "Chars"; _ }, arg) -> (
           let const =
             match arg with
-              | Some (_, { ppat_desc = Ppat_constant const }) -> Some const
+              | Some (_, { ppat_desc = Ppat_constant const; _ }) -> Some const
               | _ -> None
           in
           match const with
@@ -453,7 +455,7 @@ let regexp_of_pattern env =
                 Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end
-      | Ppat_var { txt = x } -> begin
+      | Ppat_var { txt = x; _ } -> begin
           try StringMap.find x env
           with Not_found -> err p.ppat_loc "unbound regexp %s" x
         end
@@ -464,9 +466,10 @@ let regexp_of_pattern env =
 let handle_sedlex_match ~env ~map_rhs match_expr =
   let lexbuf =
     match match_expr with
-      | { pexp_desc = Pexp_match (lexbuf, _) } -> (
+      | { pexp_desc = Pexp_match (lexbuf, _); _ } -> (
           match lexbuf with
-            | { pexp_desc = Pexp_ident { txt = Lident txt } } -> (txt, lexbuf)
+            | { pexp_desc = Pexp_ident { txt = Lident txt; _ }; _ } ->
+                (txt, lexbuf)
             | _ ->
                 err lexbuf.pexp_loc
                   "the matched expression must be a single identifier")
@@ -476,14 +479,14 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
   in
   let cases =
     match match_expr with
-      | { pexp_desc = Pexp_match (_, cases) } -> cases
+      | { pexp_desc = Pexp_match (_, cases); _ } -> cases
       | _ -> assert false
   in
   let cases = List.rev cases in
   let error =
     match List.hd cases with
       | { pc_lhs = [%pat? _]; pc_rhs = e; pc_guard = None } -> map_rhs e
-      | { pc_lhs = p } ->
+      | { pc_lhs = p; _ } ->
           err p.ppat_loc "the last branch must be a catch-all error case"
   in
   let cases = List.rev (List.tl cases) in
@@ -492,7 +495,7 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
       (function
         | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
             (regexp_of_pattern env p, map_rhs e)
-        | { pc_guard = Some e } ->
+        | { pc_guard = Some e; _ } ->
             err e.pexp_loc "'when' guards are not supported")
       cases
   in
@@ -514,10 +517,11 @@ let mapper =
 
     method! expression e =
       match e with
-        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _ } as match_expr]]] ->
+        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
+          ->
             fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
         | [%expr
-            let [%p? { ppat_desc = Ppat_var { txt = name } }] =
+            let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
               [%sedlex.regexp? [%p? p]]
             in
             [%e? body]] ->
@@ -537,7 +541,7 @@ let mapper =
           (List.map
              (function
                | [%stri
-                   let [%p? { ppat_desc = Ppat_var { txt = name } }] =
+                   let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
                      [%sedlex.regexp? [%p? p]]] as i ->
                    regexps := i :: !regexps;
                    mapper := !mapper#define_regexp name p;
@@ -562,7 +566,7 @@ let mapper =
 let pre_handler cookies =
   previous :=
     match Driver.Cookies.get cookies "sedlex.regexps" Ast_pattern.__ with
-      | Some { pexp_desc = Pexp_extension (_, PStr l) } -> l
+      | Some { pexp_desc = Pexp_extension (_, PStr l); _ } -> l
       | Some _ -> assert false
       | None -> []
 
