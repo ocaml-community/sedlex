@@ -344,21 +344,29 @@ let regexp_of_pattern env =
   and aux ~encoding p =
     (* interpret one pattern node *)
       match p.ppat_desc with
+      (* p1 | p2 — alternation *)
       | Ppat_or (p1, p2) -> Sedlex.alt (aux ~encoding p1) (aux ~encoding p2)
+      (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
           List.fold_left
             (fun r p -> Sedlex.seq r (aux ~encoding p))
             (aux ~encoding p) pl
+      (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
           Sedlex.rep (aux ~encoding p)
+      (* Plus p — one-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Plus"; _ }, Some (_, p)) ->
           Sedlex.plus (aux ~encoding p)
+      (* Utf8 p — switch to UTF-8 encoding *)
       | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
           aux ~encoding:Utf8 p
+      (* Latin1 p — switch to Latin-1 encoding *)
       | Ppat_construct ({ txt = Lident "Latin1"; _ }, Some (_, p)) ->
           aux ~encoding:Latin1 p
+      (* Ascii p — switch to ASCII encoding *)
       | Ppat_construct ({ txt = Lident "Ascii"; _ }, Some (_, p)) ->
           aux ~encoding:Ascii p
+      (* Rep (p, n..m) — bounded repetition *)
       | Ppat_construct
           ( { txt = Lident "Rep"; _ },
             Some
@@ -385,10 +393,13 @@ let regexp_of_pattern env =
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
         end
+      (* Rep _ — malformed Rep *)
       | Ppat_construct ({ txt = Lident "Rep"; _ }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
+      (* Opt p — optional (zero or one) *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
           Sedlex.alt Sedlex.eps (aux ~encoding p)
+      (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> begin
           match arg with
             | Some (_, p0) -> begin
@@ -401,12 +412,15 @@ let regexp_of_pattern env =
               end
             | _ -> err p.ppat_loc "the Compl operator requires an argument"
         end
+      (* Sub (a, b) — character class subtraction *)
       | Ppat_construct ({ txt = Lident "Sub"; _ }, arg) ->
           char_pair_op ~encoding Sedlex.subtract "Sub" ~loc:p.ppat_loc
             (Option.map (fun (_, arg) -> arg) arg)
+      (* Intersect (a, b) — character class intersection *)
       | Ppat_construct ({ txt = Lident "Intersect"; _ }, arg) ->
           char_pair_op ~encoding Sedlex.intersection "Intersect" ~loc:p.ppat_loc
             (Option.map (fun (_, arg) -> arg) arg)
+      (* Chars "..." — character set from string literal *)
       | Ppat_construct ({ txt = Lident "Chars"; _ }, arg) -> (
           let const =
             match arg with
@@ -420,6 +434,7 @@ let regexp_of_pattern env =
                 Sedlex.chars chars
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
+      (* 'a' .. 'z' or 0x41 .. 0x5a — character/codepoint range *)
       | Ppat_interval (i_start, i_end) -> begin
           match (i_start, i_end) with
             | Pconst_char c1, Pconst_char c2 ->
@@ -443,6 +458,7 @@ let regexp_of_pattern env =
                      (codepoint (int_of_string i2)))
             | _ -> err p.ppat_loc "this pattern is not a valid interval regexp"
         end
+      (* "string" or 'c' or 0x42 — literal string, char, or codepoint *)
       | Ppat_constant const -> begin
           match const with
             | Pconst_string (s, _, _) ->
@@ -455,6 +471,7 @@ let regexp_of_pattern env =
                 Sedlex.chars (Cset.singleton (codepoint (int_of_string i)))
             | _ -> err p.ppat_loc "this pattern is not a valid regexp"
         end
+      (* name — reference to a previously defined regexp *)
       | Ppat_var { txt = x; _ } -> begin
           try StringMap.find x env
           with Not_found -> err p.ppat_loc "unbound regexp %s" x
@@ -511,21 +528,38 @@ let mapper =
   object (this)
     inherit Ast_traverse.map as super
     val env = builtin_regexps
+    method define_regexp name r = {<env = StringMap.add name r env>}
 
-    method define_regexp name p =
-      {<env = StringMap.add name (regexp_of_pattern env p) env>}
-
-    method! expression e =
+    method eval_regexp_expr e =
       match e with
-        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
-          ->
-            fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
+        (* [%sedlex.regexp? <pattern>] *)
+        | [%expr [%sedlex.regexp? [%p? p]]] -> Some (regexp_of_pattern env p)
+        (* let <name> = [%sedlex.regexp? <pattern>] in <body> *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
               [%sedlex.regexp? [%p? p]]
             in
             [%e? body]] ->
-            (this#define_regexp name p)#expression body
+            let r = regexp_of_pattern env p in
+            (this#define_regexp name r)#eval_regexp_expr body
+        | _ -> None
+
+    method! expression e =
+      match e with
+        (* match%sedlex <lexbuf> with ... *)
+        | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
+          ->
+            fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
+        (* let <name> = <rhs> in <body>  —  intercept when <rhs> is a regexp *)
+        | [%expr
+            let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
+              [%e? rhs]
+            in
+            [%e? _body]] -> (
+            match this#eval_regexp_expr rhs with
+              | Some r -> (this#define_regexp name r)#expression _body
+              | None -> super#expression e)
+        (* [%sedlex <not-a-match>]  —  error *)
         | [%expr [%sedlex [%e? _]]] ->
             err e.pexp_loc
               "the %%sedlex extension is only recognized on match expressions"
@@ -540,12 +574,16 @@ let mapper =
         List.concat
           (List.map
              (function
+               (* let <name> = <e>  —  intercept top-level regexp definitions *)
                | [%stri
                    let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
-                     [%sedlex.regexp? [%p? p]]] as i ->
-                   regexps := i :: !regexps;
-                   mapper := !mapper#define_regexp name p;
-                   []
+                     [%e? e]] as i -> (
+                   match !mapper#eval_regexp_expr e with
+                     | Some r ->
+                         regexps := i :: !regexps;
+                         mapper := !mapper#define_regexp name r;
+                         []
+                     | None -> [!mapper#structure_item i])
                | i -> [!mapper#structure_item i])
              l)
       in

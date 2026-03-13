@@ -133,25 +133,44 @@ Note:
    specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
 
 
-It is possible to define named regular expressions with the following
-construction, that can appear in place of a structure item:
+### Named regular expressions
+
+You can give names to regular expressions with `[%sedlex.regexp? ...]` and
+reference them by name in lexer rules.
+
+**Top-level definitions** are visible for the rest of the module:
 
 ```ocaml
-  let lid = [%sedlex.regexp? R]
+let digit = [%sedlex.regexp? '0' .. '9']
+let number = [%sedlex.regexp? Plus digit]
+
+let rec token buf =
+  match%sedlex buf with
+  | number -> INT (Sedlexing.Utf8.lexeme buf)
+  | _ -> ...
 ```
 
-where lid is the regexp name to be defined and R its definition.  The
-scope of the "lid" regular expression is the rest of the structure,
-after the definition.
-
-The same syntax can be used for local binding:
+**Local definitions** with `let ... in` are scoped to the body expression:
 
 ```ocaml
-  let lid = [%sedlex.regexp? R] in
-  body
+let hex_digit =
+  let digit = [%sedlex.regexp? '0' .. '9'] in
+  let hex_letter = [%sedlex.regexp? 'a' .. 'f' | 'A' .. 'F'] in
+  [%sedlex.regexp? digit | hex_letter]
 ```
 
-The scope of "lid" is the body expression.
+Local definitions also work inside expressions:
+
+```ocaml
+let token buf =
+  let int_lit =
+    let digit = [%sedlex.regexp? '0' .. '9'] in
+    [%sedlex.regexp? Plus digit]
+  in
+  match%sedlex buf with
+  | int_lit -> ...
+  | _ -> ...
+```
 
 
 ## Predefined regexps
