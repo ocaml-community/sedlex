@@ -1,4 +1,5 @@
 # unreleased
+- Add `Sedlexing.accept` for custom buffer control over final state acceptance (#81)
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
 - Add support for named captured group (#177, #178)
 
