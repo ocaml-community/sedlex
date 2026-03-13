@@ -92,6 +92,13 @@ Like ocamllex, sedlex uses **longest match** with **first rule priority**:
   the input `"if"` is matched by the first rule because it is listed
   first, even though the second rule also accepts `"if"`.
 
+sedlex also supports **shortest match** via `match%sedlex.shortest`.
+With shortest match, the lexer returns as soon as *any* rule matches rather
+than continuing to find the longest match.  First rule priority still applies
+when multiple rules match at the same position.  For example, `Plus 'a'` with
+input `"aaa"` matches just `"a"` in shortest mode, whereas it would match
+`"aaa"` in longest mode.
+
 The actions can call functions from the Sedlexing module to extract
 (parts of) the matched lexeme, in the desired encoding.
 

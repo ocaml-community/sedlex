@@ -480,7 +480,7 @@ let regexp_of_pattern env =
   in
   aux ~encoding:Ascii
 
-let handle_sedlex_match ~env ~map_rhs match_expr =
+let handle_sedlex_match ?(shortest = false) ~env ~map_rhs match_expr =
   let lexbuf =
     match match_expr with
       | { pexp_desc = Pexp_match (lexbuf, _); _ } -> (
@@ -517,7 +517,7 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
       cases
   in
   let brs = Array.of_list cases in
-  let auto = Sedlex.compile (Array.map fst brs) in
+  let auto = Sedlex.compile ~shortest (Array.map fst brs) in
   (gen_definition lexbuf auto cases error, auto)
 
 let previous = ref []
@@ -550,6 +550,25 @@ let mapper =
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
           ->
             fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
+        (* match%sedlex.shortest <lexbuf> with ... *)
+        | {
+         pexp_desc =
+           Pexp_extension
+             ( { txt = "sedlex.shortest"; _ },
+               PStr
+                 [
+                   {
+                     pstr_desc =
+                       Pstr_eval
+                         (({ pexp_desc = Pexp_match _; _ } as match_expr), _);
+                     _;
+                   };
+                 ] );
+         _;
+        } ->
+            fst
+              (handle_sedlex_match ~shortest:true ~env ~map_rhs:this#expression
+                 match_expr)
         (* let <name> = <rhs> in <body>  —  intercept when <rhs> is a regexp *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
@@ -563,6 +582,11 @@ let mapper =
         | [%expr [%sedlex [%e? _]]] ->
             err e.pexp_loc
               "the %%sedlex extension is only recognized on match expressions"
+        | { pexp_desc = Pexp_extension ({ txt = "sedlex.shortest"; _ }, _); _ }
+          ->
+            err e.pexp_loc
+              "the %%sedlex.shortest extension is only recognized on match \
+               expressions"
         | _ -> super#expression e
 
     val toplevel = true
@@ -617,6 +641,9 @@ let post_handler cookies =
 let extensions =
   [
     Extension.declare "sedlex" Extension.Context.expression
+      Ast_pattern.(single_expr_payload __)
+      (fun ~loc:_ ~path:_ expr -> mapper#expression expr);
+    Extension.declare "sedlex.shortest" Extension.Context.expression
       Ast_pattern.(single_expr_payload __)
       (fun ~loc:_ ~path:_ expr -> mapper#expression expr);
   ]

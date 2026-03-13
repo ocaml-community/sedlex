@@ -120,7 +120,7 @@ let transition (state : state) =
 type dfa_state = { trans : (Cset.t * int) array; finals : bool array }
 type dfa = dfa_state array
 
-let compile rs =
+let compile ?(shortest = false) rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
   let states = Hashtbl.create 31 in
@@ -141,7 +141,30 @@ let compile rs =
   Array.iter (fun (i, _) -> init := add_node !init i) rs;
   let i = aux !init in
   assert (i = 0);
-  Array.init !counter (Hashtbl.find states_def)
+  let dfa = Array.init !counter (Hashtbl.find states_def) in
+  if shortest then (
+    (* Collect reachable states, stripping transitions from accepting ones *)
+    let n = Array.length dfa in
+    let remap = Array.make n (-1) in
+    let order = Array.make n 0 in
+    let next = ref 0 in
+    let rec mark i =
+      if remap.(i) = -1 then (
+        let j = !next in
+        remap.(i) <- j;
+        order.(j) <- i;
+        incr next;
+        let st = dfa.(i) in
+        if not (Array.exists Fun.id st.finals) then
+          Array.iter (fun (_, t) -> mark t) st.trans)
+    in
+    mark 0;
+    Array.init !next (fun j ->
+        let st = dfa.(order.(j)) in
+        if Array.exists Fun.id st.finals then { st with trans = [||] }
+        else
+          { st with trans = Array.map (fun (c, t) -> (c, remap.(t))) st.trans }))
+  else dfa
 
 let cset_to_label cset =
   let escape_dot c =
