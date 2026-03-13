@@ -92,6 +92,16 @@ Like ocamllex, sedlex uses **longest match** with **first rule priority**:
   the input `"if"` is matched by the first rule because it is listed
   first, even though the second rule also accepts `"if"`.
 
+**Important:** The `_` (catch-all) case is *not* a regexp — it is the
+fallback when no rule matches.  Because no characters were consumed, the
+matched lexeme is empty (`""`).  If you need to consume and report an
+unexpected character, use `any` instead:
+
+```ocaml
+  | any -> Printf.sprintf "unexpected character: %s" (Sedlexing.Utf8.lexeme buf)
+  | _ -> failwith "unreachable: any matches all characters"
+```
+
 The actions can call functions from the Sedlexing module to extract
 (parts of) the matched lexeme, in the desired encoding.
 
