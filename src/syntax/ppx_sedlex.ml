@@ -297,7 +297,8 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   if Array.length trans = 0 then (
     match accept with
       | Some { Sedlex.rule; final_ops } ->
-          gen_tag_ops ~position:Current lexbuf final_ops (eint ~loc rule)
+          gen_tag_ops ~position:Current lexbuf final_ops
+            [%expr Sedlexing.accept [%e lexbuf] [%e eint ~loc rule]]
       | None ->
           (* Nothing can match from here, e.g. after [eof] in [eof, eof]. *)
           [%expr Sedlexing.backtrack [%e lexbuf]])
