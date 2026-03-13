@@ -11,11 +11,12 @@
 
     It is possible to have sedlex-generated lexers work on a custom
     implementation for lex buffers. To do this, define a module [L] which
-    implements the [start], [next], [mark] and [backtrack] functions (See the
-    Internal Interface section below for a specification). They need not work on
-    a type named [lexbuf]: you can use the type name you want. Then, just do in
-    your sedlex-processed source, bind this module to the name [Sedlexing] (for
-    instance, with a local module definition: [let module Sedlexing = L in ...].
+    implements the [start], [next], [mark], [backtrack] and [accept] functions
+    (See the Internal Interface section below for a specification). They need
+    not work on a type named [lexbuf]: you can use the type name you want. Then,
+    just do in your sedlex-processed source, bind this module to the name
+    [Sedlexing] (for instance, with a local module definition:
+    [let module Sedlexing = L in ...].
 
     Of course, you'll probably want to define functions like [lexeme] to be used
     in the lexers semantic actions. *)
@@ -204,6 +205,15 @@ val __private__next_int : lexbuf -> int
 (** [mark lexbuf i] stores the integer [i] in the internal slot. The backtrack
     position is set to the current position. *)
 val mark : lexbuf -> int -> unit
+
+(** [accept lexbuf i] is called when the lexer reaches a final state [i] with no
+    further transitions. The default implementation simply returns [i].
+
+    A custom [Sedlexing] module can override this to inspect the current
+    position and call [backtrack] instead, falling back to an earlier marked
+    state. This is useful, for example, to reject matches that do not end on a
+    grapheme cluster boundary. *)
+val accept : lexbuf -> int -> int
 
 (** [backtrack lexbuf] returns the value stored in the internal slot of the
     buffer, and performs backtracking (the current position is set to the value
