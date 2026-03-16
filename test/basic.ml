@@ -1128,3 +1128,350 @@ let%expect_test "nested_let_regexp_toplevel" =
     Hex: 0xDEAD
     Word: rest
     EOF |}]
+
+let letter = [%sedlex.regexp? 'a' .. 'z' | 'A' .. 'Z']
+
+let%expect_test "as_bindings" =
+  (* Test 1: simple binding in middle of sequence *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | 'a', ('b' as x), 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=b |}];
+  (* Test 2: multiple bindings *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | ('a' as x), ('b' as y), 'c' ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=a y=b |}];
+  (* Test 3: binding with named regexp *)
+  let buf = Sedlexing.Utf8.from_string "123z" in
+  (match%sedlex buf with
+    | number, (letter as x) ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=z |}];
+  (* Test 4: whole-match binding *)
+  let buf = Sedlexing.Utf8.from_string "hello" in
+  (match%sedlex buf with
+    | Plus 'a' .. 'z' as x ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=hello |}];
+  (* Test 5: multi-char UTF-8 *)
+  let buf = Sedlexing.Utf8.from_string "a\xC3\xA9b" in
+  (match%sedlex buf with
+    | 'a', (any as x), 'b' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=é |}];
+  (* Test 6: variable-length named segment *)
+  let buf = Sedlexing.Utf8.from_string {|"hello"|} in
+  (match%sedlex buf with
+    | '"', (Star (Compl '"') as content), '"' ->
+        Printf.printf "content=%s\n" (Sedlexing.Utf8.of_submatch content)
+    | _ -> assert false);
+  [%expect {| content=hello |}];
+  (* Test 7: as binding wrapping an alternation *)
+  let buf = Sedlexing.Utf8.from_string "xb" in
+  (match%sedlex buf with
+    | 'x', (('a' | 'b') as x) ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=b |}];
+  (* Test 8: as binding in both branches of or-pattern *)
+  let buf = Sedlexing.Utf8.from_string "123" in
+  (match%sedlex buf with
+    | (number as x) | (Plus letter as x) ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=123 |}];
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | (number as x) | (Plus letter as x) ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=abc |}];
+  (* Test 9: as binding inside or, in a sequence *)
+  let buf = Sedlexing.Utf8.from_string "<42>" in
+  (match%sedlex buf with
+    | '<', ((number as x) | (Plus letter as x)), '>' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=42 |}];
+  let buf = Sedlexing.Utf8.from_string "<hello>" in
+  (match%sedlex buf with
+    | '<', ((number as x) | (Plus letter as x)), '>' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=hello |}];
+  (* Test 10: or-pattern with shared prefix requiring discriminator tags *)
+  let buf = Sedlexing.Utf8.from_string "abcdef" in
+  (match%sedlex buf with
+    | ("abc" as x), "def" | "a", ("bcd" as x), "ey" ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=abc |}];
+  let buf = Sedlexing.Utf8.from_string "abcdey" in
+  (match%sedlex buf with
+    | ("abc" as x), "def" | "a", ("bcd" as x), "ey" ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=bcd |}];
+  (* Test 10b: 3-way or-pattern reuses single disc cell *)
+  let buf = Sedlexing.Utf8.from_string "abcd" in
+  (match%sedlex buf with
+    | ("ab" as x), "cd" | ("a" as x), "bce" | ("abc" as x), "df" ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=ab |}];
+  let buf = Sedlexing.Utf8.from_string "abce" in
+  (match%sedlex buf with
+    | ("ab" as x), "cd" | ("a" as x), "bce" | ("abc" as x), "df" ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=a |}];
+  let buf = Sedlexing.Utf8.from_string "abcdf" in
+  (match%sedlex buf with
+    | ("ab" as x), "cd" | ("a" as x), "bce" | ("abc" as x), "df" ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=abc |}];
+  (* Test 10c: or-pattern with inner or + extra binding without disc *)
+  let buf = Sedlexing.Utf8.from_string "aef" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y) | ("cd" as x), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=a y=ef |}];
+  let buf = Sedlexing.Utf8.from_string "bef" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y) | ("cd" as x), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=b y=ef |}];
+  let buf = Sedlexing.Utf8.from_string "cdgh" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y) | ("cd" as x), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=cd y=gh |}];
+  (* Test 10d: nested or-patterns on both sides *)
+  let buf = Sedlexing.Utf8.from_string "aef" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y)
+    | (("c" as x) | ("d" as x)), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=a y=ef |}];
+  let buf = Sedlexing.Utf8.from_string "bef" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y)
+    | (("c" as x) | ("d" as x)), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=b y=ef |}];
+  let buf = Sedlexing.Utf8.from_string "cgh" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y)
+    | (("c" as x) | ("d" as x)), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=c y=gh |}];
+  let buf = Sedlexing.Utf8.from_string "dgh" in
+  (match%sedlex buf with
+    | (("a" as x) | ("b" as x)), ("ef" as y)
+    | (("c" as x) | ("d" as x)), ("gh" as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=d y=gh |}];
+  (* Test 11: Set_prev with backtracking (Opt at end) *)
+  let buf = Sedlexing.Utf8.from_string "aabba" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=aa y=bba |}];
+  let buf = Sedlexing.Utf8.from_string "aabb" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=aa y=bb |}];
+  let buf = Sedlexing.Utf8.from_string "aba" in
+  (match%sedlex buf with
+    | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) ->
+        Printf.printf "x=%s y=%s\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y)
+    | _ -> assert false);
+  [%expect {| x=a y=ba |}]
+
+let num_mem buf = Sedlexing.__private__num_mem_cells buf
+
+let%expect_test "as_bindings_num_mem_cells" =
+  (* No bindings: 0 cells *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | "abc" -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Single binding in tuple: 0 cells (prefix + suffix known) *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | 'a', ('b' as _x), 'c' -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Two bindings in tuple: 0 cells (all offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | ('a' as _x), ('b' as _y), 'c' ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Whole-match binding: 0 cells (Start_plus 0, End_minus 0) *)
+  let buf = Sedlexing.Utf8.from_string "hello" in
+  (match%sedlex buf with
+    | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* as wrapping alternation in tuple: 0 cells (prefix=1, suffix=0 known) *)
+  let buf = Sedlexing.Utf8.from_string "xb" in
+  (match%sedlex buf with
+    | 'x', (('a' | 'b') as _x) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Or-pattern with identical offsets: 0 cells (disc elided) *)
+  let buf = Sedlexing.Utf8.from_string "123" in
+  (match%sedlex buf with
+    | (number as _x) | (Plus letter as _x) ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Or-pattern with different offsets: 1 cell (disc only, positions known) *)
+  let buf = Sedlexing.Utf8.from_string "abcdef" in
+  (match%sedlex buf with
+    | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=1 |}]
+
+let%expect_test "as_bindings_multi_rule_mem_cells" =
+  (* All rules in a match%sedlex share one pool of memory cells.
+     The total is the sum of tags across ALL rules, not just the matched one. *)
+
+  (* One rule with binding in tuple, one without: 0 cells (offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "ab" in
+  (match%sedlex buf with
+    | 'a', ('b' as _x) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | "cd" -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Even when the no-binding rule matches, no cells needed (offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "cd" in
+  (match%sedlex buf with
+    | 'a', ('b' as _x) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | "cd" -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Two rules, each with one binding: 0 cells (all offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "ab" in
+  (match%sedlex buf with
+    | 'a', ('b' as _x) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | 'c', ('d' as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Three rules with one binding each: 0 cells (all offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "ab" in
+  (match%sedlex buf with
+    | 'a', ('b' as _x) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | 'c', ('d' as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | 'e', ('f' as _z) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Whole-match + tuple binding: 0 cells (all offsets known) *)
+  let buf = Sedlexing.Utf8.from_string "hello" in
+  (match%sedlex buf with
+    | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | '0', (number as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Or-pattern (disc elided) + tuple binding (offsets known): 0 cells *)
+  let buf = Sedlexing.Utf8.from_string "123" in
+  (match%sedlex buf with
+    | (number as _x) | (Plus letter as _x) ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | '{', (Star (Compl '}') as _y), '}' ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}];
+  (* Two or-pattern rules (both disc elided): 0 cells *)
+  let buf = Sedlexing.Utf8.from_string "123" in
+  (match%sedlex buf with
+    | (number as _x) | (Plus letter as _x) ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | ('<' as _y) | ('>' as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}]
+
+let%expect_test "as_bindings_nested_sedlex" =
+  (* Regression: a nested match%sedlex in a case RHS must not reset the
+     outer match's tag counter, which would cause init_mem/set_mem to be
+     dropped and as-bindings to read uninitialized memory cells. *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | 'a', ('b' as x), 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | Star any -> (
+        (* Nested match%sedlex in a case RHS *)
+        Sedlexing.rollback buf;
+        match%sedlex buf with
+          | Plus 'a' .. 'z' -> Printf.printf "word\n"
+          | _ -> Printf.printf "other\n")
+    | _ -> assert false);
+  [%expect {| x=b |}];
+  (* Same but the nested match comes in a case BEFORE the as-binding rule *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | '0' .. '9' -> (
+        Sedlexing.rollback buf;
+        match%sedlex buf with
+          | '0' .. '9' -> Printf.printf "digit\n"
+          | _ -> Printf.printf "other\n")
+    | Plus 'a' .. 'z' as x ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=abc |}];
+  (* Verify the outer match still allocates memory cells *)
+  let buf = Sedlexing.Utf8.from_string "abc" in
+  (match%sedlex buf with
+    | '0' .. '9' -> (
+        Sedlexing.rollback buf;
+        match%sedlex buf with
+          | '0' .. '9' -> Printf.printf "digit\n"
+          | _ -> Printf.printf "other\n")
+    | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | _ -> assert false);
+  [%expect {| mem_cells=0 |}]
