@@ -198,10 +198,11 @@ let best_final final =
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
 let call_state lexbuf auto state =
+  let loc = default_loc in
   let { Sedlex.trans; finals } = auto.(state) in
   if Array.length trans = 0 then (
     match best_final finals with
-      | Some i -> eint ~loc:default_loc i
+      | Some i -> [%expr Sedlexing.accept [%e lexbuf] [%e eint ~loc i]]
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 

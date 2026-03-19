@@ -1,4 +1,5 @@
 # unreleased
+- Add `Sedlexing.accept` for custom buffer control over final state acceptance (#81)
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
 
 # 3.7 (2025-10-06)

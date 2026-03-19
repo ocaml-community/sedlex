@@ -27,11 +27,11 @@ let%expect_test "simple string match" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> 0
+      | 0 -> Sedlexing.accept buf 0
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> 0
+      | 0 -> Sedlexing.accept buf 0
       | _ -> Sedlexing.backtrack buf in
     Sedlexing.start buf; (match __sedlex_state_0 buf with | 0 -> () | _ -> ())
     |}]
@@ -109,11 +109,11 @@ let%expect_test "multi-rule" =
        | _ -> Sedlexing.backtrack buf)
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> 0
+      | 0 -> Sedlexing.accept buf 0
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_4 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> 1
+      | 0 -> Sedlexing.accept buf 1
       | _ -> Sedlexing.backtrack buf in
     Sedlexing.start buf;
     (match __sedlex_state_0 buf with | 0 -> () | 1 -> () | 2 -> () | _ -> ())
