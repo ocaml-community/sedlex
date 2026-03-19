@@ -43,6 +43,7 @@ if you use camlp4 or camlp5, with the standard or revised syntax.
 
 ## Lexer specifications
 
+### Match rules
 
 sedlex adds a new kind of expression to OCaml: lexer definitions.
 The syntax for the new construction is:
@@ -58,7 +59,7 @@ The syntax for the new construction is:
 or:
 
 ```ocaml
-  [%sedlex match lexbuf with 
+  [%sedlex match lexbuf with
   | R1 -> e1
   ...
   | Rn -> en
@@ -105,43 +106,60 @@ unexpected character, use `any` instead:
 The actions can call functions from the Sedlexing module to extract
 (parts of) the matched lexeme, in the desired encoding.
 
+### Regexp syntax
+
 Regular expressions are syntactically OCaml patterns:
 
 - `"...."` (string constant): recognize the specified string.
-- `'....'` (character constant) : recognize the specified character
-- `i` (integer constant) : recognize the specified codepoint
-- `'...' .. '...'`: character range
-- `i1 .. i2`: range between two codepoints
-- `R1 | R2` : alternation
-- `R, R2, ..., Rn` : concatenation
-- `Star R` : Kleene star (0 or more repetition)
-- `Plus R` : equivalent to `R, R*`
-- `Opt R` : equivalent to `("" | R)`
-- `Rep (R, n)` : equivalent to `R{n}`
-- `Rep (R, n .. m)` : equivalent to `R{n, m}`
-- `Chars "..."` : recognize any character in the string
-- `Compl R` : assume that R is a single-character length regexp (see below)
-  and recognize the complement set
-- `Sub (R1,R2)` : assume that R is a single-character length regexp (see below)
-  and recognize the set of items in `R1` but not in `R2` ("subtract")
-- `Intersect (R1,R2)` : assume that `R` is a single-character length regexp (see
-  below) and recognize the set of items which are in both `R1` and `R2`
-- `Utf8 R` : string literals inside R are assumed to be utf-8 encoded.
-- `Latin1 R` : string literals inside R are assumed to be latin1 encoded.
-- `Ascii R` : string literals inside R are assumed to be ascii encoded.
-- `lid` (lowercase identifier) : reference a named regexp (see below)
+- `'....'` (character constant): recognize the specified character.
+- `i` (integer constant): recognize the specified codepoint.
+- `'...' .. '...'`: character range.
+- `i1 .. i2`: range between two codepoints.
+- `R1 | R2`: alternation.
+- `R, R2, ..., Rn`: concatenation.
+- `Star R`: Kleene star (0 or more repetition).
+- `Plus R`: equivalent to `R, R*`.
+- `Opt R`: equivalent to `("" | R)`.
+- `Rep (R, n)`: equivalent to `R{n}`.
+- `Rep (R, n .. m)`: equivalent to `R{n, m}`.
+- `Chars "..."`: recognize any character in the string.
+- `Compl R`: assume that R is a single-character length regexp (see below)
+  and recognize the complement set.
+- `Sub (R1,R2)`: assume that R is a single-character length regexp (see below)
+  and recognize the set of items in `R1` but not in `R2` ("subtract").
+- `Intersect (R1,R2)`: assume that `R` is a single-character length regexp (see
+  below) and recognize the set of items which are in both `R1` and `R2`.
+- `Utf8 R`: string literals inside R are assumed to be utf-8 encoded.
+- `Latin1 R`: string literals inside R are assumed to be latin1 encoded.
+- `Ascii R`: string literals inside R are assumed to be ascii encoded.
+- `lid` (lowercase identifier): reference a named regexp (see below).
 
 A single-character length regexp is a regexp which does not contain (after
 expansion of references) concatenation, Star, Plus, Opt or string constants
 with a length different from one.
 
+### Precedence
 
+Since sedlex regular expressions are encoded as OCaml patterns, they follow
+OCaml's pattern precedence rules. From lowest to highest:
 
-Note:
- - The OCaml source is assumed to be encoded in UTF-8.
- - Strings and chars litterals will be interpreted in ASCII unless otherwise
-   specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
+| Precedence | Operator | Example | Parses as |
+|---|---|---|---|
+| lowest | `\|` (alternation) | `'a' \| 'b', 'c'` | `'a' \| ('b', 'c')` |
+| | `,` (concatenation) | `"ab", Star 'c'` | `"ab", (Star 'c')` |
+| highest | Constructor application (`Star`, `Plus`, `Opt`, ...) | `Star 'a' \| 'b'` | `(Star 'a') \| 'b'` |
 
+In particular, `Star r1, r2` is `(Star r1), r2` (not `Star (r1, r2)`),
+and `r1 | r2, r3` is `r1 | (r2, r3)` (not `(r1 | r2), r3`).
+Use parentheses to override: `Star (r1, r2)`, `(r1 | r2), r3`.
+
+### Encoding
+
+- The OCaml source is assumed to be encoded in UTF-8.
+- Strings and chars literals will be interpreted in ASCII unless otherwise
+  specified by the `Latin1`,`Ascii` and `Utf8` constructors in patterns.
+
+### Named regexps
 
 ### Named regular expressions
 
@@ -186,32 +204,32 @@ let token buf =
 ## Predefined regexps
 
 sedlex provides a set of predefined regexps:
-- any: any character
-- eof: the virtual end-of-file character
-- xml_letter, xml_digit, xml_extender, xml_base_char, xml_ideographic,
-  xml_combining_char, xml_blank: as defined by the XML recommandation
-- tr8876_ident_char: characters names in identifiers from ISO TR8876
-- cc, cf, cn, co, cs, ll, lm, lo, lt, lu, mc, me, mn, nd, nl, no, pc, pd,
-  pe, pf, pi, po, ps, sc, sk, sm, so, zl, zp, zs: as defined by the
-  Unicode standard (categories)
-- alphabetic, ascii_hex_digit, hex_digit, id_continue, id_start,
-  lowercase, math, other_alphabetic, other_lowercase, other_math,
-  other_uppercase, uppercase, white_space, xid_continue, xid_start: as
-  defined by the Unicode standard (properties)
+- `any`: any character.
+- `eof`: the virtual end-of-file character.
+- `xml_letter`, `xml_digit`, `xml_extender`, `xml_base_char`, `xml_ideographic`,
+  `xml_combining_char`, `xml_blank`: as defined by the XML recommendation.
+- `tr8876_ident_char`: character names in identifiers from ISO TR8876.
+- `cc`, `cf`, `cn`, `co`, `cs`, `ll`, `lm`, `lo`, `lt`, `lu`, `mc`, `me`, `mn`, `nd`, `nl`, `no`, `pc`, `pd`,
+  `pe`, `pf`, `pi`, `po`, `ps`, `sc`, `sk`, `sm`, `so`, `zl`, `zp`, `zs`: as defined by the
+  Unicode standard (categories).
+- `alphabetic`, `ascii_hex_digit`, `hex_digit`, `id_continue`, `id_start`,
+  `lowercase`, `math`, `other_alphabetic`, `other_lowercase`, `other_math`,
+  `other_uppercase`, `uppercase`, `white_space`, `xid_continue`, `xid_start`: as
+  defined by the Unicode standard (properties).
 
 
 ## Running a lexer
 
-See the interface of the Sedlexing module for a description of how to
+See the interface of the `Sedlexing` module for a description of how to
 create lexbuf values (from strings, stream or channels encoded in
 Latin1, utf8 or utf16, or from integer arrays or streams representing
 Unicode code points).
 
 It is possible to work with a custom implementation for lex buffers.
-To do this, you just have to ensure that a module called Sedlexing is
+To do this, you just have to ensure that a module called `Sedlexing` is
 in scope of your lexer specifications, and that it defines at least
-the following functions: start, next, mark, backtrack.  See the interface
-of the Sedlexing module for more information.
+the following functions: `start`, `next`, `mark`, `backtrack`.  See the interface
+of the `Sedlexing` module for more information.
 
 
 
