@@ -153,6 +153,38 @@ In particular, `Star r1, r2` is `(Star r1), r2` (not `Star (r1, r2)`),
 and `r1 | r2, r3` is `r1 | (r2, r3)` (not `(r1 | r2), r3`).
 Use parentheses to override: `Star (r1, r2)`, `(r1 | r2), r3`.
 
+### Named capture groups (`as` bindings)
+
+You can capture sub-matches using OCaml's `as` pattern syntax:
+
+```ocaml
+match%sedlex buf with
+| (Plus ('0'..'9') as num), '.', (Plus ('0'..'9') as frac) ->
+    let n = Sedlexing.Utf8.of_submatch num in
+    let f = Sedlexing.Utf8.of_submatch frac in
+    Printf.printf "integer=%s fractional=%s\n" n f
+| _ -> ()
+```
+
+Each `as` binding produces a value of type `Sedlexing.submatch`. Use the
+extraction functions to obtain the matched content:
+
+- `Sedlexing.Utf8.of_submatch s` returns the sub-match as a UTF-8 string.
+- `Sedlexing.Latin1.of_submatch s` returns the sub-match as a Latin-1 string.
+- `Sedlexing.lexeme_of_submatch s` returns the sub-match as a `Uchar.t array`.
+
+Or-patterns work as expected — both sides must bind the same names:
+
+```ocaml
+match%sedlex buf with
+| ("0x", Plus hex_digit as n) | (Plus ('0'..'9') as n) ->
+    Sedlexing.Utf8.of_submatch n
+| _ -> ...
+```
+
+**Restriction:** `as` bindings are not allowed inside repetition operators
+(`Star`, `Plus`, `Opt`, `Rep`) or set operators (`Compl`, `Sub`, `Intersect`).
+
 ### Encoding
 
 - The OCaml source is assumed to be encoded in UTF-8.
