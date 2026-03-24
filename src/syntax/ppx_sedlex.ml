@@ -128,14 +128,12 @@ let builtin_regexps =
 (* Tables (indexed mapping: codepoint -> next state) *)
 
 let tables = Hashtbl.create 31
-let table_counter = ref 0
 let get_tables () = Hashtbl.fold (fun key x accu -> (x, key) :: accu) tables []
 
 let table_name x =
   try Hashtbl.find tables x
   with Not_found ->
-    incr table_counter;
-    let s = Printf.sprintf "__sedlex_table_%i" !table_counter in
+    let s = Printf.sprintf "__sedlex_table_%i" (Hashtbl.length tables + 1) in
     Hashtbl.add tables x s;
     s
 
@@ -150,7 +148,6 @@ let table (name, v) =
 (* Partition (function: codepoint -> next state) *)
 
 let partitions = Hashtbl.create 31
-let partition_counter = ref 0
 
 let get_partitions () =
   Hashtbl.fold (fun key x accu -> (x, key) :: accu) partitions []
@@ -158,10 +155,15 @@ let get_partitions () =
 let partition_name x =
   try Hashtbl.find partitions x
   with Not_found ->
-    incr partition_counter;
-    let s = Printf.sprintf "__sedlex_partition_%i" !partition_counter in
+    let s =
+      Printf.sprintf "__sedlex_partition_%i" (Hashtbl.length partitions + 1)
+    in
     Hashtbl.add partitions x s;
     s
+
+let reset_state () =
+  Hashtbl.clear tables;
+  Hashtbl.clear partitions
 
 (* We duplicate the body for the EOF (-1) case rather than creating
    an interior utility function. *)
@@ -480,7 +482,7 @@ let regexp_of_pattern env =
   in
   aux ~encoding:Ascii
 
-let handle_sedlex_match ~env ~map_rhs match_expr =
+let handle_sedlex_match_ ~env ~map_rhs match_expr =
   let lexbuf =
     match match_expr with
       | { pexp_desc = Pexp_match (lexbuf, _); _ } -> (
@@ -520,6 +522,9 @@ let handle_sedlex_match ~env ~map_rhs match_expr =
   let auto = Sedlex.compile (Array.map fst brs) in
   (gen_definition lexbuf auto cases error, auto)
 
+let handle_sedlex_match match_expr =
+  handle_sedlex_match_ ~env:builtin_regexps ~map_rhs:Fun.id match_expr
+
 let previous = ref []
 let regexps = ref []
 let should_set_cookies = ref false
@@ -549,7 +554,7 @@ let mapper =
         (* match%sedlex <lexbuf> with ... *)
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
           ->
-            fst (handle_sedlex_match ~env ~map_rhs:this#expression match_expr)
+            fst (handle_sedlex_match_ ~env ~map_rhs:this#expression match_expr)
         (* let <name> = <rhs> in <body>  —  intercept when <rhs> is a regexp *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
@@ -614,12 +619,14 @@ let post_handler cookies =
     Driver.Cookies.set cookies "sedlex.regexps"
       (pexp_extension ~loc ({ loc; txt = "regexps" }, PStr !regexps)))
 
-let extensions =
-  [
-    Extension.declare "sedlex" Extension.Context.expression
-      Ast_pattern.(single_expr_payload __)
-      (fun ~loc:_ ~path:_ expr -> mapper#expression expr);
-  ]
+(* We register via ~impl:mapper#structure rather than ~extensions so that
+   partition and table definitions can be inserted at the top level. *)
+(* let extensions =
+     [
+       Extension.declare "sedlex" Extension.Context.expression
+         Ast_pattern.(single_expr_payload __)
+         (fun ~loc:_ ~path:_ expr -> mapper#expression expr);
+     ] *)
 
 let () =
   Driver.Cookies.add_handler pre_handler;

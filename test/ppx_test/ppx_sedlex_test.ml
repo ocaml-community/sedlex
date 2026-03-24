@@ -2,25 +2,13 @@ open Ppxlib
 module P = Sedlex_ppx.Ppx_sedlex
 module S = Sedlex_ppx.Sedlex
 
-let reset_state () =
-  P.partition_counter := 0;
-  P.table_counter := 0;
-  Hashtbl.clear P.partitions;
-  Hashtbl.clear P.tables
-
-let clear_tables () =
-  Hashtbl.clear P.partitions;
-  Hashtbl.clear P.tables
-
 let expand ~ctxt:_ expr =
-  reset_state ();
+  P.reset_state ();
   let loc = Location.none in
-  let code_expr, auto =
-    P.handle_sedlex_match ~env:P.builtin_regexps ~map_rhs:Fun.id expr
-  in
+  let code_expr, auto = P.handle_sedlex_match expr in
   let code_str = Pprintast.string_of_expression code_expr in
   let dot_str = S.dfa_to_dot auto in
-  clear_tables ();
+  P.reset_state ();
   [%expr
     print_string "DOT:\n";
     print_string [%e Ast_builder.Default.estring ~loc dot_str];
