@@ -10,7 +10,13 @@ open Ast_helper
 
 module Cset = Sedlex_cset
 
-(* Decision tree for partitions *)
+(* Decision tree for partitions.
+
+   A partition maps Unicode code points to equivalence class indices. Rather
+   than generating a flat lookup table (which would be huge), we build a
+   binary decision tree that tests code points against split values. For
+   dense regions below [limit], a compact byte-string table is used instead.
+   [simplify] prunes unreachable branches given a known code-point range. *)
 
 let default_loc = Location.none
 
@@ -30,6 +36,10 @@ let rec simplify_decision_tree (x : decision_tree) =
           | Return a, Return b when a = b -> l
           | _ -> Lte (i, l, r))
 
+(* [decision segments] builds a balanced binary decision tree from a sorted
+   list of [(lo, hi, class_index)] segments. Pairs of adjacent segments are
+   merged bottom-up into [Lte] nodes. Gaps between segments return -1
+   (no match). *)
 let decision l =
   let l = List.map (fun (a, b, i) -> (a, b, Return i)) l in
   let rec merge2 = function
@@ -45,8 +55,13 @@ let decision l =
   in
   aux l
 
+(* Code points below [limit] with class index < 255 are eligible for
+   compact byte-string table lookup instead of a decision tree. *)
 let limit = 8192
 
+(* [decision_table segments] partitions segments into a table-eligible
+   prefix (dense, low code points) and a tree-handled suffix. The prefix
+   becomes a [Table] node for O(1) lookup; the suffix uses [decision]. *)
 let decision_table l =
   let rec aux m accu = function
     | ((a, b, i) as x) :: rem when b < limit && i < 255 ->
@@ -75,6 +90,9 @@ let rec simplify min max = function
       else Lte (i, simplify min i yes, simplify (i + 1) max no)
   | x -> x
 
+(* [segments_of_partition p] flattens a partition (array of char sets, one
+   per equivalence class) into a sorted list of [(lo, hi, class_index)]
+   segments suitable for [decision_table]. *)
 let segments_of_partition p =
   let seg = ref [] in
   Array.iteri
@@ -85,6 +103,9 @@ let segments_of_partition p =
     p;
   List.sort (fun (a1, _, _) (a2, _, _) -> compare a1 a2) !seg
 
+(* [decision_table partition] builds a complete decision tree for a
+   partition: extracts segments, builds the hybrid table/tree, then
+   simplifies by pruning branches outside the valid code-point range. *)
 let decision_table p =
   simplify (-1) Cset.max_code (decision_table (segments_of_partition p))
 
@@ -137,6 +158,9 @@ let table_name x =
     Hashtbl.add tables x s;
     s
 
+(* [table (name, v)] generates a top-level [let __sedlex_table_N = "..."]
+   binding where the string encodes the byte array [v] (one byte per entry,
+   used for compact partition lookup). *)
 let table (name, v) =
   let n = Array.length v in
   let s = Bytes.create n in
@@ -165,8 +189,10 @@ let reset_state () =
   Hashtbl.clear tables;
   Hashtbl.clear partitions
 
-(* We duplicate the body for the EOF (-1) case rather than creating
-   an interior utility function. *)
+(* [partition (name, p)] generates a top-level [let __sedlex_partition_N c = ...]
+   function that maps a code point [c] to its equivalence class index using
+   the decision tree built from partition [p]. The EOF case (-1) is handled
+   naturally by the decision tree since [simplify] uses -1 as the lower bound. *)
 let partition (name, p) =
   let loc = default_loc in
   let rec gen_tree = function
@@ -190,6 +216,9 @@ let partition (name, p) =
 
 (* Code generation for the automata *)
 
+(* [best_final finals] returns the lowest-numbered accepting rule for this
+   state, or [None] if the state is not accepting. Lowest-numbered = highest
+   priority, matching the first-match semantics of [match%sedlex]. *)
 let best_final final =
   let fin = ref None in
   for i = Array.length final - 1 downto 0 do
@@ -199,6 +228,10 @@ let best_final final =
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
+(* [call_state lexbuf auto state] generates the expression that transitions
+   into DFA [state]. If the state has no outgoing transitions (a sink), it
+   returns the accepting rule index directly; otherwise it emits a function
+   call to the generated state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
   let { Sedlex.trans; finals } = auto.(state) in
   if Array.length trans = 0 then (
@@ -207,6 +240,11 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
+(* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
+   operation calls. Each [Set_position t] becomes a call to
+   [__private__set_mem_pos], and each [Set_value (cell, v)] becomes a call to
+   [__private__set_mem_value]. Operations are folded right so they execute
+   before [cont]. *)
 let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
   List.fold_right
@@ -223,6 +261,15 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
               [%e acc]])
     ops cont
 
+(* [gen_state (lexbuf_name, lexbuf) auto i {trans; finals}] generates the
+   function [__sedlex_state_N] for DFA state [i]. The function:
+   1. If the state is accepting, calls [mark] to save the current position.
+   2. Reads the next code point, maps it through the partition function to
+      get an equivalence class index, then pattern-matches on that index.
+   3. Each transition arm executes its tag operations then calls the target
+      state function (or returns the rule index for sink states).
+   4. The default arm calls [backtrack] to return the last accepted rule.
+   Returns [] for accepting states with no outgoing transitions (sinks). *)
 let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     { Sedlex.trans; finals } =
   let loc = default_loc in
@@ -264,6 +311,10 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
             Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
             [%e body ()]]
 
+(* [gen_recflag auto] determines whether the generated state functions need
+   [let rec]. If every transition leads to a sink state (no further
+   transitions), the functions are non-recursive; otherwise they are
+   mutually recursive. *)
 let gen_recflag (auto : Sedlex.dfa) =
   (* The generated function is not recursive if the transitions end
      in states with no further transitions. *)
@@ -278,6 +329,13 @@ let gen_recflag (auto : Sedlex.dfa) =
     Nonrecursive
   with Exit -> Recursive
 
+(* [gen_definition lexbuf_with_name compiled cases error] generates the
+   complete lexer expression for one [match%sedlex] block:
+   - Defines all [__sedlex_state_N] functions via [let rec ... in].
+   - Emits a start sequence: [start lexbuf], then (if the pattern has [as]
+     bindings) [init_mem] + initial tag operations, then calls state 0.
+   - Wraps the result in a [match] on the returned rule index, dispatching
+     to user-provided right-hand-side expressions, with [error] as default. *)
 let gen_definition ((_, lexbuf) as lexbuf_with_name)
     (compiled : Sedlex.compiled) l error =
   let loc = default_loc in
@@ -332,6 +390,9 @@ let string_of_encoding = function
   | Latin1 -> "Latin-1"
   | Ascii -> "ASCII"
 
+(* [rev_csets_of_string ~loc ~encoding s] decodes string [s] under
+   [encoding] and returns a list of singleton char sets in reverse order
+   (one per character). Used to build sequence regexps from string literals. *)
 let rev_csets_of_string ~loc ~encoding s =
   match encoding with
     | Utf8 ->
@@ -357,18 +418,42 @@ let rev_csets_of_string ~loc ~encoding s =
         done;
         !l
 
+(* [repeat r (n, m)] expands bounded repetition [Rep(r, n..m)] into a
+   sequence of [n] mandatory copies followed by [m - n] optional copies. *)
 let rec repeat r = function
   | 0, 0 -> Sedlex.eps
   | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
   | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
+
+(* Code generation for `as` bindings.
+
+   [regexp_of_pattern] parses OCaml patterns into regexps and collects a
+   [tag_info list] for every [as] binding it encounters. Each [tag_info]
+   records the variable name and the memory cell indices for its start/end
+   positions. For or-patterns like [(p1 as x) | (p2 as x)], each branch
+   gets its own tag pair and a discriminator [(cell, value)] so the
+   generated code can determine which branch matched.
+
+   [gen_binding_code] turns the [tag_info list] into [let] bindings that
+   extract sub-matches from the lexbuf's memory cells. For a simple
+   binding it emits:
+     [let x = { lexbuf; pos = mem.(start_tag); len = ... } in ...]
+   For or-patterns with discriminators it emits a chain of if/else
+   checks on the discriminator cell to select the right tag pair. *)
 
 type tag_info = {
   name : string;
   start_tag : int;
   end_tag : int;
   disc : (int * int) list;
+      (* Discriminator conditions: [(cell, value)] pairs. For simple
+         bindings this is [[]]. For or-patterns, each branch has a
+         distinct value in the shared discriminator cell. *)
 }
 
+(* [gen_sub_lexeme lexbuf st et] generates an expression that reads the
+   start and end positions from memory cells [st] and [et] and constructs
+   a [Sedlexing.submatch] record. *)
 let gen_sub_lexeme lexbuf st et =
   let loc = default_loc in
   [%expr
@@ -376,6 +461,11 @@ let gen_sub_lexeme lexbuf st et =
     let __e = Sedlexing.__private__mem_pos [%e lexbuf] [%e eint ~loc et] in
     { Sedlexing.lexbuf = [%e lexbuf]; pos = __s; len = __e - __s }]
 
+(* [gen_binding_code lexbuf tag_info action] wraps [action] with [let]
+   bindings that extract sub-match values from the lexbuf's memory cells.
+   For a single binding (no or-pattern), emits a direct sub_lexeme call.
+   For or-patterns with multiple tag pairs, emits a chain of
+   [if disc_cell = value then ...] to select the correct tags at runtime. *)
 let gen_binding_code lexbuf (tag_info : tag_info list) action =
   let loc = default_loc in
   ignore loc;
@@ -434,6 +524,12 @@ let gen_binding_code lexbuf (tag_info : tag_info list) action =
                 [%e acc]])
       by_name action)
 
+(* [regexp_of_pattern env pattern] parses an OCaml pattern AST into a
+   [Sedlex.regexp] and a [tag_info list] for any [as] bindings encountered.
+   [env] maps names to previously defined regexps (built-in + user-defined).
+   Handles all sedlex pattern constructors: literals, Star, Plus, Rep, Opt,
+   Compl, Sub, Intersect, Chars, character intervals, tuple (sequence),
+   or-patterns, and [Ppat_alias] for [as] bindings. *)
 let regexp_of_pattern env =
   let no_tags r = (r, ([] : tag_info list)) in
   let reject_tags loc ctx (r, tags) =
@@ -633,6 +729,16 @@ let regexp_of_pattern env =
   in
   aux ~encoding:Ascii
 
+(* [handle_sedlex_match_ ~env ~map_rhs match_expr] is the main entry point
+   for compiling a [match%sedlex lexbuf with ...] expression. It:
+   1. Extracts the lexbuf identifier and match cases.
+   2. Parses each case's pattern into a regexp + tag_info via [regexp_of_pattern].
+   3. Compiles all regexps into a single DFA via [Sedlex.compile].
+   4. Applies [map_rhs] to each case's right-hand side (for recursive PPX
+      expansion of nested [match%sedlex] blocks).
+   5. Wraps each RHS with [gen_binding_code] for [as] binding extraction.
+   6. Generates the full lexer code via [gen_definition].
+   Returns [(generated_expr, dfa)] for use by the main mapper and tests. *)
 let handle_sedlex_match_ ~env ~map_rhs match_expr =
   let lexbuf =
     match match_expr with
@@ -692,6 +798,10 @@ let previous = ref []
 let regexps = ref []
 let should_set_cookies = ref false
 
+(* The ppxlib AST mapper. It carries an [env] of named regexps (built-in
+   Unicode categories + user [let%sedlex.regexp] definitions). The [toplevel]
+   flag distinguishes the outermost structure (where partition/table
+   definitions are emitted) from nested modules. *)
 let mapper =
   object (this)
     inherit Ast_traverse.map as super
@@ -777,6 +887,8 @@ let mapper =
       else fst (this#structure_with_regexps l)
   end
 
+(* ppxlib cookie handlers: regexp definitions survive across compilation
+   units by round-tripping through a ppxlib cookie named "sedlex.regexps". *)
 let pre_handler cookies =
   previous :=
     match Driver.Cookies.get cookies "sedlex.regexps" Ast_pattern.__ with
