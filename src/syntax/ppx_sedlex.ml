@@ -887,6 +887,8 @@ let mapper =
       else fst (this#structure_with_regexps l)
   end
 
+let map_expression expr = mapper#expression expr
+
 (* ppxlib cookie handlers: regexp definitions survive across compilation
    units by round-tripping through a ppxlib cookie named "sedlex.regexps". *)
 let pre_handler cookies =

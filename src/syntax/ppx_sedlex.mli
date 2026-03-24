@@ -23,3 +23,7 @@ val reset_state : unit -> unit
     Returns the generated expression and the DFA automaton. *)
 val handle_sedlex_match :
   Ppxlib.Parsetree.expression -> Ppxlib.Parsetree.expression * Sedlex.dfa
+
+(** [map_expression expr] applies the sedlex mapper to [expr], processing any
+    [[%sedlex]] or [[%sedlex.regexp?]] extensions it contains. *)
+val map_expression : Ppxlib.Parsetree.expression -> Ppxlib.Parsetree.expression
