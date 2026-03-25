@@ -2,14 +2,85 @@
 (* See the attached LICENSE file.                                         *)
 (* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
 
+(*
+   Implementation overview
+   =======================
+
+   Sedlex compiles regular expressions to Tagged DFAs.
+
+   1. NFA construction (type regexp = node -> node)
+      Each regexp combinator (chars, seq, alt, rep, ...) is a function that,
+      given a successor node, builds a fragment of NFA and returns its entry
+      node. This continuation-passing style makes sequencing natural (seq is
+      just function composition) and avoids explicit epsilon nodes for
+      concatenation.
+
+   2. Tags for `as` bindings (Laurikari-style)
+      NFA nodes may carry a tag operation (Set_position or Set_value).
+      [bind] wraps a sub-regexp with start/end tagged epsilon nodes so the
+      DFA can record sub-match positions at runtime. Discriminator tags
+      (Set_value) disambiguate or-patterns where multiple branches bind the
+      same name.
+
+   3. Determinization (compile)
+      Classic subset construction, extended to handle tags (Laurikari, NFAs
+      with Tagged Transitions, 2000).
+
+      Each DFA state is a set of NFA nodes (represented as a list, identified
+      by physical identity via memq). DFA states are memoized in a hash table
+      keyed by node lists.
+
+      Tags live on epsilon nodes in the NFA, so they are naturally collected
+      during epsilon closure. To compute a DFA transition for character
+      set [c]: follow all NFA [c]-transitions from nodes in the current DFA
+      state, then compute the epsilon closure of the targets. Every tagged
+      node visited during closure contributes its tag operation to the
+      transition's tag list. Each (target DFA state, tag list) pair becomes
+      one DFA transition: "on input [c], execute these tag ops, go to state N."
+
+      In general, tagged determinization must resolve conflicts when multiple
+      active NFA paths write different values to the same tag (Laurikari uses
+      per-path tag valuations and priority ordering). Sedlex avoids this:
+      each [as] binding gets unique tag IDs, and [as] is rejected inside
+      repetition operators, so no two active NFA paths ever write to the
+      same tag. Tags can therefore be collected as a flat list with no
+      conflict resolution.
+
+   Possible future optimizations (see #175)
+   -----------------------------------------
+
+   Tag optimizations for `as` bindings:
+   - Known-offset elision: when a sub-match boundary is at a fixed offset
+     from the start or end of the overall match, replace the tag with a
+     computed offset and eliminate the memory cell entirely. This is the
+     most impactful optimization since constant offsets are the common case.
+   - Self-loop tag delay: tags on self-loops that also appear on all
+     entering transitions can be removed from those transitions and emitted
+     as a "set previous position" on exit. This turns O(n) tag writes in
+     loops (e.g. Star) into O(1) on exit.
+   - Intra-rule tag coalescing: tags with identical occurrence signatures
+     (same presence in init_tags and same set of transitions) can share a
+     single memory cell.
+   - Cross-rule cell sharing: memory cells from non-interfering rules can
+     share the same physical slot via liveness analysis and graph coloring.
+
+   DFA construction:
+   - DFA minimization: the generated DFA is not minimized. Hopcroft's or
+     Moore's algorithm could reduce state count, especially for patterns with
+     many character classes that converge to the same accepting state.
+*)
+
 module Cset = Sedlex_cset
 
 (* NFA *)
 
+type tag_op = Set_position of int | Set_value of int * int
+
 type node = {
-  id : int;
-  mutable eps : node list;
-  mutable trans : (Cset.t * node) list;
+  id : int;  (** Unique identifier, used for sorting transitions by target. *)
+  mutable eps : node list;  (** Epsilon successors (no input consumed). *)
+  mutable trans : (Cset.t * node) list;  (** Char-set-labelled transitions. *)
+  tag : tag_op option;  (** Tag operation executed when entering this node. *)
 }
 
 (* Compilation regexp -> NFA *)
@@ -20,12 +91,20 @@ let cur_id = ref 0
 
 let new_node () =
   incr cur_id;
-  { id = !cur_id; eps = []; trans = [] }
+  { id = !cur_id; eps = []; trans = []; tag = None }
+
+let new_tagged_node tag_op =
+  incr cur_id;
+  { id = !cur_id; eps = []; trans = []; tag = Some tag_op }
 
 let seq r1 r2 succ = r1 (r2 succ)
 
+(* [is_chars final node] tests whether [node] is a simple character-set
+   node: no epsilon edges, a single transition to [final], and no tag.
+   Used by [alt] to merge adjacent character classes into a single [chars]
+   node instead of introducing an epsilon fork. *)
 let is_chars final = function
-  | { eps = []; trans = [(c, f)]; _ } when f == final -> Some c
+  | { eps = []; trans = [(c, f)]; tag = None; _ } when f == final -> Some c
   | _ -> None
 
 let chars c succ =
@@ -72,6 +151,41 @@ let pair_op f r0 r1 =
 let subtract = pair_op Cset.difference
 let intersection = pair_op Cset.intersection
 
+(* Tags for as-bindings *)
+
+let cur_tag = ref 0
+let reset_tags () = cur_tag := 0
+
+let new_tag () =
+  let t = !cur_tag in
+  incr cur_tag;
+  t
+
+let bind r =
+  let start_tag = new_tag () in
+  let end_tag = new_tag () in
+  let wrapped succ =
+    let end_node = new_tagged_node (Set_position end_tag) in
+    end_node.eps <- [succ];
+    let inner = r end_node in
+    let start_node = new_tagged_node (Set_position start_tag) in
+    start_node.eps <- [inner];
+    start_node
+  in
+  (wrapped, start_tag, end_tag)
+
+let new_disc_cell () = new_tag ()
+
+let bind_disc r cell value =
+  let wrapped succ =
+    let disc_node = new_tagged_node (Set_value (cell, value)) in
+    disc_node.eps <- [succ];
+    r disc_node
+  in
+  wrapped
+
+(* [compile_re re] instantiates a regexp by creating a fresh final node
+   and passing it as the successor. Returns [(entry_node, final_node)]. *)
 let compile_re re =
   let final = new_node () in
   (re final, final)
@@ -79,13 +193,30 @@ let compile_re re =
 (* Determinization *)
 
 type state = node list
-(* A state of the DFA corresponds to a set of nodes in the NFA. *)
+(* A DFA state is a set of NFA nodes (subset construction).
+   Membership is checked by physical identity (List.memq) since each
+   node is created exactly once by new_node/new_tagged_node. *)
 
-let rec add_node state node =
-  if List.memq node state then state else add_nodes (node :: state) node.eps
+(* [add_node (state, tags) node] adds [node] to the NFA-node set [state]
+   via epsilon closure: it follows all epsilon edges recursively, collecting
+   any tag operations encountered along the way. Returns the updated
+   (state, tags) pair. Physical identity (memq) prevents revisiting nodes. *)
+let rec add_node (state, tags) node =
+  if List.memq node state then (state, tags)
+  else (
+    let tags = match node.tag with Some op -> op :: tags | None -> tags in
+    add_nodes (node :: state, tags) node.eps)
 
-and add_nodes state nodes = List.fold_left add_node state nodes
+and add_nodes acc nodes = List.fold_left add_node acc nodes
 
+(* [transition state] computes all outgoing DFA transitions from a DFA state.
+   Three phases:
+   1. Normalize: collect all NFA transitions from all nodes in [state],
+      sort by target node id, and merge char sets for identical targets.
+   2. Split: make char sets pairwise disjoint so each DFA transition fires
+      for an unambiguous set of code points.
+   3. Epsilon closure: for each disjoint char set, compute the epsilon
+      closure of the target NFA nodes, collecting tag operations. *)
 let transition (state : state) =
   (* Merge transition with the same target *)
   let rec norm = function
@@ -109,17 +240,34 @@ let transition (state : state) =
 
   let _, t = List.fold_left split (Cset.empty, []) t in
 
-  (* Epsilon closure of targets *)
-  let t = List.map (fun (c, ns) -> (c, add_nodes [] ns)) t in
+  (* Epsilon closure of targets, collecting tags *)
+  let t =
+    List.map
+      (fun (c, ns) ->
+        let state, tags = add_nodes ([], []) ns in
+        (c, state, tags))
+      t
+  in
 
   (* Canonical ordering *)
   let t = Array.of_list t in
-  Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) t;
+  Array.sort (fun (c1, _, _) (c2, _, _) -> compare c1 c2) t;
   t
 
-type dfa_state = { trans : (Cset.t * int) array; finals : bool array }
-type dfa = dfa_state array
+type dfa_state = {
+  trans : (Cset.t * int * tag_op list) array;
+  finals : bool array;
+}
 
+type dfa = dfa_state array
+type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+(* [compile rs] determinizes the NFA for an array of regexp rules.
+   Each rule is compiled to an NFA (entry node, final node) pair. The initial
+   DFA state is the epsilon closure of all entry nodes. States are explored
+   via [transition] and memoized in a hash table keyed by NFA node lists
+   (physical identity). Returns a {compiled} record with the DFA, initial
+   tag operations, and total number of memory cells needed. *)
 let compile rs =
   let rs = Array.map compile_re rs in
   let counter = ref 0 in
@@ -132,16 +280,21 @@ let compile rs =
       incr counter;
       Hashtbl.add states state i;
       let trans = transition state in
-      let trans = Array.map (fun (p, t) -> (p, aux t)) trans in
+      let trans = Array.map (fun (p, t, tags) -> (p, aux t, tags)) trans in
       let finals = Array.map (fun (_, f) -> List.memq f state) rs in
       Hashtbl.add states_def i { trans; finals };
       i
   in
-  let init = ref [] in
+  let init = ref ([], []) in
   Array.iter (fun (i, _) -> init := add_node !init i) rs;
-  let i = aux !init in
+  let init_state, init_tags = !init in
+  let i = aux init_state in
   assert (i = 0);
-  Array.init !counter (Hashtbl.find states_def)
+  {
+    dfa = Array.init !counter (Hashtbl.find states_def);
+    init_tags;
+    num_tags = !cur_tag;
+  }
 
 let cset_to_label cset =
   let escape_dot c =
@@ -188,8 +341,18 @@ let dfa_to_dot dfa =
               "  state%d [label=\"%d\\n[rule %s]\", shape=doublecircle];\n" i i
               (String.concat "," (List.map string_of_int rules)));
       Array.iter
-        (fun (cset, target) ->
+        (fun (cset, target, tags) ->
           let label = cset_to_label cset in
+          let tag_str op =
+            match op with
+              | Set_position t -> "t" ^ string_of_int t
+              | Set_value (c, v) ->
+                  "d" ^ string_of_int c ^ "=" ^ string_of_int v
+          in
+          let label =
+            if tags = [] then label
+            else label ^ " {" ^ String.concat "," (List.map tag_str tags) ^ "}"
+          in
           bprintf buf "  state%d -> state%d [label=\"%s\"];\n" i target label)
         trans)
     dfa;

@@ -49,8 +49,8 @@ val create :
   (Uchar.t array -> int -> int -> int) ->
   lexbuf
 
-(** set the initial tracked input position, in code point, for [lexbuf]. If
-    unspecified, byte postion is set to the same value as code point position.
+(** Set the initial tracked input position, in code points, for [lexbuf]. If
+    unspecified, byte position is set to the same value as code point position.
 *)
 val set_position :
   ?bytes_position:Lexing.position -> lexbuf -> Lexing.position -> unit
@@ -87,19 +87,19 @@ val from_uchar_array :
     stream has offset 0. *)
 val lexeme_start : lexbuf -> int
 
-(** [Sedlexing.lexeme_start lexbuf] returns the offset in the input stream of
-    the first byte of the matched string. The first code point of the stream has
+(** [Sedlexing.lexeme_bytes_start lexbuf] returns the offset in the input stream
+    of the first byte of the matched string. The first byte of the stream has
     offset 0. *)
 val lexeme_bytes_start : lexbuf -> int
 
 (** [Sedlexing.lexeme_end lexbuf] returns the offset in the input stream of the
-    character following the last code point of the matched string. The first
-    character of the stream has offset 0. *)
+    code point following the last code point of the matched string. The first
+    code point of the stream has offset 0. *)
 val lexeme_end : lexbuf -> int
 
-(** [Sedlexing.lexeme_end lexbuf] returns the offset in the input stream of the
-    byte following the last code point of the matched string. The first
-    character of the stream has offset 0. *)
+(** [Sedlexing.lexeme_bytes_end lexbuf] returns the offset in the input stream
+    of the byte following the last byte of the matched string. The first byte of
+    the stream has offset 0. *)
 val lexeme_bytes_end : lexbuf -> int
 
 (** [Sedlexing.loc lexbuf] returns the pair
@@ -116,7 +116,7 @@ val bytes_loc : lexbuf -> int * int
     the length (in code points) of the matched string. *)
 val lexeme_length : lexbuf -> int
 
-(** [Sedlexing.lexeme_length lexbuf] returns the difference
+(** [Sedlexing.lexeme_bytes_length lexbuf] returns the difference
     [(Sedlexing.lexeme_bytes_end lexbuf) - (Sedlexing.lexeme_bytes_start
      lexbuf)], that is, the length (in bytes) of the matched string. *)
 val lexeme_bytes_length : lexbuf -> int
@@ -155,7 +155,7 @@ val lexing_bytes_position_curr : lexbuf -> Lexing.position
 val new_line : lexbuf -> unit
 
 (** [Sedlexing.lexeme lexbuf] returns the string matched by the regular
-    expression as an array of Unicode code point. *)
+    expression as an array of Unicode code points. *)
 val lexeme : lexbuf -> Uchar.t array
 
 (** [Sedlexing.lexeme_char lexbuf pos] returns code point number [pos] in the
@@ -163,8 +163,18 @@ val lexeme : lexbuf -> Uchar.t array
 val lexeme_char : lexbuf -> int -> Uchar.t
 
 (** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
-    matched by the regular expression as an array of Unicode code point. *)
+    matched by the regular expression as an array of Unicode code points. *)
 val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
+
+(** A submatch captures a sub-pattern matched by an [as] binding. It carries the
+    lexbuf and the position/length of the submatch (in code points, relative to
+    the start of the current token). Use the extraction functions below to
+    obtain the matched content in the desired encoding. *)
+type submatch = { lexbuf : lexbuf; pos : int; len : int }
+
+(** [Sedlexing.lexeme_of_submatch s] returns the submatch as an array of Unicode
+    code points. *)
+val lexeme_of_submatch : submatch -> Uchar.t array
 
 (** [Sedlexing.rollback lexbuf] puts [lexbuf] back in its configuration before
     the last lexeme was matched. It is then possible to use another lexer to
@@ -173,6 +183,15 @@ val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
     [Sedlexing.rollback]. *)
 val rollback : lexbuf -> unit
 
+(** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf, returns a
+    generator of tokens annotated with positions. This generator can be used
+    with the Menhir parser generator's incremental API. *)
+val with_tokenizer :
+  (lexbuf -> 'token) ->
+  lexbuf ->
+  unit ->
+  'token * Lexing.position * Lexing.position
+
 (** {6 Internal interface} *)
 
 (** These functions are used internally by the lexers. They could be used to
@@ -180,44 +199,78 @@ val rollback : lexbuf -> unit
     lexer buffers have a unique internal slot that can store an integer. They
     also store a "backtrack" position. *)
 
-(** [start t] informs the lexer buffer that any code points until the current
-    position can be discarded. The current position become the "start" position
-    as returned by [Sedlexing.lexeme_start]. Moreover, the internal slot is set
-    to [-1] and the backtrack position is set to the current position. *)
+(** [start lexbuf] informs the lexer buffer that any code points until the
+    current position can be discarded. The current position becomes the "start"
+    position as returned by [Sedlexing.lexeme_start]. Moreover, the internal
+    slot is set to [-1] and the backtrack position is set to the current
+    position. *)
 val start : lexbuf -> unit
 
 (** [next lexbuf] extracts the next code point from the lexer buffer and
-    increments to current position. If the input stream is exhausted, the
+    increments the current position. If the input stream is exhausted, the
     function returns [None]. If a ['\n'] is encountered, the tracked line number
     is incremented. *)
 val next : lexbuf -> Uchar.t option
 
+(** [mark lexbuf i] stores the integer [i] in the internal slot. The backtrack
+    position is set to the current position. If the lexbuf has tagged DFA memory
+    cells (from [as] bindings), the current cell values are snapshotted so they
+    can be restored by [backtrack]. *)
+val mark : lexbuf -> int -> unit
+
+(** [backtrack lexbuf] returns the value stored in the internal slot of the
+    buffer, and performs backtracking (the current position is set to the value
+    of the backtrack position). If the lexbuf has tagged DFA memory cells, they
+    are restored to the values saved by the last [mark] call, so that sub-match
+    positions reflect the last accepting state. *)
+val backtrack : lexbuf -> int
+
 (** [__private__next_int lexbuf] extracts the next code point from the lexer
-    buffer and increments to current position. If the input stream is exhausted,
-    the function returns -1. If a ['\n'] is encountered, the tracked line number
-    is incremented.
+    buffer and increments the current position. If the input stream is
+    exhausted, the function returns -1. If a ['\n'] is encountered, the tracked
+    line number is incremented.
 
     This is a private API, it should not be used by code using this module's API
     and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
 
-(** [mark lexbuf i] stores the integer [i] in the internal slot. The backtrack
-    position is set to the current position. *)
-val mark : lexbuf -> int -> unit
+(** Tagged DFA memory cells for [as] bindings.
 
-(** [backtrack lexbuf] returns the value stored in the internal slot of the
-    buffer, and performs backtracking (the current position is set to the value
-    of the backtrack position). *)
-val backtrack : lexbuf -> int
+    The following functions manage an internal array of memory cells used to
+    record sub-match positions during DFA execution. Cells store either
+    positions (>= 0) or encoded integer values (<= -2). The sentinel -1 means
+    "unset". Positions are automatically adjusted when the internal buffer is
+    compacted, and converted to token-relative offsets on read by
+    {!__private__mem_pos}.
 
-(** [with_tokenizer tokenizer lexbuf] given a lexer and a lexbuf, returns a
-    generator of tokens annotated with positions. This generator can be used
-    with the Menir parser generator's incremental API. *)
-val with_tokenizer :
-  (lexbuf -> 'token) ->
-  lexbuf ->
-  unit ->
-  'token * Lexing.position * Lexing.position
+    This is a private API used by generated code and may change at any time. *)
+
+(** [__private__init_mem lexbuf n] ensures at least [n] memory cells are
+    available, resetting all cells to -1 (unset). Called once at the start of
+    each [match%sedlex] block that uses [as] bindings. *)
+val __private__init_mem : lexbuf -> int -> unit
+
+(** [__private__set_mem_pos lexbuf i] records the current position in cell [i],
+    for later retrieval by {!__private__mem_pos}. Used by [Set_position] tag
+    operations on DFA transitions. *)
+val __private__set_mem_pos : lexbuf -> int -> unit
+
+(** [__private__set_mem_value lexbuf i v] stores integer [v] in cell [i],
+    encoded as [-(v + 2)] so it is disjoint from positions and the unset
+    sentinel. Used by [Set_value] tag operations for or-pattern discriminators.
+*)
+val __private__set_mem_value : lexbuf -> int -> int -> unit
+
+(** [__private__mem_pos lexbuf i] returns the position stored in cell [i], as an
+    offset relative to the start of the current token. *)
+val __private__mem_pos : lexbuf -> int -> int
+
+(** [__private__mem_value lexbuf i] decodes and returns the integer value stored
+    in cell [i] (reverses the [-(v + 2)] encoding). *)
+val __private__mem_value : lexbuf -> int -> int
+
+(** Returns the current number of allocated memory cells. *)
+val __private__num_mem_cells : lexbuf -> int
 
 (** {6 Support for common encodings} *)
 
@@ -247,6 +300,9 @@ module Latin1 : sig
       throws an exception [InvalidCodepoint] if it is not possible to encode the
       result in Latin1. *)
   val lexeme_char : lexbuf -> int -> char
+
+  (** [of_submatch s] extracts the submatch as a Latin1 encoded string. *)
+  val of_submatch : submatch -> string
 end
 
 module Utf8 : sig
@@ -264,6 +320,9 @@ module Utf8 : sig
 
   (** As [Sedlexing.sub_lexeme] with a result encoded in UTF-8. *)
   val sub_lexeme : lexbuf -> int -> int -> string
+
+  (** [of_submatch s] extracts the submatch as a UTF-8 encoded string. *)
+  val of_submatch : submatch -> string
 
   module Helper : sig
     val width : char -> int
@@ -298,4 +357,8 @@ module Utf16 : sig
       encoded in UTF-16 with byte order [bo] and starting with a BOM if
       [bom=true] *)
   val sub_lexeme : lexbuf -> int -> int -> byte_order -> bool -> string
+
+  (** [of_submatch s bo bom] extracts the submatch as a UTF-16 encoded string
+      with byte order [bo] and starting with a BOM if [bom=true]. *)
+  val of_submatch : submatch -> byte_order -> bool -> string
 end

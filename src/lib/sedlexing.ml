@@ -44,41 +44,57 @@ type lexbuf = {
   refill : Uchar.t array -> int -> int -> int;
   bytes_per_char : Uchar.t -> int;
   mutable buf : Uchar.t array;
+  (* Number of valid uchars in [buf] (from index 0 to len-1). *)
   mutable len : int;
-  (* Number of meaningful uchar in buffer *)
+  (* Cumulative uchar count: number of uchars discarded before buf[0].
+     Absolute uchar position of buf[i] = offset + i. *)
   mutable offset : apos;
-  (* Number of meaningful bytes in buffer *)
+  (* Cumulative byte count: number of bytes discarded before buf[0]. *)
   mutable bytes_offset : apos;
-  (* Position of the first uchar in buffer
-      in the input stream *)
+  (* Current read position in [buf] (buffer-relative index, 0-based). *)
   mutable pos : int;
-  (* Position of the first byte in buffer
-      in the input stream *)
+  (* Current read position in bytes (buffer-relative). *)
   mutable bytes_pos : int;
-  (* Position of the beginning of the line in the buffer, in uchar *)
+  (* Absolute position of the beginning of the current line, in uchar. *)
   mutable curr_bol : int;
-  (* Position of the beginning of the line in the buffer, in bytes *)
+  (* Absolute position of the beginning of the current line, in bytes. *)
   mutable curr_bytes_bol : int;
   (* Index of the current line in the input stream. *)
   mutable curr_line : int;
-  (* starting position, in uchar. *)
+  (* Token start position in [buf], in uchars (buffer-relative). *)
   mutable start_pos : int;
-  (* starting position, in bytes. *)
+  (* Token start position in bytes (buffer-relative). *)
   mutable start_bytes_pos : int;
-  (* First uchar we need to keep visible *)
+  (* Absolute beginning-of-line position at token start, in uchars. *)
   mutable start_bol : int;
-  (* First byte we need to keep visible *)
+  (* Absolute beginning-of-line position at token start, in bytes. *)
   mutable start_bytes_bol : int;
-  (* start from 1 *)
+  (* Line number at token start (starts from 1). *)
   mutable start_line : int;
+  (* Backtrack snapshot: saved by [mark], restored by [backtrack]. *)
   mutable marked_pos : int;
   mutable marked_bytes_pos : int;
   mutable marked_bol : int;
   mutable marked_bytes_bol : int;
   mutable marked_line : int;
+  (* The rule index stored by [mark]. *)
   mutable marked_val : int;
   mutable filename : string;
+  (* True when the input source is exhausted. *)
   mutable finished : bool;
+  (* Memory cells for tagged DFA transitions (as-bindings).
+     A single int array stores both positions and discriminator values,
+     distinguished by range:
+     - positions: buffer-relative uchar indices (>= 0), adjusted by
+       [refill] when the buffer is compacted, and converted to
+       token-relative offsets on read by [__private__mem_pos].
+     - discriminator values: stored as [-(v + 2)], always <= -2,
+       disjoint from positions and the unset sentinel (-1).
+     [mark] snapshots this array into [__private__mem_saved];
+     [backtrack] restores it, so that sub-match positions reflect
+     the last accepting state rather than a later speculative state. *)
+  mutable __private__mem : int array;
+  mutable __private__mem_saved : int array;
 }
 
 let chunk_size = 512
@@ -109,6 +125,8 @@ let empty_lexbuf bytes_per_char =
     marked_val = 0;
     filename = "";
     finished = false;
+    __private__mem = [||];
+    __private__mem_saved = [||];
   }
 
 let dummy_uchar = Uchar.of_int 0
@@ -185,7 +203,19 @@ let refill lexbuf =
     lexbuf.marked_pos <- lexbuf.marked_pos - s;
     lexbuf.marked_bytes_pos <- lexbuf.marked_bytes_pos - s_bytes;
     lexbuf.start_pos <- 0;
-    lexbuf.start_bytes_pos <- 0
+    lexbuf.start_bytes_pos <- 0;
+    (* Adjust tagged DFA memory cells: position cells (>= 0) are
+       buffer-relative uchar indices and must be shifted by [s] after
+       compaction. Value cells (<= -2) and unset cells (-1) are left
+       unchanged. *)
+    for i = 0 to Array.length lexbuf.__private__mem - 1 do
+      if lexbuf.__private__mem.(i) >= 0 then
+        lexbuf.__private__mem.(i) <- lexbuf.__private__mem.(i) - s
+    done;
+    for i = 0 to Array.length lexbuf.__private__mem_saved - 1 do
+      if lexbuf.__private__mem_saved.(i) >= 0 then
+        lexbuf.__private__mem_saved.(i) <- lexbuf.__private__mem_saved.(i) - s
+    done
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
   if n = 0 then lexbuf.finished <- true else lexbuf.len <- lexbuf.len + n
@@ -215,7 +245,11 @@ let mark lexbuf i =
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
-  lexbuf.marked_val <- i
+  lexbuf.marked_val <- i;
+  (* Snapshot tagged DFA memory cells so backtrack can restore them. *)
+  let n = Array.length lexbuf.__private__mem in
+  if n > 0 then
+    Array.blit lexbuf.__private__mem 0 lexbuf.__private__mem_saved 0 n
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
@@ -231,6 +265,11 @@ let backtrack lexbuf =
   lexbuf.curr_bol <- lexbuf.marked_bol;
   lexbuf.curr_bytes_bol <- lexbuf.marked_bytes_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
+  (* Restore tagged DFA memory cells to the snapshot taken at the last
+     accepting state, so sub-match positions are correct after backtracking. *)
+  let n = Array.length lexbuf.__private__mem in
+  if n > 0 then
+    Array.blit lexbuf.__private__mem_saved 0 lexbuf.__private__mem 0 n;
   lexbuf.marked_val
 
 let rollback lexbuf =
@@ -240,6 +279,37 @@ let rollback lexbuf =
   lexbuf.curr_bytes_bol <- lexbuf.start_bytes_bol;
   lexbuf.curr_line <- lexbuf.start_line
 
+(* Tagged DFA memory cells for `as` bindings.
+   Positions are stored as buffer-relative uchar indices (>= 0), converted
+   to token-relative offsets on read by [__private__mem_pos]. Discriminator
+   values are stored as -(v + 2), always <= -2. The sentinel -1 means
+   "unset". This range convention lets [refill] adjust only position
+   cells (>= 0) when compacting the buffer. *)
+
+let __private__init_mem lexbuf n =
+  (* Reuse existing arrays if large enough; otherwise allocate fresh ones.
+     Both mem and mem_saved are reset to -1 (unset). *)
+  if Array.length lexbuf.__private__mem < n then begin
+    lexbuf.__private__mem <- Array.make n (-1);
+    lexbuf.__private__mem_saved <- Array.make n (-1)
+  end
+  else begin
+    Array.fill lexbuf.__private__mem 0 n (-1);
+    Array.fill lexbuf.__private__mem_saved 0 n (-1)
+  end
+
+let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
+
+let __private__set_mem_value lexbuf i v =
+  assert (v >= 0);
+  lexbuf.__private__mem.(i) <- -(v + 2)
+
+(* Returns position relative to token start, for use in sub_lexeme. *)
+let __private__mem_pos lexbuf i = lexbuf.__private__mem.(i) - lexbuf.start_pos
+
+(* Decodes the -(v + 2) encoding back to the original integer value. *)
+let __private__mem_value lexbuf i = -(lexbuf.__private__mem.(i) + 2)
+let __private__num_mem_cells lexbuf = Array.length lexbuf.__private__mem
 let lexeme_start lexbuf = lexbuf.start_pos + lexbuf.offset
 let lexeme_bytes_start lexbuf = lexbuf.start_bytes_pos + lexbuf.bytes_offset
 let lexeme_end lexbuf = lexbuf.pos + lexbuf.offset
@@ -255,6 +325,10 @@ let lexeme_bytes_length lexbuf = lexbuf.bytes_pos - lexbuf.start_bytes_pos
 
 let sub_lexeme lexbuf pos len =
   Array.sub lexbuf.buf (lexbuf.start_pos + pos) len
+
+type submatch = { lexbuf : lexbuf; pos : int; len : int }
+
+let lexeme_of_submatch s = sub_lexeme s.lexbuf s.pos s.len
 
 let lexeme lexbuf =
   Array.sub lexbuf.buf lexbuf.start_pos (lexbuf.pos - lexbuf.start_pos)
@@ -423,6 +497,7 @@ module Latin1 = struct
     Bytes.to_string s
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
+  let of_submatch s = sub_lexeme s.lexbuf s.pos s.len
 end
 
 module Utf8 = struct
@@ -561,6 +636,7 @@ module Utf8 = struct
     Buffer.contents buf
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
+  let of_submatch s = sub_lexeme s.lexbuf s.pos s.len
 end
 
 module Utf16 = struct
@@ -659,4 +735,5 @@ module Utf16 = struct
     Buffer.contents buf
 
   let lexeme lb bo bom = sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
+  let of_submatch s bo bom = sub_lexeme s.lexbuf s.pos s.len bo bom
 end
