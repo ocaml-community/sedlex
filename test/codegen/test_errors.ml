@@ -255,12 +255,7 @@ let%expect_test "error: missing catch-all" =
 let%expect_test "error: when guard" =
   [%compile_error [%sedlex match buf with 'a' when true -> () | _ -> ()]];
   [%expect
-    {|
-    File "test/codegen/test_errors.ml", characters 51-55:
-        |   [%compile_error [%sedlex match buf with 'a' when true -> () | _ -> ()]];
-                                                             ^^^^
-    Error: Sedlex: 'when' guards are not supported
-    |}]
+    {| NO ERROR |}]
 
 let%expect_test "error: matched expression must be a single identifier" =
   [%compile_error [%sedlex match foo bar with 'a' -> () | _ -> ()]];

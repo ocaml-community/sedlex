@@ -1592,3 +1592,271 @@ let%expect_test "as binding: or-chain then nested or on right" =
         ignore (x, y)
     | _ -> ()
     |}]
+
+let cond = true
+let check_x (_x : Sedlexing.submatch) = true
+
+let%expect_test "when guard: single rule" =
+  (match%sedlex_test buf with 'a' when cond -> () | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1\n[rule 0]", shape=doublecircle];
+    }
+    CODE:
+    let __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> if cond then 0 else Sedlexing.backtrack buf
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf; __sedlex_state_0 buf with | 0 -> () | _ -> ()
+    |}]
+
+let%expect_test "when guard: overlapping rules" =
+  (match%sedlex_test buf with
+    | "ab" when cond -> ()
+    | "ab" -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1"];
+      state1 -> state2 [label="'b'"];
+      state2 [label="2\n[rule 0,1]", shape=doublecircle];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> if cond then 0 else 1
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf; __sedlex_state_0 buf with
+    | 0 -> ()
+    | 1 -> ()
+    | _ -> ()
+    |}]
+
+let%expect_test "when guard: shared accepting state" =
+  (match%sedlex_test buf with
+    | 'a' .. 'z' when cond -> ()
+    | 'a' .. 'z' -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'-'z'"];
+      state1 [label="1\n[rule 0,1]", shape=doublecircle];
+    }
+    CODE:
+    let __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> if cond then 0 else 1
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf; __sedlex_state_0 buf with
+    | 0 -> ()
+    | 1 -> ()
+    | _ -> ()
+    |}]
+
+let%expect_test "when guard: with mark" =
+  (match%sedlex_test buf with
+    | Plus 'a' .. 'z' when cond -> ()
+    | Plus 'a' .. 'z' -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'-'z'"];
+      state1 [label="1\n[rule 0,1]", shape=doublecircle];
+      state1 -> state1 [label="'a'-'z'"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      if cond then Sedlexing.mark buf 0 else Sedlexing.mark buf 1;
+      (match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_1 buf
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf; __sedlex_state_0 buf with
+    | 0 -> ()
+    | 1 -> ()
+    | _ -> ()
+    |}]
+
+let%expect_test "when guard: unguarded rule between guarded rules" =
+  (match%sedlex_test buf with
+    | 'a' .. 'z' when cond -> ()
+    | 'a' .. 'z' -> ()
+    | 'a' .. 'z' when cond -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'-'z'"];
+      state1 [label="1\n[rule 0,1,2]", shape=doublecircle];
+    }
+    CODE:
+    let __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> if cond then 0 else 1
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf; __sedlex_state_0 buf with
+    | 0 -> ()
+    | 1 -> ()
+    | 2 -> ()
+    | _ -> ()
+    |}]
+
+let%expect_test "when guard: with as binding" =
+  (match%sedlex_test buf with
+    | ('a', ('b' as x), 'c') when check_x x -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a' {t0}"];
+      state1 [label="1"];
+      state1 -> state2 [label="'b' {t1}"];
+      state2 [label="2"];
+      state2 -> state3 [label="'c'"];
+      state3 [label="3\n[rule 0]", shape=doublecircle];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_2 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+      | 0 ->
+          if
+            let x =
+              let __s = Sedlexing.__private__mem_pos buf 0 in
+              let __e = Sedlexing.__private__mem_pos buf 1 in
+              { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+            check_x x
+          then 0
+          else Sedlexing.backtrack buf
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 2;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let x =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ()
+    | _ -> ()
+    |}]
+
+let%expect_test "when guard: as binding with fallthrough" =
+  (match%sedlex_test buf with
+    | ('a', ('b' as x), 'c') when check_x x -> ignore x
+    | "abc" -> ()
+    | _ -> ());
+  [%expect {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a' {t0}"];
+      state1 [label="1"];
+      state1 -> state2 [label="'b' {t1}"];
+      state2 [label="2"];
+      state2 -> state3 [label="'c'"];
+      state3 [label="3\n[rule 0,1]", shape=doublecircle];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_2 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+      | 0 ->
+          if
+            let x =
+              let __s = Sedlexing.__private__mem_pos buf 0 in
+              let __e = Sedlexing.__private__mem_pos buf 1 in
+              { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+            check_x x
+          then 0
+          else 1
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 2;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let x =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore x
+    | 1 -> ()
+    | _ -> ()
+    |}]

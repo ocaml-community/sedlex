@@ -216,29 +216,16 @@ let partition (name, p) =
 
 (* Code generation for the automata *)
 
-(* [best_final finals] returns the lowest-numbered accepting rule for this
-   state, or [None] if the state is not accepting. Lowest-numbered = highest
-   priority, matching the first-match semantics of [match%sedlex]. *)
-let best_final final =
-  let fin = ref None in
-  for i = Array.length final - 1 downto 0 do
-    if final.(i) then fin := Some i
+(* [accepting_rules finals] returns the list of rule indices that accept at
+   this state, in priority order (lowest index first). *)
+let accepting_rules finals =
+  let acc = ref [] in
+  for i = Array.length finals - 1 downto 0 do
+    if finals.(i) then acc := i :: !acc
   done;
-  !fin
+  !acc
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
-
-(* [call_state lexbuf auto state] generates the expression that transitions
-   into DFA [state]. If the state has no outgoing transitions (a sink), it
-   returns the accepting rule index directly; otherwise it emits a function
-   call to the generated state function. *)
-let call_state lexbuf (auto : Sedlex.dfa) state =
-  let { Sedlex.trans; finals } = auto.(state) in
-  if Array.length trans = 0 then (
-    match best_final finals with
-      | Some i -> eint ~loc:default_loc i
-      | None -> assert false)
-  else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
    operation calls. Each [Set_position t] becomes a call to
@@ -260,112 +247,6 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
                 [%e eint ~loc value];
               [%e acc]])
     ops cont
-
-(* [gen_state (lexbuf_name, lexbuf) auto i {trans; finals}] generates the
-   function [__sedlex_state_N] for DFA state [i]. The function:
-   1. If the state is accepting, calls [mark] to save the current position.
-   2. Reads the next code point, maps it through the partition function to
-      get an equivalence class index, then pattern-matches on that index.
-   3. Each transition arm executes its tag operations then calls the target
-      state function (or returns the rule index for sink states).
-   4. The default arm calls [backtrack] to return the last accepted rule.
-   Returns [] for accepting states with no outgoing transitions (sinks). *)
-let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
-    { Sedlex.trans; finals } =
-  let loc = default_loc in
-  let partition = Array.map (fun (cs, _, _) -> cs) trans in
-  let cases =
-    Array.mapi
-      (fun i (_, j, tags) ->
-        let rhs = gen_tag_ops lexbuf tags (call_state lexbuf auto j) in
-        case ~lhs:(pint ~loc i) ~guard:None ~rhs)
-      trans
-  in
-  let cases = Array.to_list cases in
-  let body () =
-    pexp_match ~loc
-      (appfun (partition_name partition)
-         [[%expr Sedlexing.__private__next_int [%e lexbuf]]])
-      (cases
-      @ [
-          case
-            ~lhs:[%pat? _]
-            ~guard:None
-            ~rhs:[%expr Sedlexing.backtrack [%e lexbuf]];
-        ])
-  in
-  let ret body =
-    let lhs = pvar ~loc:lexbuf.pexp_loc lexbuf_name in
-    [
-      value_binding ~loc
-        ~pat:(pvar ~loc (state_fun i))
-        ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
-    ]
-  in
-  match best_final finals with
-    | None -> ret (body ())
-    | Some _ when Array.length trans = 0 -> []
-    | Some i ->
-        ret
-          [%expr
-            Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
-            [%e body ()]]
-
-(* [gen_recflag auto] determines whether the generated state functions need
-   [let rec]. If every transition leads to a sink state (no further
-   transitions), the functions are non-recursive; otherwise they are
-   mutually recursive. *)
-let gen_recflag (auto : Sedlex.dfa) =
-  (* The generated function is not recursive if the transitions end
-     in states with no further transitions. *)
-  try
-    Array.iter
-      (fun { Sedlex.trans; _ } ->
-        Array.iter
-          (fun (_, j, _) ->
-            if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
-          trans)
-      auto;
-    Nonrecursive
-  with Exit -> Recursive
-
-(* [gen_definition lexbuf_with_name compiled cases error] generates the
-   complete lexer expression for one [match%sedlex] block:
-   - Defines all [__sedlex_state_N] functions via [let rec ... in].
-   - Emits a start sequence: [start lexbuf], then (if the pattern has [as]
-     bindings) [init_mem] + initial tag operations, then calls state 0.
-   - Wraps the result in a [match] on the returned rule index, dispatching
-     to user-provided right-hand-side expressions, with [error] as default. *)
-let gen_definition ((_, lexbuf) as lexbuf_with_name)
-    (compiled : Sedlex.compiled) l error =
-  let loc = default_loc in
-  let auto = compiled.dfa in
-  let cases =
-    List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
-  in
-  let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
-  let states = List.flatten (Array.to_list states) in
-  let start_expr =
-    if compiled.num_tags > 0 then (
-      let init_mem =
-        [%expr
-          Sedlexing.__private__init_mem [%e lexbuf]
-            [%e eint ~loc compiled.num_tags]]
-      in
-      let set_init_tags =
-        gen_tag_ops lexbuf compiled.init_tags (appfun (state_fun 0) [lexbuf])
-      in
-      pexp_sequence ~loc
-        [%expr Sedlexing.start [%e lexbuf]]
-        (pexp_sequence ~loc init_mem set_init_tags))
-    else
-      pexp_sequence ~loc
-        [%expr Sedlexing.start [%e lexbuf]]
-        (appfun (state_fun 0) [lexbuf])
-  in
-  pexp_let ~loc (gen_recflag auto) states
-    (pexp_match ~loc start_expr
-       (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))
 
 (* Lexer specification parser *)
 
@@ -523,6 +404,155 @@ let gen_binding_code lexbuf (tag_info : tag_info list) action =
                 let [%p pvar ~loc name] = [%e gen_checks entries] in
                 [%e acc]])
       by_name action)
+
+(* [gen_accept_chain lexbuf guards tag_infos rules ~accepted ~rejected]
+   generates a nested if-then-else that tests guards in priority order.
+   [accepted i] is called for the first rule whose guard passes; [rejected]
+   is the fallback when all guards fail. Rules without guards are
+   unconditional. When a guarded rule has [as] bindings, the guard is
+   wrapped with [let] bindings that extract sub-match values from the
+   lexbuf's memory cells, making them available to the guard expression. *)
+let gen_accept_chain lexbuf guards tag_infos rules ~accepted ~rejected =
+  let loc = default_loc in
+  List.fold_right
+    (fun i rest ->
+      match guards.(i) with
+        | None -> accepted i
+        | Some g ->
+            let g = gen_binding_code lexbuf tag_infos.(i) g in
+            [%expr if [%e g] then [%e accepted i] else [%e rest]])
+    rules rejected
+
+(* [call_state lexbuf guards tag_infos auto state] generates the expression
+   that transitions into DFA [state]. If the state has no outgoing transitions
+   (a sink), it tests guards in priority order, returning the rule index or
+   falling back to [backtrack]; otherwise it emits a function call to the
+   generated state function. *)
+let call_state lexbuf guards tag_infos (auto : Sedlex.dfa) state =
+  let loc = default_loc in
+  let { Sedlex.trans; finals } = auto.(state) in
+  if Array.length trans = 0 then (
+    match accepting_rules finals with
+      | [] -> assert false
+      | rules ->
+          gen_accept_chain lexbuf guards tag_infos rules
+            ~accepted:(fun i -> eint ~loc i)
+            ~rejected:[%expr Sedlexing.backtrack [%e lexbuf]])
+  else appfun (state_fun state) [lexbuf]
+
+(* [gen_state (lexbuf_name, lexbuf) guards tag_infos auto i {trans; finals}]
+   generates the function [__sedlex_state_N] for DFA state [i]. The function:
+   1. If the state is accepting, tests guards in priority order and calls
+      [mark] to save the position for the first rule whose guard passes.
+   2. Reads the next code point, maps it through the partition function to
+      get an equivalence class index, then pattern-matches on that index.
+   3. Each transition arm executes its tag operations then calls the target
+      state function (or returns the rule index for sink states).
+   4. The default arm calls [backtrack] to return the last accepted rule.
+   Returns [] for accepting states with no outgoing transitions (sinks). *)
+let gen_state (lexbuf_name, lexbuf) guards tag_infos (auto : Sedlex.dfa) i
+    { Sedlex.trans; finals } =
+  let loc = default_loc in
+  let partition = Array.map (fun (cs, _, _) -> cs) trans in
+  let cases =
+    Array.mapi
+      (fun i (_, j, tags) ->
+        let rhs =
+          gen_tag_ops lexbuf tags (call_state lexbuf guards tag_infos auto j)
+        in
+        case ~lhs:(pint ~loc i) ~guard:None ~rhs)
+      trans
+  in
+  let cases = Array.to_list cases in
+  let body () =
+    pexp_match ~loc
+      (appfun (partition_name partition)
+         [[%expr Sedlexing.__private__next_int [%e lexbuf]]])
+      (cases
+      @ [
+          case
+            ~lhs:[%pat? _]
+            ~guard:None
+            ~rhs:[%expr Sedlexing.backtrack [%e lexbuf]];
+        ])
+  in
+  let ret body =
+    let lhs = pvar ~loc:lexbuf.pexp_loc lexbuf_name in
+    [
+      value_binding ~loc
+        ~pat:(pvar ~loc (state_fun i))
+        ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
+    ]
+  in
+  match accepting_rules finals with
+    | [] -> ret (body ())
+    | _ when Array.length trans = 0 -> []
+    | rules ->
+        ret
+          [%expr
+            [%e gen_accept_chain lexbuf guards tag_infos rules
+                  ~accepted:(fun i ->
+                    [%expr Sedlexing.mark [%e lexbuf] [%e eint ~loc i]])
+                  ~rejected:[%expr ()]];
+            [%e body ()]]
+
+(* [gen_recflag auto] determines whether the generated state functions need
+   [let rec]. If every transition leads to a sink state (no further
+   transitions), the functions are non-recursive; otherwise they are
+   mutually recursive. *)
+let gen_recflag (auto : Sedlex.dfa) =
+  (* The generated function is not recursive if the transitions end
+     in states with no further transitions. *)
+  try
+    Array.iter
+      (fun { Sedlex.trans; _ } ->
+        Array.iter
+          (fun (_, j, _) ->
+            if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
+          trans)
+      auto;
+    Nonrecursive
+  with Exit -> Recursive
+
+(* [gen_definition lexbuf_with_name compiled guards tag_infos cases error]
+   generates the complete lexer expression for one [match%sedlex] block:
+   - Defines all [__sedlex_state_N] functions via [let rec ... in].
+   - Emits a start sequence: [start lexbuf], then (if the pattern has [as]
+     bindings) [init_mem] + initial tag operations, then calls state 0.
+   - Wraps the result in a [match] on the returned rule index, dispatching
+     to user-provided right-hand-side expressions, with [error] as default. *)
+let gen_definition ((_, lexbuf) as lexbuf_with_name)
+    (compiled : Sedlex.compiled) guards tag_infos l error =
+  let loc = default_loc in
+  let auto = compiled.dfa in
+  let cases =
+    List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
+  in
+  let states =
+    Array.mapi (gen_state lexbuf_with_name guards tag_infos auto) auto
+  in
+  let states = List.flatten (Array.to_list states) in
+  let start_expr =
+    if compiled.num_tags > 0 then (
+      let init_mem =
+        [%expr
+          Sedlexing.__private__init_mem [%e lexbuf]
+            [%e eint ~loc compiled.num_tags]]
+      in
+      let set_init_tags =
+        gen_tag_ops lexbuf compiled.init_tags (appfun (state_fun 0) [lexbuf])
+      in
+      pexp_sequence ~loc
+        [%expr Sedlexing.start [%e lexbuf]]
+        (pexp_sequence ~loc init_mem set_init_tags))
+    else
+      pexp_sequence ~loc
+        [%expr Sedlexing.start [%e lexbuf]]
+        (appfun (state_fun 0) [lexbuf])
+  in
+  pexp_let ~loc (gen_recflag auto) states
+    (pexp_match ~loc start_expr
+       (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))
 
 (* [regexp_of_pattern env pattern] parses an OCaml pattern AST into a
    [Sedlex.regexp] and a [tag_info list] for any [as] bindings encountered.
@@ -769,27 +799,32 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
   Sedlex.reset_tags ();
   let cases_parsed =
     List.map
-      (function
-        | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-            let regexp, tag_info = regexp_of_pattern env p in
-            (regexp, tag_info, e)
-        | { pc_guard = Some e; _ } ->
-            err e.pexp_loc "'when' guards are not supported")
+      (fun { pc_lhs = p; pc_rhs = e; pc_guard } ->
+        let regexp, tag_info = regexp_of_pattern env p in
+        (regexp, tag_info, pc_guard, e))
       cases
   in
   let compiled =
-    Sedlex.compile (Array.of_list (List.map (fun (r, _, _) -> r) cases_parsed))
+    Sedlex.compile
+      (Array.of_list (List.map (fun (r, _, _, _) -> r) cases_parsed))
   in
   (* map_rhs is called after compile so that nested match%sedlex blocks
      (which call reset_tags) cannot corrupt the outer tag counter. *)
+  let guards =
+    Array.of_list
+      (List.map (fun (_, _, g, _) -> Option.map map_rhs g) cases_parsed)
+  in
+  let tag_infos =
+    Array.of_list (List.map (fun (_, ti, _, _) -> ti) cases_parsed)
+  in
   let cases =
     List.map
-      (fun (_, tag_info, e) ->
+      (fun (_, tag_info, _, e) ->
         let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
         ((), action))
       cases_parsed
   in
-  (gen_definition lexbuf compiled cases error, compiled.dfa)
+  (gen_definition lexbuf compiled guards tag_infos cases error, compiled.dfa)
 
 let handle_sedlex_match match_expr =
   handle_sedlex_match_ ~env:builtin_regexps ~map_rhs:Fun.id match_expr

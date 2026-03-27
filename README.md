@@ -67,8 +67,7 @@ or:
   ]
 ```
 
-(The first vertical bar is optional as in any OCaml pattern matching.
-Guard expressions are not allowed.)
+(The first vertical bar is optional as in any OCaml pattern matching.)
 
 where:
 - lexbuf is an arbitrary lowercase identifier, which must refer to
@@ -184,6 +183,37 @@ match%sedlex buf with
 
 **Restriction:** `as` bindings are not allowed inside repetition operators
 (`Star`, `Plus`, `Opt`, `Rep`) or set operators (`Compl`, `Sub`, `Intersect`).
+
+### Guard expressions (`when` clauses)
+
+Rules can include `when` guards, just like normal OCaml pattern matching:
+
+```ocaml
+match%sedlex buf with
+| Plus ('0'..'9') when int_of_string (Sedlexing.Utf8.lexeme buf) < 256 ->
+    Printf.printf "byte: %s\n" (Sedlexing.Utf8.lexeme buf)
+| Plus ('0'..'9') ->
+    Printf.printf "large number: %s\n" (Sedlexing.Utf8.lexeme buf)
+| _ -> ()
+```
+
+When a guard returns `false`, the next rule that matches the same input is
+tried. If no further rule matches, the lexer backtracks to the last
+accepted position as usual.
+
+Guards can reference `as`-bound variables:
+
+```ocaml
+match%sedlex buf with
+| (Plus ('0'..'9') as n) when int_of_string (Sedlexing.Utf8.of_submatch n) < 256 ->
+    Printf.printf "byte: %s\n" (Sedlexing.Utf8.of_submatch n)
+| _ -> ()
+```
+
+**Note:** Guards are evaluated at each DFA accepting state during lexing, not
+after the final match. This means a guard may be evaluated multiple times for
+rules inside repetition (e.g. `Plus`). Guard expressions should be
+side-effect-free.
 
 ### Encoding
 
