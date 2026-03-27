@@ -17,12 +17,19 @@
 
    2. Tags for `as` bindings (Laurikari-style)
       NFA nodes may carry a tag operation (Set_position or Set_value).
-      [bind] wraps a sub-regexp with start/end tagged epsilon nodes so the
-      DFA can record sub-match positions at runtime. When the PPX can
-      compute one boundary from a known offset (see [pos_expr] in
+      [bind] wraps a sub-regexp with start/end tagged epsilon
+      nodes so the DFA can record sub-match positions at runtime. When the
+      PPX can compute one boundary from a known offset (see [pos_expr] in
       ppx_sedlex.ml), [bind_start_only] or [bind_end_only] is used instead,
       saving a memory cell. Discriminator tags (Set_value) disambiguate
       or-patterns where multiple branches bind the same name.
+
+      After determinization, [compile] applies the self-loop tag delay
+      optimization: when a Set_position tag appears on both a self-loop
+      and all entering transitions to a state, it is removed from those
+      transitions and replaced by Set_position with offset 1 on exit
+      transitions. This
+      avoids writing to the memory cell on every loop iteration.
 
    3. Determinization (compile)
       Classic subset construction, extended to handle tags (Laurikari, NFAs
@@ -54,10 +61,6 @@
    -----------------------------------------
 
    Tag optimizations for `as` bindings:
-   - Self-loop tag delay: tags on self-loops that also appear on all
-     entering transitions can be removed from those transitions and emitted
-     as a "set previous position" on exit. This turns O(n) tag writes in
-     loops (e.g. Star) into O(1) on exit.
    - Intra-rule tag coalescing: tags with identical occurrence signatures
      (same presence in init_tags and same set of transitions) can share a
      single memory cell.
@@ -74,7 +77,9 @@ module Cset = Sedlex_cset
 
 (* NFA *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op =
+  | Set_position of { cell : int; offset : int }
+  | Set_value of int * int
 
 type node = {
   id : int;  (** Unique identifier, used for sorting transitions by target. *)
@@ -165,10 +170,14 @@ let bind r =
   let start_tag = new_tag () in
   let end_tag = new_tag () in
   let wrapped succ =
-    let end_node = new_tagged_node (Set_position end_tag) in
+    let end_node =
+      new_tagged_node (Set_position { cell = end_tag; offset = 0 })
+    in
     end_node.eps <- [succ];
     let inner = r end_node in
-    let start_node = new_tagged_node (Set_position start_tag) in
+    let start_node =
+      new_tagged_node (Set_position { cell = start_tag; offset = 0 })
+    in
     start_node.eps <- [inner];
     start_node
   in
@@ -178,7 +187,9 @@ let bind_start_only r =
   let start_tag = new_tag () in
   let wrapped succ =
     let inner = r succ in
-    let start_node = new_tagged_node (Set_position start_tag) in
+    let start_node =
+      new_tagged_node (Set_position { cell = start_tag; offset = 0 })
+    in
     start_node.eps <- [inner];
     start_node
   in
@@ -187,7 +198,9 @@ let bind_start_only r =
 let bind_end_only r =
   let end_tag = new_tag () in
   let wrapped succ =
-    let end_node = new_tagged_node (Set_position end_tag) in
+    let end_node =
+      new_tagged_node (Set_position { cell = end_tag; offset = 0 })
+    in
     end_node.eps <- [succ];
     r end_node
   in
@@ -300,6 +313,209 @@ type dfa_state = {
 type dfa = dfa_state array
 type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
 
+(* [compute_sccs num_states raw_dfa] computes strongly connected components
+   using Tarjan's algorithm. Returns [(scc_id, scc_count)] where
+   [scc_id.(s)] is the SCC index for state [s]. *)
+let compute_sccs num_states raw_dfa =
+  let scc_id = Array.make num_states (-1) in
+  let scc_count = ref 0 in
+  let index = Array.make num_states (-1) in
+  let lowlink = Array.make num_states 0 in
+  let on_stack = Array.make num_states false in
+  let stack = ref [] in
+  let idx = ref 0 in
+  let rec strongconnect v =
+    index.(v) <- !idx;
+    lowlink.(v) <- !idx;
+    incr idx;
+    stack := v :: !stack;
+    on_stack.(v) <- true;
+    let trans, _ = raw_dfa.(v) in
+    Array.iter
+      (fun (_, w, _) ->
+        if index.(w) = -1 then (
+          strongconnect w;
+          lowlink.(v) <- min lowlink.(v) lowlink.(w))
+        else if on_stack.(w) then lowlink.(v) <- min lowlink.(v) index.(w))
+      trans;
+    if lowlink.(v) = index.(v) then (
+      let id = !scc_count in
+      incr scc_count;
+      let rec pop () =
+        match !stack with
+          | w :: rest ->
+              stack := rest;
+              on_stack.(w) <- false;
+              scc_id.(w) <- id;
+              if w <> v then pop ()
+          | [] -> assert false
+      in
+      pop ())
+  in
+  for v = 0 to num_states - 1 do
+    if index.(v) = -1 then strongconnect v
+  done;
+  (scc_id, !scc_count)
+
+(* [find_delayable_tags num_states num_rules raw_dfa tag_to_rule]
+   identifies Set_position tags that can be delayed from cycle bodies
+   to cycle exits.
+
+   A tag [t] is delayable at state [s] when:
+   1. [s] is part of a cycle (SCC with ≥ 2 states, or a self-loop),
+   2. [s] has at least one transition leaving the SCC,
+   3. [s] is not reachable without [Set_position t] firing
+      (every transition entering [s] carries it), and
+   4. every transition leaving the SCC from a state other than [s]
+      leads only to states from which [tag_to_rule.(t)] is unreachable.
+
+   Returns [(delayed_at, scc_id)] where [delayed_at.(s)] is the list of
+   delayable tags at state [s]. *)
+let find_delayable_tags num_states num_rules raw_dfa tag_to_rule =
+  let scc_id, scc_count = compute_sccs num_states raw_dfa in
+  let scc_size = Array.make scc_count 0 in
+  Array.iter (fun id -> scc_size.(id) <- scc_size.(id) + 1) scc_id;
+  let has_self_loop =
+    Array.init num_states (fun s ->
+        let trans, _ = raw_dfa.(s) in
+        Array.exists (fun (_, target, _) -> target = s) trans)
+  in
+  let in_cycle s = scc_size.(scc_id.(s)) >= 2 || has_self_loop.(s) in
+  let has_exit s =
+    let trans, _ = raw_dfa.(s) in
+    Array.exists (fun (_, target, _) -> scc_id.(target) <> scc_id.(s)) trans
+  in
+  (* [reachable.(s).(r)] is true if some accepting state for rule [r]
+     is reachable from state [s] via transitions. *)
+  let reachable =
+    Array.init num_states (fun s ->
+        let _, finals = raw_dfa.(s) in
+        Array.copy finals)
+  in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    for s = 0 to num_states - 1 do
+      let trans, _ = raw_dfa.(s) in
+      Array.iter
+        (fun (_, target, _) ->
+          for r = 0 to num_rules - 1 do
+            if reachable.(target).(r) && not reachable.(s).(r) then (
+              reachable.(s).(r) <- true;
+              changed := true)
+          done)
+        trans
+    done
+  done;
+  (* For each state in a cycle that has exits, find Set_position tags
+     on every entering transition, then keep only those whose owning
+     rule is unreachable from non-[s] exits of the SCC. *)
+  let delayed_at = Array.make num_states [] in
+  for s = 0 to num_states - 1 do
+    if in_cycle s && has_exit s then (
+      let entering = ref [] in
+      for s' = 0 to num_states - 1 do
+        let trans', _ = raw_dfa.(s') in
+        Array.iter
+          (fun (_, target, tags) ->
+            if target = s then entering := tags :: !entering)
+          trans'
+      done;
+      let candidates =
+        match !entering with
+          | [] -> []
+          | first :: rest ->
+              List.filter
+                (fun t ->
+                  match t with
+                    | Set_position { offset = 0; _ } ->
+                        List.for_all (List.mem t) rest
+                    | _ -> false)
+                first
+      in
+      let scc = scc_id.(s) in
+      delayed_at.(s) <-
+        List.filter
+          (fun t ->
+            match t with
+              | Set_position { cell; _ } ->
+                  let rule = tag_to_rule.(cell) in
+                  let dominated = ref true in
+                  for s' = 0 to num_states - 1 do
+                    if s' <> s && scc_id.(s') = scc then (
+                      let trans', _ = raw_dfa.(s') in
+                      Array.iter
+                        (fun (_, target, _) ->
+                          if scc_id.(target) <> scc && reachable.(target).(rule)
+                          then dominated := false)
+                        trans')
+                  done;
+                  !dominated
+              | _ -> false)
+          candidates)
+  done;
+  (delayed_at, scc_id)
+
+(* [apply_tag_delay raw_dfa delayed_at scc_id] rewrites the DFA:
+   - removes delayed tags from transitions entering each state, and
+   - emits [Set_position] with offset 1 on transitions leaving the cycle.
+
+   Offset 1 records the position of the previous code point, which is
+   exactly the value the original [Set_position] would have had on the
+   last iteration.
+   This turns O(n) tag writes per loop into O(1) on exit. *)
+let apply_tag_delay raw_dfa delayed_at scc_id =
+  Array.mapi
+    (fun s (trans, finals) ->
+      let trans =
+        Array.map
+          (fun (cs, target, tags) ->
+            let tags =
+              List.filter (fun t -> not (List.mem t delayed_at.(target))) tags
+            in
+            let delayed_ops =
+              if delayed_at.(s) <> [] && scc_id.(target) <> scc_id.(s) then
+                List.filter_map
+                  (fun op ->
+                    match op with
+                      | Set_position { cell; _ } ->
+                          Some (Set_position { cell; offset = 1 })
+                      | _ -> None)
+                  delayed_at.(s)
+              else []
+            in
+            (cs, target, tags @ delayed_ops))
+          trans
+      in
+      { trans; finals })
+    raw_dfa
+
+let tag_cell = function
+  | Set_position { cell; _ } -> cell
+  | Set_value (cell, _) -> cell
+
+(* [tag_owners num_tags rs] maps each tag cell to the rule that owns it.
+   Walks the NFA of each rule to discover which tags it created.
+   Returns an array where [result.(t)] is the rule index for tag [t],
+   or -1 if the tag was not found in any rule's NFA. *)
+let tag_owners num_tags rs =
+  let tag_to_rule = Array.make num_tags (-1) in
+  Array.iteri
+    (fun r (start, _) ->
+      let visited = Hashtbl.create 31 in
+      let rec visit node =
+        if not (Hashtbl.mem visited node.id) then (
+          Hashtbl.add visited node.id ();
+          (match node.tag with
+            | Some op -> tag_to_rule.(tag_cell op) <- r
+            | None -> ());
+          List.iter visit node.eps;
+          List.iter (fun (_, n) -> visit n) node.trans)
+      in
+      visit start)
+    rs;
+  tag_to_rule
+
 (* [compile rs] determinizes the NFA for an array of regexp rules.
    Each rule is compiled to an NFA (entry node, final node) pair. The initial
    DFA state is the epsilon closure of all entry nodes. States are explored
@@ -307,7 +523,9 @@ type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
    (physical identity). Returns a {compiled} record with the DFA, initial
    tag operations, and total number of memory cells needed. *)
 let compile rs =
+  let num_rules = Array.length rs in
   let rs = Array.map compile_re rs in
+  let num_tags_raw = !cur_tag in
   let counter = ref 0 in
   let states = Hashtbl.create 31 in
   let states_def = Hashtbl.create 31 in
@@ -320,7 +538,7 @@ let compile rs =
       let trans = transition state in
       let trans = Array.map (fun (p, t, tags) -> (p, aux t, tags)) trans in
       let finals = Array.map (fun (_, f) -> List.memq f state) rs in
-      Hashtbl.add states_def i { trans; finals };
+      Hashtbl.add states_def i (trans, finals);
       i
   in
   let init = ref ([], []) in
@@ -328,11 +546,26 @@ let compile rs =
   let init_state, init_tags = !init in
   let i = aux init_state in
   assert (i = 0);
-  {
-    dfa = Array.init !counter (Hashtbl.find states_def);
-    init_tags = dedup_tags init_tags;
-    num_tags = !cur_tag;
-  }
+  let num_states = !counter in
+  let raw_dfa = Array.init num_states (Hashtbl.find states_def) in
+  if num_tags_raw = 0 then (
+    let dfa =
+      Array.map
+        (fun (trans, finals) ->
+          {
+            trans = Array.map (fun (cs, target, _) -> (cs, target, [])) trans;
+            finals;
+          })
+        raw_dfa
+    in
+    { dfa; init_tags = []; num_tags = 0 })
+  else
+    let tag_to_rule = tag_owners num_tags_raw rs in
+    let delayed_at, scc_id =
+      find_delayable_tags num_states num_rules raw_dfa tag_to_rule
+    in
+    let dfa = apply_tag_delay raw_dfa delayed_at scc_id in
+    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw }
 
 let cset_to_label cset =
   let escape_dot c =
@@ -382,8 +615,10 @@ let dfa_to_dot dfa =
         (fun (cset, target, tags) ->
           let label = cset_to_label cset in
           let tag_op_to_string = function
-            | Set_position t -> "t" ^ string_of_int t
-            | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
+            | Set_position { cell; offset = 0 } -> Printf.sprintf "t%d" cell
+            | Set_position { cell; offset } ->
+                Printf.sprintf "t%d-%d" cell offset
+            | Set_value (c, v) -> Printf.sprintf "d%d=%d" c v
           in
           let label =
             if tags = [] then label

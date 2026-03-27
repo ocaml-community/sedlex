@@ -250,10 +250,10 @@ val __private__next_int : lexbuf -> int
     each [match%sedlex] block that uses [as] bindings. *)
 val __private__init_mem : lexbuf -> int -> unit
 
-(** [__private__set_mem_pos lexbuf i] records the current position in cell [i],
+(** [__private__set_mem_pos lexbuf i offset] records [pos - offset] in cell [i],
     for later retrieval by {!__private__mem_pos}. Used by [Set_position] tag
     operations on DFA transitions. *)
-val __private__set_mem_pos : lexbuf -> int -> unit
+val __private__set_mem_pos : lexbuf -> int -> int -> unit
 
 (** [__private__set_mem_value lexbuf i v] stores integer [v] in cell [i],
     encoded as [-(v + 2)] so it is disjoint from positions and the unset
