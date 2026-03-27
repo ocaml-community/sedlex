@@ -55,9 +55,11 @@ val intersection : regexp -> regexp -> regexp option
 
 (** Tag operations emitted on DFA transitions. *)
 type tag_op =
-  | Set_position of int
-      (** [Set_position i]: record the current lexbuf position in memory cell
-          [i]. *)
+  | Set_position of { cell : int; offset : int }
+      (** [Set_position { cell; offset }]: record [pos - offset] in memory cell
+          [cell]. Offset 0 records the current position; offset 1 records the
+          previous code point's position (emitted by the tag delay optimization
+          on transitions leaving a loop). *)
   | Set_value of int * int
       (** [Set_value (cell, v)]: record integer [v] in memory cell [cell] (used
           for or-pattern discriminators). *)
@@ -108,6 +110,7 @@ type compiled = {
   num_tags : int;
       (** Total number of memory cells needed at runtime. When [num_tags = 0],
           no memory is allocated (pattern has no [as] bindings). *)
+  tag_map : int array;
 }
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using

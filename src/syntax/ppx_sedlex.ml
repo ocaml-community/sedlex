@@ -242,18 +242,19 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
-   operation calls. Each [Set_position t] becomes a call to
-   [__private__set_mem_pos], and each [Set_value (cell, v)] becomes a call to
-   [__private__set_mem_value]. Operations are folded right so they execute
-   before [cont]. *)
+   operation calls. Each [Set_position] becomes a call to
+   [__private__set_mem_pos] and each [Set_value (cell, v)] becomes a call
+   to [__private__set_mem_value]. Operations are folded right so they
+   execute before [cont]. *)
 let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
   List.fold_right
     (fun (op : Sedlex.tag_op) acc ->
       match op with
-        | Set_position t ->
+        | Set_position { cell; offset } ->
             [%expr
-              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc t];
+              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc cell]
+                [%e eint ~loc offset];
               [%e acc]]
         | Set_value (cell, value) ->
             [%expr
@@ -468,6 +469,19 @@ type tag_info = {
          bindings this is [[]]. For or-patterns, each branch has a
          distinct value in the shared discriminator cell. *)
 }
+
+let remap_tag_info (tag_map : int array) (ti : tag_info) =
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = tag_map.(tag); offset }
+    | Start_plus _ as pe -> pe
+    | End_minus _ as pe -> pe
+  in
+  {
+    ti with
+    start_pos = remap_pos ti.start_pos;
+    end_pos = remap_pos ti.end_pos;
+    disc = List.map (fun (cell, v) -> (tag_map.(cell), v)) ti.disc;
+  }
 
 (* [advance pe len] shifts a position expression forward by [len] code
    points. Returns [None] if either argument is unknown. *)
@@ -1053,6 +1067,7 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
   let cases =
     List.map
       (fun (_, tag_info, e) ->
+        let tag_info = List.map (remap_tag_info compiled.tag_map) tag_info in
         let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
         ((), action))
       cases_parsed
