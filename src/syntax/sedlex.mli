@@ -43,9 +43,11 @@ val intersection : regexp -> regexp -> regexp option
 (** {2 Tagged DFA for [as] bindings}
 
     Named sub-match bindings (e.g. [Star any as x]) are implemented using tagged
-    transitions in the DFA. Each [as] binding introduces a pair of tags that
+    transitions in the DFA. Each [as] binding introduces up to two tags that
     record the start and end positions of the sub-match in the lexbuf's memory
-    cells at runtime.
+    cells at runtime. When one boundary can be computed from a known offset,
+    only one tag is needed ([bind_start_only] / [bind_end_only]); when both
+    boundaries are known, no tags are needed at all.
 
     Or-patterns [(p1 as x) | (p2 as x)] additionally use discriminator cells:
     integer values that record which branch was taken, so the PPX can extract
@@ -68,10 +70,18 @@ val bind : regexp -> regexp * int * int
 (** Allocate a fresh memory cell for an or-pattern discriminator. *)
 val new_disc_cell : unit -> int
 
-(** [bind_disc r cell value] wraps [r] with an epsilon node that sets [cell] to
-    [value] on entry. Used to tag each branch of an or-pattern so the PPX can
+(** [bind_disc r cell value] appends an epsilon node that sets [cell] to [value]
+    after [r] matches. Used to tag each branch of an or-pattern so the PPX can
     tell which branch matched. *)
 val bind_disc : regexp -> int -> int -> regexp
+
+(** Like [bind], but only wraps with a start tag (no end tag). Used when the end
+    position can be computed from a known offset. *)
+val bind_start_only : regexp -> regexp * int
+
+(** Like [bind], but only wraps with an end tag (no start tag). Used when the
+    start position can be computed from a known offset. *)
+val bind_end_only : regexp -> regexp * int
 
 (** Reset the tag counter. Called before compiling each [match%sedlex] block. *)
 val reset_tags : unit -> unit
