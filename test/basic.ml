@@ -1508,6 +1508,26 @@ let%expect_test "as_bindings_multi_state_cycle" =
     | _ -> assert false);
   [%expect {| x=aa y=babababab z=ccc |}]
 
+let%expect_test "as_bindings_multi_exit_tag_ownership" =
+  (* The tag belongs to rule 1 (not rule 0). With incorrect tag ownership
+     (all tags mapped to rule 0), the delay check would incorrectly allow
+     delay because rule 0 is unreachable from the non-s exit — but rule 1
+     IS reachable there, and it reads the tag. *)
+  let buf = Sedlexing.Utf8.from_string "ababccc" in
+  (match%sedlex buf with
+    | Opt 'a', Plus ('b', 'a'), 'd' -> Printf.printf "rule0\n"
+    | Opt 'b', (Plus ('a', 'b') as x), Plus 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| x=abab |}];
+  let buf = Sedlexing.Utf8.from_string "abad" in
+  (match%sedlex buf with
+    | Opt 'a', Plus ('b', 'a'), 'd' -> Printf.printf "rule0\n"
+    | Opt 'b', (Plus ('a', 'b') as x), Plus 'c' ->
+        Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| rule0 |}]
+
 let%expect_test "as_bindings_multi_exit_tag_delay" =
   (* Opt 'b' shifts Plus "ab" to share a cycle with Plus "ba".
      The cycle has exits from two states; tag delay relies on the
