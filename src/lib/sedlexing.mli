@@ -11,11 +11,12 @@
 
     It is possible to have sedlex-generated lexers work on a custom
     implementation for lex buffers. To do this, define a module [L] which
-    implements the [start], [next], [mark] and [backtrack] functions (See the
-    Internal Interface section below for a specification). They need not work on
-    a type named [lexbuf]: you can use the type name you want. Then, just do in
-    your sedlex-processed source, bind this module to the name [Sedlexing] (for
-    instance, with a local module definition: [let module Sedlexing = L in ...].
+    implements the [start], [next], [mark], [backtrack] and [accept] functions
+    (See the Internal Interface section below for a specification). They need
+    not work on a type named [lexbuf]: you can use the type name you want. Then,
+    just do in your sedlex-processed source, bind this module to the name
+    [Sedlexing] (for instance, with a local module definition:
+    [let module Sedlexing = L in ...].
 
     Of course, you'll probably want to define functions like [lexeme] to be used
     in the lexers semantic actions. *)
@@ -233,6 +234,16 @@ val backtrack : lexbuf -> int
     This is a private API, it should not be used by code using this module's API
     and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
+
+(** [accept lexbuf] is called when the lexer reaches a final state. Returns
+    [true] to accept the match or [false] to reject it (causing [backtrack] to
+    be called instead). The default implementation always returns [true].
+
+    A custom [Sedlexing] module can override this to inspect the current
+    position and reject matches, falling back to an earlier marked state. This
+    is useful, for example, to reject matches that do not end on a grapheme
+    cluster boundary. *)
+val accept : lexbuf -> bool
 
 (** Tagged DFA memory cells for [as] bindings.
 
