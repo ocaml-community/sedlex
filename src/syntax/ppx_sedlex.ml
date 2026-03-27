@@ -288,17 +288,21 @@ let gen_tag_ops ~position lexbuf (ops : Sedlex.tag_op list) cont =
 
 (* [call_state lexbuf auto state] generates the expression that transitions
    into DFA [state]. If the state has no outgoing transitions (a sink), it
-   executes the state's final tag operations and returns the accepting rule
-   index directly, or backtracks if the state accepts nothing; otherwise it
-   emits a function call to the generated state function. *)
+   asks [accept] whether the match is valid, then executes the state's final
+   tag operations and returns the accepting rule index, or backtracks if the
+   match is rejected or the state accepts nothing; otherwise it emits a
+   function call to the generated state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
   let loc = default_loc in
   let { Sedlex.trans; accept } = auto.(state) in
   if Array.length trans = 0 then (
     match accept with
       | Some { Sedlex.rule; final_ops } ->
-          gen_tag_ops ~position:Current lexbuf final_ops
-            [%expr Sedlexing.accept [%e lexbuf] [%e eint ~loc rule]]
+          [%expr
+            if Sedlexing.accept [%e lexbuf] then
+              [%e
+                gen_tag_ops ~position:Current lexbuf final_ops (eint ~loc rule)]
+            else Sedlexing.backtrack [%e lexbuf]]
       | None ->
           (* Nothing can match from here, e.g. after [eof] in [eof, eof]. *)
           [%expr Sedlexing.backtrack [%e lexbuf]])
@@ -306,7 +310,8 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
 
 (* [gen_state (lexbuf_name, lexbuf) auto i {trans; accept}] generates the
    function [__sedlex_state_N] for DFA state [i]. The function:
-   1. If the state is accepting ([accept = Some { rule; final_ops }]), executes
+   1. If the state is accepting ([accept = Some { rule; final_ops }]), asks
+      [Sedlexing.accept] whether the match is valid and, if so, executes
       [final_ops] then calls [mark] to save the current position. The cells
       read by the rule's action are only written by [final_ops].
    2. Reads the next code point, maps it through the partition function to
@@ -362,10 +367,12 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     | None -> ret (body ())
     | Some { Sedlex.rule; final_ops } ->
         ret
-          (gen_tag_ops ~position:Current lexbuf final_ops
-             [%expr
-               Sedlexing.mark [%e lexbuf] [%e eint ~loc rule];
-               [%e body ()]])
+          [%expr
+            if Sedlexing.accept [%e lexbuf] then
+              [%e
+                gen_tag_ops ~position:Current lexbuf final_ops
+                  [%expr Sedlexing.mark [%e lexbuf] [%e eint ~loc rule]]];
+            [%e body ()]]
 
 (* [gen_recflag auto] determines whether the generated state functions need
    [let rec]. If every transition leads to a sink state (no further
