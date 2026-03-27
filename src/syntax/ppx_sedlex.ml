@@ -231,14 +231,18 @@ let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
 (* [call_state lexbuf auto state] generates the expression that transitions
    into DFA [state]. If the state has no outgoing transitions (a sink), it
-   returns the accepting rule index directly; otherwise it emits a function
-   call to the generated state function. *)
+   calls [accept] to check whether the match is valid, returning the rule
+   index or falling back to [backtrack]; otherwise it emits a function call
+   to the generated state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
   let loc = default_loc in
   let { Sedlex.trans; finals } = auto.(state) in
   if Array.length trans = 0 then (
     match best_final finals with
-      | Some i -> [%expr Sedlexing.accept [%e lexbuf] [%e eint ~loc i]]
+      | Some i ->
+          [%expr
+            if Sedlexing.accept [%e lexbuf] then [%e eint ~loc i]
+            else Sedlexing.backtrack [%e lexbuf]]
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
@@ -265,7 +269,8 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
 
 (* [gen_state (lexbuf_name, lexbuf) auto i {trans; finals}] generates the
    function [__sedlex_state_N] for DFA state [i]. The function:
-   1. If the state is accepting, calls [mark] to save the current position.
+   1. If the state is accepting, calls [accept] to check whether the
+      match is valid, then [mark] to save the position if accepted.
    2. Reads the next code point, maps it through the partition function to
       get an equivalence class index, then pattern-matches on that index.
    3. Each transition arm executes its tag operations then calls the target
@@ -310,7 +315,8 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     | Some i ->
         ret
           [%expr
-            Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
+            if Sedlexing.accept [%e lexbuf] then
+              Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
             [%e body ()]]
 
 (* [gen_recflag auto] determines whether the generated state functions need

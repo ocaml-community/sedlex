@@ -235,14 +235,15 @@ val backtrack : lexbuf -> int
     and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
 
-(** [accept lexbuf i] is called when the lexer reaches a final state [i] with no
-    further transitions. The default implementation simply returns [i].
+(** [accept lexbuf] is called when the lexer reaches a final state. Returns
+    [true] to accept the match or [false] to reject it (causing [backtrack] to
+    be called instead). The default implementation always returns [true].
 
     A custom [Sedlexing] module can override this to inspect the current
-    position and call [backtrack] instead, falling back to an earlier marked
-    state. This is useful, for example, to reject matches that do not end on a
-    grapheme cluster boundary. *)
-val accept : lexbuf -> int -> int
+    position and reject matches, falling back to an earlier marked state. This
+    is useful, for example, to reject matches that do not end on a grapheme
+    cluster boundary. *)
+val accept : lexbuf -> bool
 
 (** Tagged DFA memory cells for [as] bindings.
 

@@ -259,7 +259,7 @@ let start lexbuf =
   lexbuf.start_line <- lexbuf.curr_line;
   mark lexbuf (-1)
 
-let accept _lexbuf final = final
+let accept _lexbuf = true
 
 let backtrack lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
