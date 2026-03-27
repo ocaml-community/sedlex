@@ -490,6 +490,32 @@ let apply_tag_delay raw_dfa delayed_at scc_id =
       { trans; finals })
     raw_dfa
 
+let tag_cell = function
+  | Set_position { cell; _ } -> cell
+  | Set_value (cell, _) -> cell
+
+(* [tag_owners num_tags rs] maps each tag cell to the rule that owns it.
+   Walks the NFA of each rule to discover which tags it created.
+   Returns an array where [result.(t)] is the rule index for tag [t],
+   or -1 if the tag was not found in any rule's NFA. *)
+let tag_owners num_tags rs =
+  let tag_to_rule = Array.make num_tags (-1) in
+  Array.iteri
+    (fun r (start, _) ->
+      let visited = Hashtbl.create 31 in
+      let rec visit node =
+        if not (Hashtbl.mem visited node.id) then (
+          Hashtbl.add visited node.id ();
+          (match node.tag with
+            | Some op -> tag_to_rule.(tag_cell op) <- r
+            | None -> ());
+          List.iter visit node.eps;
+          List.iter (fun (_, n) -> visit n) node.trans)
+      in
+      visit start)
+    rs;
+  tag_to_rule
+
 (* [compile rs] determinizes the NFA for an array of regexp rules.
    Each rule is compiled to an NFA (entry node, final node) pair. The initial
    DFA state is the epsilon closure of all entry nodes. States are explored
@@ -498,14 +524,7 @@ let apply_tag_delay raw_dfa delayed_at scc_id =
    tag operations, and total number of memory cells needed. *)
 let compile rs =
   let num_rules = Array.length rs in
-  let tag_starts = Array.make num_rules 0 in
-  let rs =
-    Array.mapi
-      (fun i r ->
-        tag_starts.(i) <- !cur_tag;
-        compile_re r)
-      rs
-  in
+  let rs = Array.map compile_re rs in
   let num_tags_raw = !cur_tag in
   let counter = ref 0 in
   let states = Hashtbl.create 31 in
@@ -540,20 +559,13 @@ let compile rs =
         raw_dfa
     in
     { dfa; init_tags = []; num_tags = 0 })
-  else (
-    let tag_to_rule = Array.make num_tags_raw 0 in
-    for i = 0 to num_rules - 1 do
-      let lo = tag_starts.(i) in
-      let hi = if i < num_rules - 1 then tag_starts.(i + 1) else num_tags_raw in
-      for t = lo to hi - 1 do
-        tag_to_rule.(t) <- i
-      done
-    done;
+  else
+    let tag_to_rule = tag_owners num_tags_raw rs in
     let delayed_at, scc_id =
       find_delayable_tags num_states num_rules raw_dfa tag_to_rule
     in
     let dfa = apply_tag_delay raw_dfa delayed_at scc_id in
-    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw })
+    { dfa; init_tags = dedup_tags init_tags; num_tags = num_tags_raw }
 
 let cset_to_label cset =
   let escape_dot c =
