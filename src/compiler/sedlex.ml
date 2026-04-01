@@ -200,6 +200,11 @@ let bind_end_only r =
   in
   (wrapped, end_tag)
 
+let tag_end tag_id r succ =
+  let end_node = new_tagged_node (Set_position tag_id) in
+  end_node.eps <- [succ];
+  r end_node
+
 let new_disc_cell () = new_tag ()
 
 let bind_disc r cell value =
@@ -343,18 +348,29 @@ let compile rs =
 
 (* High-level compilation from IR.
 
-   [compile_ir] lowers [Ir.t] patterns into low-level regexps with tag
-   annotations, then compiles them via [compile]. The lowering phase decides
-   how to allocate tags for [as] bindings:
+   The lowering phase converts [Ir.t] patterns into low-level regexps
+   with tag annotations, deciding how to allocate tags for [as] bindings:
    - [Start_plus n]: the position is [n] code points from the token start.
    - [End_minus n]: the position is [n] code points before the token end.
    - [Tag {tag; offset}]: read memory cell [tag] and add [offset].
    When both boundaries of a capture can be expressed as [Start_plus] or
    [End_minus], no memory cells are needed at all.
 
+   Tag placement is deferred as late as possible: when a fixed-length
+   element needs only one tag, the end tag is preferred over the start
+   tag so that tag writes happen after the element rather than before.
+   In sequences, boundary tags are allocated at the end of fixed-length
+   elements that follow a variable-length element, providing anchors for
+   elements further to the left.  Anchors propagate upward through
+   tuples and captures so enclosing bindings can reuse inner tags.
+
    Or-patterns [(p1 as x) | (p2 as x)] additionally use discriminator cells:
    integer values that record which branch was taken, so the code generator
-   can emit the correct position extraction at match time. *)
+   can emit the correct position extraction at match time.
+
+   After DFA construction, [optimize] eliminates dead tags (boundary
+   tags not referenced by any binding) and remaps live tags to a dense
+   range. *)
 
 type pos_expr =
   | Tag of { tag : int; offset : int }
@@ -388,6 +404,26 @@ let shift_pos pe delta =
 
 let advance pe len = shift_pos pe len
 let retreat pe len = shift_pos pe (Option.map Int.neg len)
+
+(* [prefer ~best a b]: pick the best position expression.
+   [Start_plus]/[End_minus] always beat [Tag] (no runtime tag needed).
+   [~best] selects which tag-free form is preferred: [`Start] for
+   start boundaries (a plain constant), [`End] for end boundaries
+   (relative to token end).  Among [Tag] values, [a] wins (caller
+   controls priority by argument order). *)
+let prefer ~best a b =
+  let is_best = function
+    | Some (Start_plus _) -> best = `Start
+    | Some (End_minus _) -> best = `End
+    | _ -> false
+  in
+  match (a, b) with
+    | s, _ when is_best s -> s
+    | _, s when is_best s -> s
+    | (Some (Start_plus _ | End_minus _) as s), _ -> s
+    | _, (Some (Start_plus _ | End_minus _) as s) -> s
+    | Some _, _ -> a
+    | _ -> b
 
 (* [add_discriminators branches] takes a list of [(regexp, bindings)] pairs
    from an n-ary alternation and wraps each branch with a discriminator tag
@@ -437,35 +473,48 @@ let add_discriminators (branches : (regexp * compiled_binding list) list) =
     in
     (fold_alt wrapped, List.concat_map snd wrapped))
 
-(* [lower ir ~left ~right] converts an IR pattern to a low-level regexp
-   and a list of compiled bindings. [left] and [right] are the known
-   position contexts at the start and end of this pattern element. *)
-let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
+(* [lower ir ~left ~right] converts an IR pattern to a low-level regexp,
+   a list of compiled bindings, and a pair of anchors [(start, end)].
+   [left] and [right] are the known position contexts at the start and
+   end of this pattern element.  Anchors propagate position information
+   upward so enclosing captures can reuse inner tags instead of
+   allocating new ones.  The general principle is "prefer the tag that
+   fires latest" — for start boundaries, right-retreat beats inner
+   anchor beats outer left; for end boundaries, outer right beats end
+   anchor beats start-advance. *)
+let no_anchors = (None, None)
+
+let rec lower ~left ~right (ir : Ir.t) :
+    regexp * compiled_binding list * (pos_expr option * pos_expr option) =
   match ir with
-    | Ir.Chars cset -> (chars cset, [])
-    | Ir.Eps -> (eps, [])
+    | Ir.Chars cset -> (chars cset, [], no_anchors)
+    | Ir.Eps -> (eps, [], no_anchors)
     | Ir.Star inner ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (rep r, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (rep r, [], no_anchors)
     | Ir.Plus inner ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (plus r, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (plus r, [], no_anchors)
     | Ir.Rep (inner, n, m) ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (repeat r n m, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (repeat r n m, [], no_anchors)
     | Ir.Capture (name, inner) ->
         (* Named capture — try to derive each boundary from [left]/[right]
            context or [fixed_length]; allocate tags only for boundaries that
-           cannot be computed statically. Best case: 0 tags. Worst case: 2. *)
-        let r, tags = lower ~left ~right inner in
+           cannot be computed statically. Best case: 0 tags. Worst case: 2.
+           General principle: prefer the expression that fires latest
+           (delays the tag write). *)
+        let r, tags, (start_anchor, end_anchor) = lower ~left ~right inner in
         let elem_len = Ir.fixed_length inner in
+        let from_right_retreat = retreat right elem_len in
         let known_start =
-          match left with Some _ -> left | None -> retreat right elem_len
+          prefer ~best:`Start from_right_retreat
+            (prefer ~best:`Start start_anchor left)
         in
+        let from_start_advance = advance known_start elem_len in
         let known_end =
-          match right with
-            | Some _ -> right
-            | None -> advance known_start elem_len
+          prefer ~best:`End right
+            (prefer ~best:`End end_anchor from_start_advance)
         in
         let st, et, r =
           match (known_start, known_end) with
@@ -489,63 +538,142 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
                         Tag { tag = end_tag; offset = 0 },
                         wrapped ))
         in
-        (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
+        (* Propagate [st]/[et] as anchors so enclosing captures can
+           reuse them. *)
+        ( r,
+          { name; start_pos = st; end_pos = et; disc = [] } :: tags,
+          (Some st, Some et) )
     | Ir.Alt branches ->
         let lowered = List.map (lower ~left ~right) branches in
-        add_discriminators lowered
+        let pairs = List.map (fun (r, tags, _) -> (r, tags)) lowered in
+        let r, tags = add_discriminators pairs in
+        (r, tags, no_anchors)
     | Ir.Seq elems ->
         (* Sequence — propagate left/right position contexts through elements.
            Right positions are computed right-to-left; left positions are
-           updated left-to-right after lowering each element. *)
+           updated left-to-right after lowering each element.
+           When [retreat] breaks (variable-length element or unknown
+           [right]) but the element has fixed length, allocate a
+           boundary tag at the element's end.  This tag becomes a
+           concrete anchor: subsequent elements (to the left) can
+           compute their right positions via [retreat] from the tag.
+           The tag is placed in the NFA during the fold via [tag_end]. *)
         let n = List.length elems in
         let lengths = List.map Ir.fixed_length elems in
         let lengths_arr = Array.of_list lengths in
-        (* Compute right positions (right-to-left) *)
+        let boundary_tags = Array.make n None in
         let rights = Array.make n None in
-        let () =
+        let pre_start =
           let acc = ref right in
           for i = n - 1 downto 0 do
-            rights.(i) <- !acc;
-            acc := retreat !acc lengths_arr.(i)
-          done
+            match (!acc, lengths_arr.(i)) with
+              | _, None ->
+                  rights.(i) <- !acc;
+                  acc := None
+              | None, Some _ ->
+                  let tag = new_disc_cell () in
+                  boundary_tags.(i) <- Some tag;
+                  let tag_pos = Some (Tag { tag; offset = 0 }) in
+                  rights.(i) <- tag_pos;
+                  acc := retreat tag_pos lengths_arr.(i)
+              | Some _, Some _ ->
+                  rights.(i) <- !acc;
+                  acc := retreat !acc lengths_arr.(i)
+          done;
+          !acc
         in
-        (* Fallback for [update_left]: if [advance] returns [None]
-           (because the current left is unknown or the element has
-           variable length), but the element was a [Capture] whose
-           end position is a [Tag], we can use that tag as the [left]
-           anchor for the next element — it records a runtime position.
-           [Start_plus]/[End_minus] endpoints don't help here: they
-           are already factored into [advance], so if [advance] failed,
-           they have nothing more to offer. *)
-        let left_from_end_tag ir tags' =
-          match ir with
-            | Ir.Capture _ -> (
-                match tags' with
-                  | { end_pos = Tag _ as et; _ } :: _ -> Some et
-                  | _ -> None)
-            | _ -> None
-        in
-        let update_left cur i ir tags' =
+        (* [update_left cur i ea]: compute the left position for the
+           next element after processing element [i].
+           1. [advance] — known left + fixed-length element
+           2. [ea] — end anchor from the element (alias end tag,
+              tuple boundary anchor, etc.)
+           3. [boundary_tags.(i)] — boundary tag from rights pass *)
+        let update_left cur i ea =
           match advance cur lengths_arr.(i) with
             | Some _ as s -> s
-            | None -> left_from_end_tag ir tags'
+            | None -> (
+                match ea with
+                  | Some _ -> ea
+                  | None -> (
+                      match boundary_tags.(i) with
+                        | Some tag -> Some (Tag { tag; offset = 0 })
+                        | None -> None))
         in
         let elems_arr = Array.of_list elems in
-        let r0, tags0 = lower ~left ~right:rights.(0) elems_arr.(0) in
-        let left0 = update_left left 0 elems_arr.(0) tags0 in
-        let _, _, r_acc, tags_acc =
+        let r0, tags0, (start0, end0) =
+          lower ~left ~right:rights.(0) elems_arr.(0)
+        in
+        let r0 =
+          match boundary_tags.(0) with
+            | Some tag -> tag_end tag r0
+            | None -> r0
+        in
+        let left0 = update_left left 0 end0 in
+        let _, _, r_acc, tags_acc, last_end =
           Array.fold_left
-            (fun (i, cur_left, r_acc, tags_acc) ir_elem ->
-              if i = 0 then (1, left0, r_acc, tags_acc)
+            (fun (i, cur_left, r_acc, tags_acc, _prev_end) ir_elem ->
+              if i = 0 then (1, left0, r_acc, tags_acc, end0)
               else (
-                let r', tags' =
+                let r', tags', (_sa, ea) =
                   lower ~left:cur_left ~right:rights.(i) ir_elem
                 in
-                let new_left = update_left cur_left i ir_elem tags' in
-                (i + 1, new_left, seq r_acc r', tags_acc @ tags')))
-            (0, left, r0, tags0) elems_arr
+                let r' =
+                  match boundary_tags.(i) with
+                    | Some tag -> tag_end tag r'
+                    | None -> r'
+                in
+                let new_left = update_left cur_left i ea in
+                (i + 1, new_left, seq r_acc r', tags_acc @ tags', ea)))
+            (0, left, r0, tags0, end0) elems_arr
         in
-        (r_acc, tags_acc)
+        let end_anchor = prefer ~best:`End rights.(n - 1) last_end in
+        let start_anchor = prefer ~best:`Start pre_start start0 in
+        (r_acc, tags_acc, (start_anchor, end_anchor))
+
+let optimize ~live (compiled : compiled) : compiled * int array =
+  if compiled.num_tags = 0 then (compiled, Array.make 0 0)
+  else (
+    (* Build mapping: old tag → new tag (dense). Dead tags map to -1. *)
+    let mapping = Array.make compiled.num_tags (-1) in
+    let next = ref 0 in
+    List.iter
+      (fun tag ->
+        if tag >= 0 && tag < compiled.num_tags && mapping.(tag) = -1 then begin
+          mapping.(tag) <- !next;
+          incr next
+        end)
+      live;
+    let new_num_tags = !next in
+    if new_num_tags = compiled.num_tags then
+      (compiled, Array.init compiled.num_tags Fun.id)
+    else (
+      let remap_op = function
+        | Set_position tag ->
+            if mapping.(tag) >= 0 then Some (Set_position mapping.(tag))
+            else None
+        | Set_value (cell, v) ->
+            if mapping.(cell) >= 0 then Some (Set_value (mapping.(cell), v))
+            else None
+      in
+      let remap_ops ops = List.filter_map remap_op ops in
+      let dfa =
+        Array.map
+          (fun state ->
+            {
+              trans =
+                Array.map
+                  (fun (cset, target, ops) -> (cset, target, remap_ops ops))
+                  state.trans;
+              finals = state.finals;
+            })
+          compiled.dfa
+      in
+      ( {
+          dfa;
+          init_tags = remap_ops compiled.init_tags;
+          num_tags = new_num_tags;
+        },
+        mapping )))
 
 let compile_ir (rules : Ir.t array) =
   Array.iter (fun ir -> Ir.check_invariant ir) rules;
@@ -556,9 +684,43 @@ let compile_ir (rules : Ir.t array) =
         lower ~left:(Some (Start_plus 0)) ~right:(Some (End_minus 0)) ir)
       rules
   in
-  let regexps = Array.map fst lowered in
-  let bindings = Array.map snd lowered in
+  let regexps = Array.map (fun (r, _, _) -> r) lowered in
+  let bindings = Array.map (fun (_, tags, _) -> tags) lowered in
   let compiled = compile regexps in
+  (* Collect live tags from all bindings and optimize. *)
+  let live_tags =
+    let collect_tag acc = function
+      | Tag { tag; _ } -> tag :: acc
+      | Start_plus _ | End_minus _ -> acc
+    in
+    let collect_disc acc (cell, _) = cell :: acc in
+    let collect_binding acc (b : compiled_binding) =
+      let acc = collect_tag acc b.start_pos in
+      let acc = collect_tag acc b.end_pos in
+      List.fold_left collect_disc acc b.disc
+    in
+    Array.fold_left
+      (fun acc rule_bindings ->
+        List.fold_left collect_binding acc rule_bindings)
+      [] bindings
+  in
+  let compiled, mapping = optimize ~live:live_tags compiled in
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = mapping.(tag); offset }
+    | (Start_plus _ | End_minus _) as p -> p
+  in
+  let remap_disc (cell, v) = (mapping.(cell), v) in
+  let bindings =
+    Array.map
+      (List.map (fun (b : compiled_binding) ->
+           {
+             name = b.name;
+             start_pos = remap_pos b.start_pos;
+             end_pos = remap_pos b.end_pos;
+             disc = List.map remap_disc b.disc;
+           }))
+      bindings
+  in
   {
     dfa = compiled.dfa;
     init_tags = compiled.init_tags;
