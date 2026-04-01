@@ -193,6 +193,11 @@ let bind_end_only r =
   in
   (wrapped, end_tag)
 
+let tag_end tag_id r succ =
+  let end_node = new_tagged_node (Set_position tag_id) in
+  end_node.eps <- [succ];
+  r end_node
+
 let new_disc_cell () = new_tag ()
 
 let bind_disc r cell value =
@@ -333,6 +338,51 @@ let compile rs =
     init_tags = dedup_tags init_tags;
     num_tags = !cur_tag;
   }
+
+let optimize ~live compiled =
+  if compiled.num_tags = 0 then (compiled, Array.make 0 0)
+  else (
+    (* Build mapping: old tag → new tag (dense). Dead tags map to -1. *)
+    let mapping = Array.make compiled.num_tags (-1) in
+    let next = ref 0 in
+    List.iter
+      (fun tag ->
+        if tag >= 0 && tag < compiled.num_tags && mapping.(tag) = -1 then begin
+          mapping.(tag) <- !next;
+          incr next
+        end)
+      live;
+    let new_num_tags = !next in
+    if new_num_tags = compiled.num_tags then
+      (compiled, Array.init compiled.num_tags Fun.id)
+    else (
+      let remap_op = function
+        | Set_position tag ->
+            if mapping.(tag) >= 0 then Some (Set_position mapping.(tag))
+            else None
+        | Set_value (cell, v) ->
+            if mapping.(cell) >= 0 then Some (Set_value (mapping.(cell), v))
+            else None
+      in
+      let remap_ops ops = List.filter_map remap_op ops in
+      let dfa =
+        Array.map
+          (fun state ->
+            {
+              trans =
+                Array.map
+                  (fun (cset, target, ops) -> (cset, target, remap_ops ops))
+                  state.trans;
+              finals = state.finals;
+            })
+          compiled.dfa
+      in
+      ( {
+          dfa;
+          init_tags = remap_ops compiled.init_tags;
+          num_tags = new_num_tags;
+        },
+        mapping )))
 
 let cset_to_label cset =
   let escape_dot c =
