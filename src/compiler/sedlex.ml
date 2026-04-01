@@ -479,9 +479,9 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
             | None, None -> (
                 match elem_len with
                   | Some len ->
-                      let wrapped, start_tag = bind_start_only r in
-                      ( Tag { tag = start_tag; offset = 0 },
-                        Tag { tag = start_tag; offset = len },
+                      let wrapped, end_tag = bind_end_only r in
+                      ( Tag { tag = end_tag; offset = -len },
+                        Tag { tag = end_tag; offset = 0 },
                         wrapped )
                   | None ->
                       let wrapped, start_tag, end_tag = bind r in
