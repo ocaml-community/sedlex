@@ -659,8 +659,34 @@ let rec fixed_length env ~encoding p =
    Compl, Sub, Intersect, Chars, character intervals, tuple (sequence),
    or-patterns, and [Ppat_alias] for [as] bindings. *)
 let regexp_of_pattern env =
-  let no_tags r = (r, ([] : tag_info list)) in
-  let reject_tags loc ctx (r, tags) =
+  (* Anchors: [(start_anchor, end_anchor)] propagated upward by [aux].
+     Tuples and aliases produce anchors; an enclosing [Ppat_alias]
+     uses them as fallback positions when [left]/[right] are unknown.
+     The general principle is "prefer the tag that fires latest" so
+     that tag writes are delayed as long as possible. *)
+  let no_anchors = (None, None) in
+  let no_tags r = (r, ([] : tag_info list), no_anchors) in
+  (* [prefer ~best a b]: pick the best position expression.
+     [Start_plus]/[End_minus] always beat [Tag] (no runtime tag needed).
+     [~best] selects which tag-free form is preferred: [`Start] for
+     start boundaries (a plain constant), [`End] for end boundaries
+     (relative to token end).  Among [Tag] values, [a] wins (caller
+     controls priority by argument order). *)
+  let prefer ~best a b =
+    let is_best = function
+      | Some (Start_plus _) -> best = `Start
+      | Some (End_minus _) -> best = `End
+      | _ -> false
+    in
+    match (a, b) with
+      | s, _ when is_best s -> s
+      | _, s when is_best s -> s
+      | (Some (Start_plus _ | End_minus _) as s), _ -> s
+      | _, (Some (Start_plus _ | End_minus _) as s) -> s
+      | Some _, _ -> a
+      | _ -> b
+  in
+  let reject_tags loc ctx (r, tags, _anchors) =
     if tags <> [] then err loc "'as' bindings are not supported inside %s" ctx;
     r
   in
@@ -691,22 +717,51 @@ let regexp_of_pattern env =
     (* [left]: known position at the start of this pattern element.
        [right]: known position at the end of this pattern element.
        Both are [pos_expr option]: any variant is possible, or [None]
-       when the position cannot be determined statically. *)
+       when the position cannot be determined statically.
+
+       Returns [(regexp, tag_info list, (start_anchor, end_anchor))].
+       The anchors provide position information for an enclosing
+       [Ppat_alias] when its own [left]/[right] context is unknown:
+       - [start_anchor]: best-known position before this pattern.
+         For tuples, this combines the rights-computation [pre_start]
+         (derived from outer right-side tags) with the first element's
+         inner anchor.  For aliases, this is [st] (the chosen start).
+       - [end_anchor]: best-known position after this pattern.
+         For tuples, this combines [rights.(n-1)] (from outer right)
+         with the last element's inner anchor.  For aliases, this is
+         [et] (the chosen end).
+       Leaf patterns and combinators return [(None, None)]. *)
       match p.ppat_desc with
       (* name as x — named sub-match binding.
          Try to derive each boundary from [left]/[right] context or
          [fixed_length]; allocate tags only for boundaries that cannot
          be computed statically. Best case: 0 tags. Worst case: 2. *)
       | Ppat_alias (inner, { txt = name; _ }) ->
-          let r, tags = aux ~left ~right ~encoding inner in
-          let elem_len = fixed_length env ~encoding inner in
-          let known_start =
-            match left with Some _ -> left | None -> retreat right elem_len
+          let r, tags, (start_anchor, end_anchor) =
+            aux ~left ~right ~encoding inner
           in
+          let elem_len = fixed_length env ~encoding inner in
+          (* Compute known boundaries.  General principle: prefer the
+             expression that fires latest (delays the tag write), with
+             [Start_plus]/[End_minus] always winning (no tag needed).
+             For tags, later-firing is better:
+             - [known_start]: right retreat > inner anchor > outer left
+               (right tag fires past alias, inner fires inside, left
+               fires at start).
+             - [known_end]: outer right > end anchor > start advance
+               (right fires past alias, end anchor fires at alias end,
+               start advance depends on which tag known_start chose). *)
+          let from_left = left in
+          let from_right_retreat = retreat right elem_len in
+          let known_start =
+            prefer ~best:`Start from_right_retreat
+              (prefer ~best:`Start start_anchor from_left)
+          in
+          let from_right = right in
+          let from_start_advance = advance known_start elem_len in
           let known_end =
-            match right with
-              | Some _ -> right
-              | None -> advance known_start elem_len
+            prefer ~best:`End from_right
+              (prefer ~best:`End end_anchor from_start_advance)
           in
           let st, et, r =
             match (known_start, known_end) with
@@ -730,11 +785,22 @@ let regexp_of_pattern env =
                           Tag { tag = end_tag; offset = 0 },
                           wrapped ))
           in
-          (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
+          (* Propagate [st]/[et] as anchors: they incorporate inner
+             anchors and any tags the alias allocated, so a further
+             enclosing alias can reuse them. *)
+          ( r,
+            { name; start_pos = st; end_pos = et; disc = [] } :: tags,
+            (Some st, Some et) )
       (* p1 | p2 — alternation *)
       | Ppat_or (p1, p2) ->
-          let r1, tags1 = aux ~left ~right ~encoding p1 in
-          let r2, tags2 = aux ~left ~right ~encoding p2 in
+          let r1, tags1, (sa1, ea1) = aux ~left ~right ~encoding p1 in
+          let r2, tags2, (sa2, ea2) = aux ~left ~right ~encoding p2 in
+          (* Propagate anchors only when both branches agree — this
+             happens for [Start_plus]/[End_minus] derived from the
+             same outer context.  Tag-based anchors will differ
+             across branches (independent boundary tag allocations). *)
+          let merge a1 a2 = if a1 = a2 then a1 else None in
+          let anchors = (merge sa1 sa2, merge ea1 ea2) in
           if tags1 <> [] || tags2 <> [] then begin
             let names tags =
               List.map (fun ti -> ti.name) tags |> List.sort_uniq String.compare
@@ -744,7 +810,7 @@ let regexp_of_pattern env =
                 "both sides of '|' must bind the same names with 'as'";
             (* When both branches produce identical positions (e.g.
                same fixed-length elements), no discriminator is needed. *)
-            if tags1 = tags2 then (Sedlex.alt r1 r2, tags1)
+            if tags1 = tags2 then (Sedlex.alt r1 r2, tags1, anchors)
             else (
               let stamp disc_cell value tags =
                 List.map
@@ -784,66 +850,105 @@ let regexp_of_pattern env =
                     in
                     let new_val = max_val + 1 in
                     let r2w = Sedlex.bind_disc r2 disc_cell new_val in
-                    (Sedlex.alt r1 r2w, tags1 @ stamp disc_cell new_val tags2)
+                    ( Sedlex.alt r1 r2w,
+                      tags1 @ stamp disc_cell new_val tags2,
+                      anchors )
                 | None ->
                     let disc_cell = Sedlex.new_disc_cell () in
                     let r1w = Sedlex.bind_disc r1 disc_cell 0 in
                     let r2w = Sedlex.bind_disc r2 disc_cell 1 in
                     ( Sedlex.alt r1w r2w,
-                      stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2 ))
+                      stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2,
+                      anchors ))
           end
-          else (Sedlex.alt r1 r2, tags1 @ tags2)
+          else (Sedlex.alt r1 r2, tags1 @ tags2, anchors)
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
           let all = p :: pl in
           let n = List.length all in
           let lengths = List.map (fun p -> fixed_length env ~encoding p) all in
           let lengths_arr = Array.of_list lengths in
-          (* Compute right positions (right-to-left) *)
+          (* Compute right positions (right-to-left).
+             When [retreat] breaks (variable-length element or unknown
+             [right]) but the element has fixed length, allocate a
+             boundary tag at the element's end.  This tag becomes a
+             concrete anchor: subsequent elements (to the left) can
+             compute their right positions via [retreat] from the tag.
+             The tag is placed in the NFA during the fold via
+             [Sedlex.tag_end]. *)
+          let boundary_tags = Array.make n None in
           let rights = Array.make n None in
-          let () =
+          let pre_start =
             let acc = ref right in
             for i = n - 1 downto 0 do
-              rights.(i) <- !acc;
-              acc := retreat !acc lengths_arr.(i)
-            done
+              match (!acc, lengths_arr.(i)) with
+                | _, None ->
+                    rights.(i) <- !acc;
+                    acc := None
+                | None, Some _ ->
+                    let tag = Sedlex.new_disc_cell () in
+                    boundary_tags.(i) <- Some tag;
+                    let tag_pos = Some (Tag { tag; offset = 0 }) in
+                    rights.(i) <- tag_pos;
+                    acc := retreat tag_pos lengths_arr.(i)
+                | Some _, Some _ ->
+                    rights.(i) <- !acc;
+                    acc := retreat !acc lengths_arr.(i)
+            done;
+            !acc
           in
-          (* Fallback for [update_left]: if [advance] fails (unknown
-             current left or variable-length element), but the element
-             was an [as] binding whose end position is a [Tag], that
-             tag marks exactly where the next element starts — so we
-             can use it as [left] for the next element. We only use
-             [Tag] endpoints because they carry a runtime position;
-             [Start_plus]/[End_minus] endpoints are static offsets
-             that don't help recover a new anchor. *)
-          let left_from_end_tag p tags' =
-            match p.ppat_desc with
-              | Ppat_alias _ -> (
-                  match tags' with
-                    | { end_pos = Tag _ as et; _ } :: _ -> Some et
-                    | _ -> None)
-              | _ -> None
-          in
-          (* Update left after processing element i *)
-          let update_left cur i p tags' =
+          (* [update_left cur i ea]: compute the left position for the
+             next element after processing element [i].
+             1. [advance] — known left + fixed-length element
+             2. [ea] — end anchor from the element (alias end tag,
+                tuple boundary anchor, etc.)
+             3. [boundary_tags.(i)] — boundary tag from rights pass *)
+          let update_left cur i ea =
             match advance cur lengths_arr.(i) with
               | Some _ as s -> s
-              | None -> left_from_end_tag p tags'
+              | None -> (
+                  match ea with
+                    | Some _ -> ea
+                    | None -> (
+                        match boundary_tags.(i) with
+                          | Some tag -> Some (Tag { tag; offset = 0 })
+                          | None -> None))
           in
-          let r0, tags0 = aux ~left ~right:rights.(0) ~encoding p in
-          let left0 = update_left left 0 p tags0 in
+          let r0, tags0, (start0, end0) =
+            aux ~left ~right:rights.(0) ~encoding p
+          in
+          let r0 =
+            match boundary_tags.(0) with
+              | Some tag -> Sedlex.tag_end tag r0
+              | None -> r0
+          in
+          let left0 = update_left left 0 end0 in
           let _, _, result =
             List.fold_left
-              (fun (i, cur_left, (r, tags)) p ->
-                let r', tags' =
+              (fun (i, cur_left, (r, tags, _prev_end)) p ->
+                let r', tags', (_sa, ea) =
                   aux ~left:cur_left ~right:rights.(i) ~encoding p
                 in
-                let new_left = update_left cur_left i p tags' in
-                (i + 1, new_left, (Sedlex.seq r r', tags @ tags')))
-              (1, left0, (r0, tags0))
+                let r' =
+                  match boundary_tags.(i) with
+                    | Some tag -> Sedlex.tag_end tag r'
+                    | None -> r'
+                in
+                let new_left = update_left cur_left i ea in
+                (i + 1, new_left, (Sedlex.seq r r', tags @ tags', ea)))
+              (1, left0, (r0, tags0, end0))
               pl
           in
-          result
+          let r, tags, last_end = result in
+          (* Combine outer and inner anchors, preferring the tag that
+             fires latest.  [pre_start] / [rights.(n-1)] come from the
+             rights computation and may reference outer boundary tags
+             (placed after the tuple in the enclosing sequence).
+             [start0] / [last_end] come from the first/last element's
+             own processing and reference inner tags. *)
+          let end_anchor = prefer ~best:`End rights.(n - 1) last_end in
+          let start_anchor = prefer ~best:`Start pre_start start0 in
+          (r, tags, (start_anchor, end_anchor))
       (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
           let r =
@@ -1039,20 +1144,51 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
     List.map
       (function
         | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
-            let regexp, tag_info = regexp_of_pattern env p in
+            let regexp, tag_info, _anchors = regexp_of_pattern env p in
             (regexp, tag_info, e)
         | { pc_guard = Some e; _ } ->
             err e.pexp_loc "'when' guards are not supported")
       cases
   in
-  let compiled =
+  let raw_compiled =
     Sedlex.compile (Array.of_list (List.map (fun (r, _, _) -> r) cases_parsed))
+  in
+  (* Collect live tags from all tag_infos and optimize (dead tag
+     elimination + remapping to dense range). *)
+  let live_tags =
+    let collect_tag acc = function
+      | Tag { tag; _ } -> tag :: acc
+      | Start_plus _ | End_minus _ -> acc
+    in
+    List.fold_left
+      (fun acc (_, tag_info, _) ->
+        List.fold_left
+          (fun acc ti ->
+            let acc = collect_tag acc ti.start_pos in
+            let acc = collect_tag acc ti.end_pos in
+            List.fold_left (fun acc (cell, _) -> cell :: acc) acc ti.disc)
+          acc tag_info)
+      [] cases_parsed
+  in
+  let compiled, tag_mapping = Sedlex.optimize ~live:live_tags raw_compiled in
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = tag_mapping.(tag); offset }
+    | pe -> pe
+  in
+  let remap_tag_info ti =
+    {
+      ti with
+      start_pos = remap_pos ti.start_pos;
+      end_pos = remap_pos ti.end_pos;
+      disc = List.map (fun (cell, v) -> (tag_mapping.(cell), v)) ti.disc;
+    }
   in
   (* map_rhs is called after compile so that nested match%sedlex blocks
      (which call reset_tags) cannot corrupt the outer tag counter. *)
   let cases =
     List.map
       (fun (_, tag_info, e) ->
+        let tag_info = List.map remap_tag_info tag_info in
         let action = gen_binding_code (snd lexbuf) tag_info (map_rhs e) in
         ((), action))
       cases_parsed
@@ -1080,7 +1216,7 @@ let mapper =
       match e with
         (* [%sedlex.regexp? <pattern>] *)
         | [%expr [%sedlex.regexp? [%p? p]]] ->
-            let r, tags = regexp_of_pattern env p in
+            let r, tags, _ = regexp_of_pattern env p in
             if tags <> [] then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
@@ -1092,7 +1228,7 @@ let mapper =
               [%sedlex.regexp? [%p? p]]
             in
             [%e? body]] ->
-            let r, tags = regexp_of_pattern env p in
+            let r, tags, _ = regexp_of_pattern env p in
             if tags <> [] then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
