@@ -720,9 +720,9 @@ let regexp_of_pattern env =
               | None, None -> (
                   match elem_len with
                     | Some len ->
-                        let wrapped, start_tag = Sedlex.bind_start_only r in
-                        ( Tag { tag = start_tag; offset = 0 },
-                          Tag { tag = start_tag; offset = len },
+                        let wrapped, end_tag = Sedlex.bind_end_only r in
+                        ( Tag { tag = end_tag; offset = -len },
+                          Tag { tag = end_tag; offset = 0 },
                           wrapped )
                     | None ->
                         let wrapped, start_tag, end_tag = Sedlex.bind r in

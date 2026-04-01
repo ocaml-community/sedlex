@@ -562,10 +562,10 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t0}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t0}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t0}"];
       state2 [label="2"];
       state2 -> state3 [label="'c'"];
       state3 [label="3\n[rule 0]", shape=doublecircle];
@@ -574,12 +574,12 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
@@ -596,8 +596,8 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
     with
     | 0 ->
         let x =
-          let __s = Sedlexing.__private__mem_pos buf 0 in
-          let __e = (Sedlexing.__private__mem_pos buf 0) + 1 in
+          let __s = (Sedlexing.__private__mem_pos buf 0) + (-1) in
+          let __e = Sedlexing.__private__mem_pos buf 0 in
           { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore x
     | _ -> ()
