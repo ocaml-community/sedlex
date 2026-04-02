@@ -120,3 +120,18 @@ val compile : regexp array -> compiled
     state labels, accepting state markers, transition character sets, and tag
     operations on edges. *)
 val dfa_to_dot : dfa -> string
+
+(** {2 NFA internals (for testing)} *)
+
+(** NFA node. Exposed for the NFA simulation oracle in tests. *)
+type node = {
+  id : int;
+  mutable eps : node list;
+  mutable trans : (Cset.t * node) list;
+  tag : tag_op option;
+}
+
+(** [compile_re r] instantiates regexp [r] into a concrete NFA by creating a
+    fresh final node and passing it as the successor. Returns
+    [(entry_node, final_node)]. *)
+val compile_re : regexp -> node * node

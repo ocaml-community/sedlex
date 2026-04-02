@@ -233,7 +233,7 @@ let state_fun state = Printf.sprintf "__sedlex_state_%i" state
    returns the accepting rule index directly; otherwise it emits a function
    call to the generated state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
-  let { Sedlex.trans; finals } = auto.(state) in
+  let { Sedlex.trans; finals } = (auto.(state) : Sedlex.dfa_state) in
   if Array.length trans = 0 then (
     match best_final finals with
       | Some i -> eint ~loc:default_loc i
@@ -271,7 +271,7 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
    4. The default arm calls [backtrack] to return the last accepted rule.
    Returns [] for accepting states with no outgoing transitions (sinks). *)
 let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
-    { Sedlex.trans; finals } =
+    ({ Sedlex.trans; finals } : Sedlex.dfa_state) =
   let loc = default_loc in
   let partition = Array.map (fun (cs, _, _) -> cs) trans in
   let cases =
@@ -320,10 +320,11 @@ let gen_recflag (auto : Sedlex.dfa) =
      in states with no further transitions. *)
   try
     Array.iter
-      (fun { Sedlex.trans; _ } ->
+      (fun ({ Sedlex.trans; _ } : Sedlex.dfa_state) ->
         Array.iter
           (fun (_, j, _) ->
-            if Array.length auto.(j).Sedlex.trans > 0 then raise Exit)
+            if Array.length (auto.(j) : Sedlex.dfa_state).trans > 0 then
+              raise Exit)
           trans)
       auto;
     Nonrecursive
