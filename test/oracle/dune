@@ -1,0 +1,3 @@
+(library
+ (name sedlex_oracle)
+ (libraries sedlex.compiler qcheck-core))

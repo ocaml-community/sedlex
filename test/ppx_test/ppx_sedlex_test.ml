@@ -1,6 +1,6 @@
 open Ppxlib
 module P = Sedlex_ppx.Ppx_sedlex
-module S = Sedlex_ppx.Sedlex
+module S = Sedlex_compiler.Sedlex
 
 let expand ~ctxt:_ expr =
   P.reset_state ();

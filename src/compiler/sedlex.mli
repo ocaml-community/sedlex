@@ -10,7 +10,7 @@
 type regexp
 
 (** [chars cset] matches a single code point in [cset]. *)
-val chars : Sedlex_cset.t -> regexp
+val chars : Cset.t -> regexp
 
 (** [seq r1 r2] matches [r1] followed by [r2] (concatenation). *)
 val seq : regexp -> regexp -> regexp
@@ -89,7 +89,7 @@ val reset_tags : unit -> unit
 (** {2 DFA compilation} *)
 
 type dfa_state = {
-  trans : (Sedlex_cset.t * int * tag_op list) array;
+  trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
           execute when this transition fires). *)
   finals : bool array;
@@ -120,3 +120,18 @@ val compile : regexp array -> compiled
     state labels, accepting state markers, transition character sets, and tag
     operations on edges. *)
 val dfa_to_dot : dfa -> string
+
+(** {2 NFA internals (for testing)} *)
+
+(** NFA node. Exposed for the NFA simulation oracle in tests. *)
+type node = {
+  id : int;
+  mutable eps : node list;
+  mutable trans : (Cset.t * node) list;
+  tag : tag_op option;
+}
+
+(** [compile_re r] instantiates regexp [r] into a concrete NFA by creating a
+    fresh final node and passing it as the successor. Returns
+    [(entry_node, final_node)]. *)
+val compile_re : regexp -> node * node

@@ -1,6 +1,6 @@
 (* This test that unicode_old.ml is a strict sub-set of new unicode.ml. *)
 
-module CSet = Sedlex_ppx.Sedlex_cset
+module CSet = Sedlex_compiler.Cset
 module Unicode = Sedlex_ppx.Unicode
 
 let test_versions = ("16.0.0", "17.0.0")
@@ -38,7 +38,7 @@ let compare name (old_ : CSet.t) (new_ : CSet.t) =
 let test new_l (name, old_l) =
   (* Cn is for unassigned code points, which are allowed to be
    * used in future version. *)
-  let old_l = Sedlex_utils.Cset.to_list old_l in
+  let old_l = Sedlex_compiler.Cset.to_list old_l in
   if name <> "cn" then (
     let old_l =
       List.fold_left

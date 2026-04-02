@@ -1,6 +1,6 @@
 (library
  (name sedlex_test)
- (libraries sedlex)
+ (libraries sedlex sedlex_oracle qcheck-core)
  (inline_tests
   (deps UTF-8-test.txt))
  (enabled_if
