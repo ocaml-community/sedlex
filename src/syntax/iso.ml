@@ -1,7 +1,7 @@
 (* The package sedlex is released under the terms of an MIT-like license. *)
 (* See the attached LICENSE file.                                         *)
 
-open Sedlex_cset
+open Sedlex_compiler.Cset
 
 let tr8876_ident_char =
   let l =

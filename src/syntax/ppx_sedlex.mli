@@ -2,6 +2,8 @@
 (* See the attached LICENSE file.                                         *)
 (* Copyright 2005, 2013 by Alain Frisch and LexiFi.                       *)
 
+open Sedlex_compiler
+
 (** PPX rewriter for sedlex.
 
     Transforms [match%sedlex lexbuf with ...] into DFA-based lexer code.

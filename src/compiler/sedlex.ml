@@ -70,7 +70,7 @@
      many character classes that converge to the same accepting state.
 *)
 
-module Cset = Sedlex_cset
+module Cset = Cset
 
 (* NFA *)
 

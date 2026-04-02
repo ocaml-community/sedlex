@@ -1,7 +1,7 @@
 (* This file generates unicode data from
  * the files exported at https://www.unicode.org/Public/<unicode version>
  * and stored at src/generator/data. *)
-open Sedlex_utils
+open Sedlex_compiler
 module SSet = Set.Make (String)
 
 let target = Sys.argv.(1)
@@ -46,7 +46,7 @@ let print_elements ch hashtbl cats =
           (fun (b, e) -> Printf.sprintf "0x%x, 0x%x" b e)
           (Cset.union_list (Hashtbl.find_all hashtbl c) :> (int * int) list)
       in
-      Printf.fprintf ch "  let %s = Sedlex_cset.of_list\n    [" c;
+      Printf.fprintf ch "  let %s = Cset.of_list\n    [" c;
       List.iteri
         (fun i x ->
           if i > 0 then
@@ -199,7 +199,8 @@ let () =
   Printf.fprintf ch
     "(* This file was automatically generated, do not edit. *)\n";
   Printf.fprintf ch "(* Edit gen_unicode.ml.inc instead. *)\n\n";
-  Printf.fprintf ch "\n\nlet version = %S\n\n" version;
+  Printf.fprintf ch "open Sedlex_compiler\n\n";
+  Printf.fprintf ch "let version = %S\n\n" version;
   Printf.fprintf ch "module Categories = struct\n\n";
   print_elements ch categories exported_categories;
   Printf.fprintf ch "end\n\n";

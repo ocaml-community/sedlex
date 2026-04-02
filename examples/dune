@@ -1,6 +1,6 @@
 (executables
  (names tokenizer regressions complement subtraction repeat performance)
- (libraries sedlex sedlex_ppx)
+ (libraries sedlex sedlex_ppx sedlex.compiler)
  (preprocess
   (pps sedlex.ppx)))
 
