@@ -70,7 +70,7 @@
      many character classes that converge to the same accepting state.
 *)
 
-module Cset = Sedlex_cset
+module Cset = Cset
 
 (* NFA *)
 
@@ -133,6 +133,13 @@ let plus r succ =
   nr
 
 let eps succ = succ (* eps for epsilon *)
+
+let rec repeat r n m succ =
+  assert (0 <= n && n <= m);
+  match (n, m) with
+    | 0, 0 -> succ
+    | 0, m -> alt eps (fun succ -> r (repeat r 0 (m - 1) succ)) succ
+    | n, m -> r (repeat r (n - 1) (m - 1) succ)
 
 let compl r =
   let n = new_node () in

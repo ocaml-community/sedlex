@@ -1,0 +1,3 @@
+(library
+ (name sedlex_compiler)
+ (public_name sedlex.compiler))

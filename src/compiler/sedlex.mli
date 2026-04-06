@@ -10,7 +10,7 @@
 type regexp
 
 (** [chars cset] matches a single code point in [cset]. *)
-val chars : Sedlex_cset.t -> regexp
+val chars : Cset.t -> regexp
 
 (** [seq r1 r2] matches [r1] followed by [r2] (concatenation). *)
 val seq : regexp -> regexp -> regexp
@@ -24,6 +24,10 @@ val rep : regexp -> regexp
 
 (** [plus r] matches one or more repetitions of [r]. *)
 val plus : regexp -> regexp
+
+(** [repeat r n m] matches between [n] and [m] repetitions of [r] (bounded
+    repetition). Requires [0 <= n <= m]. *)
+val repeat : regexp -> int -> int -> regexp
 
 (** The empty regexp — matches the empty string (epsilon). *)
 val eps : regexp
@@ -89,7 +93,7 @@ val reset_tags : unit -> unit
 (** {2 DFA compilation} *)
 
 type dfa_state = {
-  trans : (Sedlex_cset.t * int * tag_op list) array;
+  trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
           execute when this transition fires). *)
   finals : bool array;

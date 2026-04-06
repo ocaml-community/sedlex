@@ -5,10 +5,9 @@
 open Ppxlib
 open Ast_builder.Default
 open Ast_helper
+open Sedlex_compiler
 
 (* let ocaml_version = Versions.ocaml_408 *)
-
-module Cset = Sedlex_cset
 
 (* Decision tree for partitions.
 
@@ -99,7 +98,7 @@ let segments_of_partition p =
     (fun i c ->
       List.iter
         (fun (a, b) -> seg := (a, b, i) :: !seg)
-        (c : Sedlex_cset.t :> (int * int) list))
+        (c : Cset.t :> (int * int) list))
     p;
   List.sort (fun (a1, _, _) (a2, _, _) -> compare a1 a2) !seg
 
@@ -419,13 +418,6 @@ let rev_csets_of_string ~loc ~encoding s =
         done;
         !l
 
-(* [repeat r (n, m)] expands bounded repetition [Rep(r, n..m)] into a
-   sequence of [n] mandatory copies followed by [m - n] optional copies. *)
-let rec repeat r = function
-  | 0, 0 -> Sedlex.eps
-  | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
-  | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
-
 (* Code generation for `as` bindings.
 
    [regexp_of_pattern] parses OCaml patterns into regexps and collects a
@@ -469,25 +461,68 @@ type tag_info = {
          distinct value in the shared discriminator cell. *)
 }
 
-(* [advance pe len] shifts a position expression forward by [len] code
-   points. Returns [None] if either argument is unknown. *)
-let advance pe len =
-  match (pe, len) with
-    | Some (Start_plus n), Some l -> Some (Start_plus (n + l))
-    | Some (End_minus n), Some l -> Some (End_minus (n - l))
-    | Some (Tag { tag; offset }), Some l ->
-        Some (Tag { tag; offset = offset + l })
+(* [shift_pos pe delta] shifts a position expression by [delta] code points
+   (positive = forward, negative = backward). Returns [None] if either
+   argument is unknown. *)
+let shift_pos pe delta =
+  match (pe, delta) with
+    | Some (Start_plus n), Some d -> Some (Start_plus (n + d))
+    | Some (End_minus n), Some d -> Some (End_minus (n - d))
+    | Some (Tag { tag; offset }), Some d ->
+        Some (Tag { tag; offset = offset + d })
     | _ -> None
 
-(* [retreat pe len] shifts a position expression backward by [len] code
-   points. Returns [None] if either argument is unknown. *)
-let retreat pe len =
-  match (pe, len) with
-    | Some (End_minus n), Some l -> Some (End_minus (n + l))
-    | Some (Start_plus n), Some l -> Some (Start_plus (n - l))
-    | Some (Tag { tag; offset }), Some l ->
-        Some (Tag { tag; offset = offset - l })
-    | _ -> None
+let advance pe len = shift_pos pe len
+let retreat pe len = shift_pos pe (Option.map Int.neg len)
+
+(* [add_discriminators ~loc r1 tags1 r2 tags2] wraps two or-pattern branches
+   with discriminator tags so the generated code can tell which branch matched.
+   Reuses an existing discriminator cell from the left branch when possible
+   (OCaml desugars [a | b | c] into [(a | b) | c], so the left branch may
+   already carry a discriminator from an inner [|]). Returns [(regexp, tags)]. *)
+let add_discriminators ~loc r1 tags1 r2 tags2 =
+  let names tags =
+    List.map (fun ti -> ti.name) tags |> List.sort_uniq String.compare
+  in
+  if names tags1 <> names tags2 then
+    err loc "both sides of '|' must bind the same names with 'as'";
+  (* When both branches produce identical positions (e.g.
+     same fixed-length elements), no discriminator is needed. *)
+  if tags1 = tags2 then (Sedlex.alt r1 r2, tags1)
+  else (
+    let stamp disc_cell value tags =
+      List.map (fun ti -> { ti with disc = (disc_cell, value) :: ti.disc }) tags
+    in
+    (* Check if the left branch already has a shared discriminator cell
+       that we can extend with a new value for the right branch. *)
+    let reusable_cell =
+      match tags1 with
+        | [] | { disc = []; _ } :: _ -> None
+        | { disc = (c, _) :: _; _ } :: rest ->
+            if
+              List.for_all
+                (fun ti ->
+                  match ti.disc with (c2, _) :: _ -> c2 = c | [] -> false)
+                rest
+            then Some c
+            else None
+    in
+    match reusable_cell with
+      | Some disc_cell ->
+          let max_val =
+            List.fold_left
+              (fun acc ti ->
+                match ti.disc with (_, v) :: _ -> max acc v | [] -> acc)
+              (-1) tags1
+          in
+          let new_val = max_val + 1 in
+          let r2w = Sedlex.bind_disc r2 disc_cell new_val in
+          (Sedlex.alt r1 r2w, tags1 @ stamp disc_cell new_val tags2)
+      | None ->
+          let disc_cell = Sedlex.new_disc_cell () in
+          let r1w = Sedlex.bind_disc r1 disc_cell 0 in
+          let r2w = Sedlex.bind_disc r2 disc_cell 1 in
+          (Sedlex.alt r1w r2w, stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2))
 
 (* [gen_pos_expr lexbuf pe] generates code that evaluates a [pos_expr]
    to an integer position (offset from token start, in code points). *)
@@ -735,63 +770,8 @@ let regexp_of_pattern env =
       | Ppat_or (p1, p2) ->
           let r1, tags1 = aux ~left ~right ~encoding p1 in
           let r2, tags2 = aux ~left ~right ~encoding p2 in
-          if tags1 <> [] || tags2 <> [] then begin
-            let names tags =
-              List.map (fun ti -> ti.name) tags |> List.sort_uniq String.compare
-            in
-            if names tags1 <> names tags2 then
-              err p.ppat_loc
-                "both sides of '|' must bind the same names with 'as'";
-            (* When both branches produce identical positions (e.g.
-               same fixed-length elements), no discriminator is needed. *)
-            if tags1 = tags2 then (Sedlex.alt r1 r2, tags1)
-            else (
-              let stamp disc_cell value tags =
-                List.map
-                  (fun ti -> { ti with disc = (disc_cell, value) :: ti.disc })
-                  tags
-              in
-              (* Discriminator cell reuse: OCaml desugars
-                 [a | b | c] into [(a | b) | c], so by the time we
-                 see the outer [|], the left branch already carries a
-                 discriminator cell from the inner [|].  We reuse that
-                 cell for the new right branch by assigning the next
-                 unused value, keeping exactly one discriminator cell
-                 per group of alternatives regardless of arity. *)
-              let reusable_cell =
-                match tags1 with
-                  | [] | { disc = []; _ } :: _ -> None
-                  | { disc = (c, _) :: _; _ } :: rest ->
-                      if
-                        List.for_all
-                          (fun ti ->
-                            match ti.disc with
-                              | (c2, _) :: _ -> c2 = c
-                              | [] -> false)
-                          rest
-                      then Some c
-                      else None
-              in
-              match reusable_cell with
-                | Some disc_cell ->
-                    let max_val =
-                      List.fold_left
-                        (fun acc ti ->
-                          match ti.disc with
-                            | (_, v) :: _ -> max acc v
-                            | [] -> acc)
-                        (-1) tags1
-                    in
-                    let new_val = max_val + 1 in
-                    let r2w = Sedlex.bind_disc r2 disc_cell new_val in
-                    (Sedlex.alt r1 r2w, tags1 @ stamp disc_cell new_val tags2)
-                | None ->
-                    let disc_cell = Sedlex.new_disc_cell () in
-                    let r1w = Sedlex.bind_disc r1 disc_cell 0 in
-                    let r2w = Sedlex.bind_disc r2 disc_cell 1 in
-                    ( Sedlex.alt r1w r2w,
-                      stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2 ))
-          end
+          if tags1 <> [] || tags2 <> [] then
+            add_discriminators ~loc:p.ppat_loc r1 tags1 r2 tags2
           else (Sedlex.alt r1 r2, tags1 @ tags2)
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
@@ -893,7 +873,7 @@ let regexp_of_pattern env =
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then no_tags (repeat r (i1, i2))
+                if 0 <= i1 && i1 <= i2 then no_tags (Sedlex.repeat r i1 i2)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"

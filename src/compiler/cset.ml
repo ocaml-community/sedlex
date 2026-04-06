@@ -21,16 +21,15 @@ let check_invariant l =
         if a < prev then
           failwith
             (Printf.sprintf
-               "Sedlex_cset.of_list: not in increasing order or overlapping. \
+               "Cset.of_list: not in increasing order or overlapping. \
                 [_-%d]-[%d-%d]"
                prev a b);
         if a = prev then
           failwith
-            (Printf.sprintf
-               "Sedlex_cset.of_list: adjacent range. [_-%d]-[%d-%d]" prev a b);
+            (Printf.sprintf "Cset.of_list: adjacent range. [_-%d]-[%d-%d]" prev
+               a b);
         if a > b then
-          failwith
-            (Printf.sprintf "Sedlex_cset.of_list: malformed range. [%d-%d]" a b);
+          failwith (Printf.sprintf "Cset.of_list: malformed range. [%d-%d]" a b);
         loop b xs
   in
   loop (-1) l
