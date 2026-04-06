@@ -25,6 +25,10 @@ val rep : regexp -> regexp
 (** [plus r] matches one or more repetitions of [r]. *)
 val plus : regexp -> regexp
 
+(** [repeat r n m] matches between [n] and [m] repetitions of [r] (bounded
+    repetition). Requires [0 <= n <= m]. *)
+val repeat : regexp -> int -> int -> regexp
+
 (** The empty regexp — matches the empty string (epsilon). *)
 val eps : regexp
 

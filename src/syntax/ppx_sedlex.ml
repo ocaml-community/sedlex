@@ -418,13 +418,6 @@ let rev_csets_of_string ~loc ~encoding s =
         done;
         !l
 
-(* [repeat r (n, m)] expands bounded repetition [Rep(r, n..m)] into a
-   sequence of [n] mandatory copies followed by [m - n] optional copies. *)
-let rec repeat r = function
-  | 0, 0 -> Sedlex.eps
-  | 0, m -> Sedlex.alt Sedlex.eps (Sedlex.seq r (repeat r (0, m - 1)))
-  | n, m -> Sedlex.seq r (repeat r (n - 1, m - 1))
-
 (* Code generation for `as` bindings.
 
    [regexp_of_pattern] parses OCaml patterns into regexps and collects a
@@ -886,7 +879,7 @@ let regexp_of_pattern env =
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then no_tags (repeat r (i1, i2))
+                if 0 <= i1 && i1 <= i2 then no_tags (Sedlex.repeat r i1 i2)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval"
