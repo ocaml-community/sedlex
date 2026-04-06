@@ -468,25 +468,19 @@ type tag_info = {
          distinct value in the shared discriminator cell. *)
 }
 
-(* [advance pe len] shifts a position expression forward by [len] code
-   points. Returns [None] if either argument is unknown. *)
-let advance pe len =
-  match (pe, len) with
-    | Some (Start_plus n), Some l -> Some (Start_plus (n + l))
-    | Some (End_minus n), Some l -> Some (End_minus (n - l))
-    | Some (Tag { tag; offset }), Some l ->
-        Some (Tag { tag; offset = offset + l })
+(* [shift_pos pe delta] shifts a position expression by [delta] code points
+   (positive = forward, negative = backward). Returns [None] if either
+   argument is unknown. *)
+let shift_pos pe delta =
+  match (pe, delta) with
+    | Some (Start_plus n), Some d -> Some (Start_plus (n + d))
+    | Some (End_minus n), Some d -> Some (End_minus (n - d))
+    | Some (Tag { tag; offset }), Some d ->
+        Some (Tag { tag; offset = offset + d })
     | _ -> None
 
-(* [retreat pe len] shifts a position expression backward by [len] code
-   points. Returns [None] if either argument is unknown. *)
-let retreat pe len =
-  match (pe, len) with
-    | Some (End_minus n), Some l -> Some (End_minus (n + l))
-    | Some (Start_plus n), Some l -> Some (Start_plus (n - l))
-    | Some (Tag { tag; offset }), Some l ->
-        Some (Tag { tag; offset = offset - l })
-    | _ -> None
+let advance pe len = shift_pos pe len
+let retreat pe len = shift_pos pe (Option.map Int.neg len)
 
 (* [gen_pos_expr lexbuf pe] generates code that evaluates a [pos_expr]
    to an integer position (offset from token start, in code points). *)
