@@ -141,7 +141,8 @@ type compiled_binding = {
   end_pos : pos_expr;
   disc : (int * int) list;
       (** Discriminator conditions: [(cell, value)] pairs. Empty for simple
-          (non-or) bindings. For or-patterns, each branch has distinct values.
+          (non-or) bindings. For or-patterns, branches with different positions
+          have distinct values; branches with identical positions share a value.
       *)
 }
 

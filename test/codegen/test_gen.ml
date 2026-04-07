@@ -398,7 +398,7 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
       state3 -> state4 [label="'d' {d0=0}"];
       state3 -> state6 [label="'e' {d0=1}"];
       state4 [label="4\n[rule 0]", shape=doublecircle];
-      state4 -> state5 [label="'f' {d0=2}"];
+      state4 -> state5 [label="'f' {d0=0}"];
       state5 [label="5\n[rule 0]", shape=doublecircle];
       state6 [label="6\n[rule 0]", shape=doublecircle];
     }
@@ -423,7 +423,7 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
     and __sedlex_state_4 buf =
       Sedlexing.mark buf 0;
       (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
-       | 0 -> (Sedlexing.__private__set_mem_value buf 0 2; 0)
+       | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
           Sedlexing.__private__init_mem buf 1;
@@ -1189,7 +1189,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
       state2 [label="2"];
       state2 -> state3 [label="'e'"];
       state3 [label="3"];
-      state3 -> state4 [label="'f' {d0=0}"];
+      state3 -> state4 [label="'f' {d1=0}"];
       state4 [label="4\n[rule 0]", shape=doublecircle];
       state5 [label="5"];
       state5 -> state6 [label="'d'"];
@@ -1197,14 +1197,14 @@ let%expect_test "as binding: or-chain then nested or on right" =
       state6 [label="6"];
       state6 -> state7 [label="'e'"];
       state7 [label="7"];
-      state7 -> state8 [label="'f' {d1=0}"];
+      state7 -> state8 [label="'f' {d0=0}"];
       state8 [label="8"];
       state8 -> state9 [label="'g'"];
       state9 [label="9"];
-      state9 -> state10 [label="'h' {d0=2}"];
+      state9 -> state10 [label="'h' {d1=2}"];
       state10 [label="10\n[rule 0]", shape=doublecircle];
       state11 [label="11"];
-      state11 -> state12 [label="'f' {d1=1}"];
+      state11 -> state12 [label="'f' {d0=1}"];
       state12 [label="12"];
       state12 -> state9 [label="'g'"];
     }
@@ -1224,7 +1224,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 1 0; 0)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_5 buf =
       match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
@@ -1237,7 +1237,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_7 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 1 0; __sedlex_state_8 buf)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; __sedlex_state_8 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_8 buf =
       match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
@@ -1245,11 +1245,11 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_9 buf =
       match __sedlex_partition_7 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 0 2; 0)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 1 2; 0)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_11 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 1 1; __sedlex_state_12 buf)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 0 1; __sedlex_state_12 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_12 buf =
       match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
@@ -1261,21 +1261,21 @@ let%expect_test "as binding: or-chain then nested or on right" =
     with
     | 0 ->
         let x =
-          if (Sedlexing.__private__mem_value buf 0) = 0
+          if (Sedlexing.__private__mem_value buf 1) = 0
           then
             let __s = 0 in
             let __e = (Sedlexing.lexeme_length buf) - 2 in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
-            if (Sedlexing.__private__mem_value buf 0) = 1
+            if (Sedlexing.__private__mem_value buf 1) = 1
             then
               (let __s = 0 in
                let __e = (Sedlexing.lexeme_length buf) - 3 in
                { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) })
             else
               if
-                ((Sedlexing.__private__mem_value buf 0) = 2) &&
-                  ((Sedlexing.__private__mem_value buf 1) = 0)
+                ((Sedlexing.__private__mem_value buf 1) = 2) &&
+                  ((Sedlexing.__private__mem_value buf 0) = 0)
               then
                 (let __s = 0 in
                  let __e = (Sedlexing.lexeme_length buf) - 3 in
@@ -1285,13 +1285,13 @@ let%expect_test "as binding: or-chain then nested or on right" =
                  let __e = (Sedlexing.lexeme_length buf) - 4 in
                  { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }) in
         let y =
-          if (Sedlexing.__private__mem_value buf 0) = 0
+          if (Sedlexing.__private__mem_value buf 1) = 0
           then
             let __s = 2 in
             let __e = Sedlexing.lexeme_length buf in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
-            if (Sedlexing.__private__mem_value buf 0) = 1
+            if (Sedlexing.__private__mem_value buf 1) = 1
             then
               (let __s = 1 in
                let __e = Sedlexing.lexeme_length buf in

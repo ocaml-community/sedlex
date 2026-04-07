@@ -5,7 +5,7 @@
 type t =
   | Chars of Cset.t
   | Seq of t list
-  | Alt of t * t
+  | Alt of t list
   | Star of t
   | Plus of t
   | Rep of t * int * int
@@ -32,7 +32,10 @@ let seq a b =
 let alt a b =
   match (a, b) with
     | Chars c1, Chars c2 -> Chars (Cset.union c1 c2)
-    | _ -> Alt (a, b)
+    | Alt l1, Alt l2 -> Alt (l1 @ l2)
+    | Alt l1, x -> Alt (l1 @ [x])
+    | x, Alt l2 -> Alt (x :: l2)
+    | _ -> Alt [a; b]
 
 (* Analysis *)
 
@@ -47,10 +50,11 @@ let rec fixed_length = function
             | Some a, Some b -> Some (a + b)
             | _ -> None)
         (Some 0) elems
-  | Alt (a, b) -> (
-      match (fixed_length a, fixed_length b) with
-        | Some n1, Some n2 when n1 = n2 -> Some n1
-        | _ -> None)
+  | Alt branches -> (
+      match List.map fixed_length branches with
+        | [] -> None
+        | first :: rest ->
+            if List.for_all (( = ) first) rest then first else None)
   | Rep (inner, n, m) ->
       if n = m then (
         match fixed_length inner with Some l -> Some (n * l) | None -> None)
@@ -63,7 +67,7 @@ let rec capture_names_acc acc = function
       let acc = if List.mem name acc then acc else name :: acc in
       capture_names_acc acc inner
   | Seq elems -> List.fold_left capture_names_acc acc elems
-  | Alt (a, b) -> capture_names_acc (capture_names_acc acc a) b
+  | Alt branches -> List.fold_left capture_names_acc acc branches
   | Star inner | Plus inner | Rep (inner, _, _) -> capture_names_acc acc inner
 
 let capture_names t = capture_names_acc [] t |> List.sort_uniq String.compare
@@ -88,14 +92,21 @@ let validate t =
             (fun acc e ->
               match acc with Error _ -> acc | Ok () -> check ~inside_rep e)
             (Ok ()) elems
-      | Alt (a, b) ->
-          let* () = check ~inside_rep a in
-          let* () = check ~inside_rep b in
-          let na = capture_names a in
-          let nb = capture_names b in
-          if na <> nb && (na <> [] || nb <> []) then
-            Error "both sides of '|' must bind the same names with 'as'"
-          else Ok ()
+      | Alt branches -> (
+          let* () =
+            List.fold_left
+              (fun acc e ->
+                match acc with Error _ -> acc | Ok () -> check ~inside_rep e)
+              (Ok ()) branches
+          in
+          let names_per_branch = List.map capture_names branches in
+          match names_per_branch with
+            | [] | [_] -> Ok ()
+            | first :: rest ->
+                if List.for_all (fun ns -> ns = first) rest then Ok ()
+                else
+                  Error "all branches of '|' must bind the same names with 'as'"
+          )
       | Star inner | Plus inner -> check ~inside_rep:true inner
       | Rep (inner, _, _) -> check ~inside_rep:true inner
   and ( let* ) r f = match r with Error _ as e -> e | Ok x -> f x in
@@ -128,7 +139,12 @@ let rec pp fmt = function
            ~pp_sep:(fun fmt () -> Format.fprintf fmt ", ")
            pp)
         elems
-  | Alt (a, b) -> Format.fprintf fmt "(%a | %a)" pp a pp b
+  | Alt branches ->
+      Format.fprintf fmt "(%a)"
+        (Format.pp_print_list
+           ~pp_sep:(fun fmt () -> Format.fprintf fmt " | ")
+           pp)
+        branches
   | Star inner -> Format.fprintf fmt "Star %a" pp inner
   | Plus inner -> Format.fprintf fmt "Plus %a" pp inner
   | Rep (inner, n, m) -> Format.fprintf fmt "Rep(%a, %d..%d)" pp inner n m
