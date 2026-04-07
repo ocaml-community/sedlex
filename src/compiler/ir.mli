@@ -47,9 +47,10 @@ val capture : string -> t -> t
     points, or [None] if the length is variable. *)
 val fixed_length : t -> int option
 
-(** [capture_names t] returns the set of capture names in [t], sorted and
-    deduplicated. *)
-val capture_names : t -> string list
+module SSet : Set.S with type elt = string
+
+(** [capture_names t] returns the set of capture names in [t]. *)
+val capture_names : t -> SSet.t
 
 (** {2 Validation}
 

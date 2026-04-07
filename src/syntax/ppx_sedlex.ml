@@ -519,7 +519,7 @@ let gen_binding_code lexbuf (bindings : Sedlex.compiled_binding list) action =
    optimization are deferred to the compiler's [compile_ir]. *)
 let ir_of_pattern env =
   let reject_captures loc ctx ir =
-    if Ir.capture_names ir <> [] then
+    if not (Ir.SSet.is_empty (Ir.capture_names ir)) then
       err loc "'as' bindings are not supported inside %s" ctx;
     ir
   in
@@ -556,7 +556,7 @@ let ir_of_pattern env =
       (* name as x — named sub-match binding *)
       | Ppat_alias (inner, { txt = name; loc = name_loc }) ->
           let ir_inner = aux ~encoding inner in
-          if List.mem name (Ir.capture_names ir_inner) then
+          if Ir.SSet.mem name (Ir.capture_names ir_inner) then
             err name_loc
               "'as' binding '%s' shadows an inner binding of the same name" name;
           Ir.capture name ir_inner
@@ -794,7 +794,7 @@ let mapper =
         (* [%sedlex.regexp? <pattern>] *)
         | [%expr [%sedlex.regexp? [%p? p]]] ->
             let ir = ir_of_pattern env p in
-            if Ir.capture_names ir <> [] then
+            if not (Ir.SSet.is_empty (Ir.capture_names ir)) then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
             Some ir
@@ -805,7 +805,7 @@ let mapper =
             in
             [%e? body]] ->
             let ir = ir_of_pattern env p in
-            if Ir.capture_names ir <> [] then
+            if not (Ir.SSet.is_empty (Ir.capture_names ir)) then
               err p.ppat_loc
                 "'as' bindings are not allowed in regexp definitions";
             (this#define_regexp name ir)#eval_regexp_expr body
