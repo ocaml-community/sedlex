@@ -12,30 +12,20 @@ type t =
   | Eps
   | Capture of string * t
 
-(* Smart constructors *)
+module SSet = Set.Make (String)
 
-let chars c = Chars c
-let eps = Eps
-let capture name inner = Capture (name, inner)
-let star t = Star t
-let plus t = Plus t
-let rep t n m = Rep (t, n, m)
+let rec capture_names_acc acc = function
+  | Chars _ | Eps -> acc
+  | Capture (name, inner) -> capture_names_acc (SSet.add name acc) inner
+  | Seq elems -> List.fold_left capture_names_acc acc elems
+  | Alt branches -> List.fold_left capture_names_acc acc branches
+  | Star inner | Plus inner | Rep (inner, _, _) -> capture_names_acc acc inner
 
-let seq a b =
-  match (a, b) with
-    | Eps, x | x, Eps -> x
-    | Seq l1, Seq l2 -> Seq (l1 @ l2)
-    | Seq l1, x -> Seq (l1 @ [x])
-    | x, Seq l2 -> Seq (x :: l2)
-    | _ -> Seq [a; b]
+let capture_names t = capture_names_acc SSet.empty t
 
-let alt a b =
-  match (a, b) with
-    | Chars c1, Chars c2 -> Chars (Cset.union c1 c2)
-    | Alt l1, Alt l2 -> Alt (l1 @ l2)
-    | Alt l1, x -> Alt (l1 @ [x])
-    | x, Alt l2 -> Alt (x :: l2)
-    | _ -> Alt [a; b]
+let reject_captures ctx t =
+  if SSet.is_empty (capture_names t) then Ok t
+  else Error (Printf.sprintf "'as' bindings are not supported inside %s" ctx)
 
 (* Analysis *)
 
@@ -61,55 +51,75 @@ let rec fixed_length = function
       else None
   | Star _ | Plus _ -> None
 
-module SSet = Set.Make (String)
+(* Smart constructors *)
 
-let rec capture_names_acc acc = function
-  | Chars _ | Eps -> acc
-  | Capture (name, inner) -> capture_names_acc (SSet.add name acc) inner
-  | Seq elems -> List.fold_left capture_names_acc acc elems
-  | Alt branches -> List.fold_left capture_names_acc acc branches
-  | Star inner | Plus inner | Rep (inner, _, _) -> capture_names_acc acc inner
+let chars c = Chars c
+let eps = Eps
 
-let capture_names t = capture_names_acc SSet.empty t
+let capture name inner =
+  if SSet.mem name (capture_names inner) then
+    Error
+      (Printf.sprintf
+         "'as' binding '%s' shadows an inner binding of the same name" name)
+  else Ok (Capture (name, inner))
 
-(* Validation *)
+let star t =
+  match reject_captures "Star" t with Error _ as e -> e | Ok t -> Ok (Star t)
 
-let validate t =
-  let rec check ~inside_rep t =
-    match t with
-      | Chars _ | Eps -> Ok ()
-      | Capture (_, _) when inside_rep ->
-          Error "'as' bindings are not supported inside repetition operators"
-      | Capture (name, inner) ->
-          if SSet.mem name (capture_names inner) then
-            Error
-              (Printf.sprintf
-                 "'as' binding '%s' shadows an inner binding of the same name"
-                 name)
-          else check ~inside_rep inner
-      | Seq elems ->
-          List.fold_left
-            (fun acc e ->
-              match acc with Error _ -> acc | Ok () -> check ~inside_rep e)
-            (Ok ()) elems
-      | Alt branches -> (
-          let* () =
-            List.fold_left
-              (fun acc e ->
-                match acc with Error _ -> acc | Ok () -> check ~inside_rep e)
-              (Ok ()) branches
-          in
-          let names_per_branch = List.map capture_names branches in
-          match names_per_branch with
-            | [] | [_] -> Ok ()
-            | first :: rest ->
-                if List.for_all (SSet.equal first) rest then Ok ()
-                else
-                  Error "all branches of '|' must bind the same names with 'as'"
-          )
-      | Star inner | Plus inner -> check ~inside_rep:true inner
-      | Rep (inner, _, _) -> check ~inside_rep:true inner
-  and ( let* ) r f = match r with Error _ as e -> e | Ok x -> f x in
+let plus t =
+  match reject_captures "Plus" t with Error _ as e -> e | Ok t -> Ok (Plus t)
+
+let rep t n m =
+  match reject_captures "Rep" t with
+    | Error _ as e -> e
+    | Ok t -> Ok (Rep (t, n, m))
+
+let seq a b =
+  match (a, b) with
+    | Eps, x | x, Eps -> x
+    | Seq l1, Seq l2 -> Seq (l1 @ l2)
+    | Seq l1, x -> Seq (l1 @ [x])
+    | x, Seq l2 -> Seq (x :: l2)
+    | _ -> Seq [a; b]
+
+let alt a b =
+  let branches =
+    match (a, b) with
+      | Chars c1, Chars c2 -> [Chars (Cset.union c1 c2)]
+      | Alt l1, Alt l2 -> l1 @ l2
+      | Alt l1, x -> l1 @ [x]
+      | x, Alt l2 -> x :: l2
+      | _ -> [a; b]
+  in
+  let names = List.map capture_names branches in
+  match names with
+    | [] | [_] -> Ok (match branches with [x] -> x | _ -> Alt branches)
+    | first :: rest ->
+        if List.for_all (SSet.equal first) rest then
+          Ok (match branches with [x] -> x | _ -> Alt branches)
+        else Error "all branches of '|' must bind the same names with 'as'"
+
+(* All structural constraints are enforced by the smart constructors.
+   [check_invariant] verifies them as a debug assertion. *)
+let check_invariant t =
+  let rec check ~inside_rep = function
+    | Chars _ | Eps -> ()
+    | Capture (name, inner) ->
+        assert (not inside_rep);
+        assert (not (SSet.mem name (capture_names inner)));
+        check ~inside_rep inner
+    | Seq elems ->
+        assert (List.length elems >= 2);
+        List.iter (check ~inside_rep) elems
+    | Alt branches ->
+        assert (List.length branches >= 2);
+        (match List.map capture_names branches with
+          | first :: rest -> assert (List.for_all (SSet.equal first) rest)
+          | [] -> assert false);
+        List.iter (check ~inside_rep) branches
+    | Star inner | Plus inner -> check ~inside_rep:true inner
+    | Rep (inner, _, _) -> check ~inside_rep:true inner
+  in
   check ~inside_rep:false t
 
 (* Pretty-printing *)

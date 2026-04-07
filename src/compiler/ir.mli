@@ -30,36 +30,42 @@ type t =
       (** Named capture: [Capture (name, inner)] wraps [inner] with an [as]
           binding. The compiler decides tag allocation strategy. *)
 
-(** {2 Smart constructors} *)
+(** {2 Smart constructors}
+
+    Constructors that enforce structural invariants return [result].
+    - {!alt} checks name consistency across branches.
+    - {!capture} checks for shadowed inner bindings.
+    - {!star}, {!plus}, {!rep} reject inner captures. *)
 
 val chars : Cset.t -> t
 val seq : t -> t -> t
-val alt : t -> t -> t
-val star : t -> t
-val plus : t -> t
-val rep : t -> int -> int -> t
+val alt : t -> t -> (t, string) result
+val star : t -> (t, string) result
+val plus : t -> (t, string) result
+val rep : t -> int -> int -> (t, string) result
 val eps : t
-val capture : string -> t -> t
+val capture : string -> t -> (t, string) result
+
+(** [reject_captures ctx t] returns [Ok t] if [t] contains no [Capture] nodes,
+    or [Error msg] mentioning [ctx] otherwise. *)
+val reject_captures : string -> t -> (t, string) result
 
 (** {2 Analysis} *)
-
-(** [fixed_length t] returns [Some n] if [t] always matches exactly [n] code
-    points, or [None] if the length is variable. *)
-val fixed_length : t -> int option
 
 module SSet : Set.S with type elt = string
 
 (** [capture_names t] returns the set of capture names in [t]. *)
 val capture_names : t -> SSet.t
 
-(** {2 Validation}
+(** [fixed_length t] returns [Some n] if [t] always matches exactly [n] code
+    points, or [None] if the length is variable. *)
+val fixed_length : t -> int option
 
-    [validate t] checks structural constraints:
-    - [Capture] not inside [Star], [Plus], or [Rep]
-    - All branches of [Alt] bind the same capture names
+(** {2 Invariant checking}
 
-    Returns [Ok ()] or [Error msg]. *)
-val validate : t -> (unit, string) result
+    All structural constraints are enforced by the smart constructors.
+    [check_invariant] asserts these hold. Use for debugging. *)
+val check_invariant : t -> unit
 
 (** {2 Pretty-printing} *)
 

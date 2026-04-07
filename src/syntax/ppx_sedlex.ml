@@ -518,17 +518,17 @@ let gen_binding_code lexbuf (bindings : Sedlex.compiled_binding list) action =
    IR patterns. All tag allocation, discriminator handling, and fixed-length
    optimization are deferred to the compiler's [compile_ir]. *)
 let ir_of_pattern env =
-  let reject_captures loc ctx ir =
-    if not (Ir.SSet.is_empty (Ir.capture_names ir)) then
-      err loc "'as' bindings are not supported inside %s" ctx;
-    ir
-  in
+  let unwrap loc = function Ok ir -> ir | Error msg -> err loc "%s" msg in
   let rec char_pair_op func name ~encoding ~loc tuple =
     (* Construct something like Sub(a,b) *)
       match tuple with
       | Some { ppat_desc = Ppat_tuple [p0; p1]; _ } -> (
-          let r0 = reject_captures p0.ppat_loc name (aux ~encoding p0) in
-          let r1 = reject_captures p1.ppat_loc name (aux ~encoding p1) in
+          let r0 =
+            unwrap p0.ppat_loc (Ir.reject_captures name (aux ~encoding p0))
+          in
+          let r1 =
+            unwrap p1.ppat_loc (Ir.reject_captures name (aux ~encoding p1))
+          in
           match func r0 r1 with
             | Some r -> r
             | None ->
@@ -555,13 +555,10 @@ let ir_of_pattern env =
     match p.ppat_desc with
       (* name as x — named sub-match binding *)
       | Ppat_alias (inner, { txt = name; loc = name_loc }) ->
-          let ir_inner = aux ~encoding inner in
-          if Ir.SSet.mem name (Ir.capture_names ir_inner) then
-            err name_loc
-              "'as' binding '%s' shadows an inner binding of the same name" name;
-          Ir.capture name ir_inner
+          unwrap name_loc (Ir.capture name (aux ~encoding inner))
       (* p1 | p2 — alternation *)
-      | Ppat_or (p1, p2) -> Ir.alt (aux ~encoding p1) (aux ~encoding p2)
+      | Ppat_or (p1, p2) ->
+          unwrap p.ppat_loc (Ir.alt (aux ~encoding p1) (aux ~encoding p2))
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
           List.fold_left
@@ -569,10 +566,10 @@ let ir_of_pattern env =
             (aux ~encoding p) pl
       (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
-          Ir.star (reject_captures p.ppat_loc "Star" (aux ~encoding p))
+          unwrap p.ppat_loc (Ir.star (aux ~encoding p))
       (* Plus p — one-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Plus"; _ }, Some (_, p)) ->
-          Ir.plus (reject_captures p.ppat_loc "Plus" (aux ~encoding p))
+          unwrap p.ppat_loc (Ir.plus (aux ~encoding p))
       (* Utf8 p — switch to UTF-8 encoding *)
       | Ppat_construct ({ txt = Lident "Utf8"; _ }, Some (_, p)) ->
           aux ~encoding:Utf8 p
@@ -600,12 +597,12 @@ let ir_of_pattern env =
                       ];
                   _;
                 } ) ) -> (
-          let r = reject_captures p0.ppat_loc "Rep" (aux ~encoding p0) in
+          let r = aux ~encoding p0 in
           match (i1, i2) with
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
-                if 0 <= i1 && i1 <= i2 then Ir.rep r i1 i2
+                if 0 <= i1 && i1 <= i2 then unwrap p0.ppat_loc (Ir.rep r i1 i2)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->
                 err p.ppat_loc "Rep must take an integer constant or interval")
@@ -614,14 +611,17 @@ let ir_of_pattern env =
           err p.ppat_loc "the Rep operator takes 2 arguments"
       (* Opt p — optional (zero or one) *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
-          let r = reject_captures p.ppat_loc "Opt" (aux ~encoding p) in
-          Ir.alt Ir.eps r
+          let r =
+            unwrap p.ppat_loc (Ir.reject_captures "Opt" (aux ~encoding p))
+          in
+          unwrap p.ppat_loc (Ir.alt Ir.eps r)
       (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> (
           match arg with
             | Some (_, p0) -> (
                 let r =
-                  reject_captures p0.ppat_loc "Compl" (aux ~encoding p0)
+                  unwrap p0.ppat_loc
+                    (Ir.reject_captures "Compl" (aux ~encoding p0))
                 in
                 match ir_compl r with
                   | Some r -> r
@@ -737,9 +737,6 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
       (function
         | { pc_lhs = p; pc_rhs = e; pc_guard = None } ->
             let ir = ir_of_pattern env p in
-            (match Ir.validate ir with
-              | Ok () -> ()
-              | Error msg -> err p.ppat_loc "%s" msg);
             (ir, p.ppat_loc, e)
         | { pc_guard = Some e; _ } ->
             err e.pexp_loc "'when' guards are not supported")
