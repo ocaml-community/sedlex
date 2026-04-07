@@ -18,7 +18,9 @@ type t =
   | Seq of t list
       (** Sequence (concatenation). Invariant: length >= 2. Use {!seq} smart
           constructor. *)
-  | Alt of t * t  (** Alternation: match left or right. *)
+  | Alt of t list
+      (** Alternation. Invariant: length >= 2. Use {!alt} smart constructor
+          which flattens nested [Alt]s. *)
   | Star of t  (** Kleene star (zero or more). *)
   | Plus of t  (** One or more. *)
   | Rep of t * int * int
@@ -52,8 +54,8 @@ val capture_names : t -> string list
 (** {2 Validation}
 
     [validate t] checks structural constraints:
-    - [Capture] not inside [Star], [Plus], [Rep], or set operations
-    - Both sides of [Alt] bind the same capture names
+    - [Capture] not inside [Star], [Plus], or [Rep]
+    - All branches of [Alt] bind the same capture names
 
     Returns [Ok ()] or [Error msg]. *)
 val validate : t -> (unit, string) result

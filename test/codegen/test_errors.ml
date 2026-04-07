@@ -98,7 +98,7 @@ let%expect_test "error: different names in or-pattern" =
     File "test/codegen/test_errors.ml", characters 21-44:
        |       match buf with ('a' as x) | ('b' as y) -> ignore (x, y) | _ -> ()]];
                               ^^^^^^^^^^^^^^^^^^^^^^^
-    Error: Sedlex: both sides of '|' must bind the same names with 'as'
+    Error: Sedlex: all branches of '|' must bind the same names with 'as'
     |}]
 
 (* Error tests for Sub/Intersect/Compl on multi-char regexps *)

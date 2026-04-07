@@ -513,10 +513,10 @@ let gen_binding_code lexbuf (bindings : Sedlex.compiled_binding list) action =
                 [%e acc]])
       by_name action)
 
-(* [ir_of_pattern env ~encoding p] parses an OCaml pattern AST into an
-   [Ir.t]. The env maps names to previously defined IR patterns.
-   All tag allocation, discriminator handling, and fixed-length optimization
-   are deferred to the compiler's [compile_ir]. *)
+(* [ir_of_pattern env] returns a function [pattern -> Ir.t] that parses an
+   OCaml pattern AST into an IR node. [env] maps names to previously defined
+   IR patterns. All tag allocation, discriminator handling, and fixed-length
+   optimization are deferred to the compiler's [compile_ir]. *)
 let ir_of_pattern env =
   let reject_captures loc ctx ir =
     if Ir.capture_names ir <> [] then

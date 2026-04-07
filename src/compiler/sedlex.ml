@@ -353,8 +353,8 @@ let compile rs =
    [End_minus], no memory cells are needed at all.
 
    Or-patterns [(p1 as x) | (p2 as x)] additionally use discriminator cells:
-   integer values that record which branch was taken, so the PPX can extract
-   the correct positions at match time. *)
+   integer values that record which branch was taken, so the code generator
+   can emit the correct position extraction at match time. *)
 
 type pos_expr =
   | Tag of { tag : int; offset : int }
@@ -389,54 +389,53 @@ let shift_pos pe delta =
 let advance pe len = shift_pos pe len
 let retreat pe len = shift_pos pe (Option.map Int.neg len)
 
-(* [add_discriminators r1 tags1 r2 tags2] wraps two or-pattern branches
-   with discriminator tags so the generated code can tell which branch matched.
-   Reuses an existing discriminator cell from the left branch when possible
-   (OCaml desugars [a | b | c] into [(a | b) | c], so the left branch may
-   already carry a discriminator from an inner [|]). *)
-let add_discriminators r1 tags1 r2 tags2 =
-  let names tags =
-    List.map (fun (ti : compiled_binding) -> ti.name) tags
-    |> List.sort_uniq String.compare
+(* [add_discriminators branches] takes a list of [(regexp, bindings)] pairs
+   from an n-ary alternation and wraps each branch with a discriminator tag
+   so the generated code can tell which branch matched. Branches with
+   identical bindings share the same discriminator value. If all branches
+   have identical bindings, no discriminator cell is allocated. *)
+let add_discriminators (branches : (regexp * compiled_binding list) list) =
+  let fold_alt = function
+    | [] -> assert false
+    | (r, _) :: rest -> List.fold_left (fun acc (r, _) -> alt acc r) r rest
   in
-  if names tags1 <> names tags2 then
-    invalid_arg "both sides of '|' must bind the same names with 'as'";
-  if tags1 = tags2 then (alt r1 r2, tags1)
+  (* Check if all branches produce identical bindings — if so, no
+     discriminator is needed at all. *)
+  let all_same =
+    match branches with
+      | [] | [_] -> true
+      | (_, first) :: rest -> List.for_all (fun (_, tags) -> tags = first) rest
+  in
+  if all_same then (fold_alt branches, snd (List.hd branches))
   else (
-    let stamp disc_cell value tags =
+    let disc_cell = new_disc_cell () in
+    let stamp value tags =
       List.map
         (fun (ti : compiled_binding) ->
           { ti with disc = (disc_cell, value) :: ti.disc })
         tags
     in
-    let reusable_cell =
-      match tags1 with
-        | [] | { disc = []; _ } :: _ -> None
-        | { disc = (c, _) :: _; _ } :: rest ->
-            if
-              List.for_all
-                (fun (ti : compiled_binding) ->
-                  match ti.disc with (c2, _) :: _ -> c2 = c | [] -> false)
-                rest
-            then Some c
-            else None
+    (* Assign discriminator values. Branches with identical bindings
+       share the same value. *)
+    let next_val = ref 0 in
+    let seen : (compiled_binding list * int) list ref = ref [] in
+    let get_value tags =
+      match List.assoc_opt tags !seen with
+        | Some v -> v
+        | None ->
+            let v = !next_val in
+            incr next_val;
+            seen := (tags, v) :: !seen;
+            v
     in
-    match reusable_cell with
-      | Some disc_cell ->
-          let max_val =
-            List.fold_left
-              (fun acc (ti : compiled_binding) ->
-                match ti.disc with (_, v) :: _ -> max acc v | [] -> acc)
-              (-1) tags1
-          in
-          let new_val = max_val + 1 in
-          let r2w = bind_disc r2 disc_cell new_val in
-          (alt r1 r2w, tags1 @ stamp disc_cell new_val tags2)
-      | None ->
-          let disc_cell = new_disc_cell () in
-          let r1w = bind_disc r1 disc_cell 0 in
-          let r2w = bind_disc r2 disc_cell 1 in
-          (alt r1w r2w, stamp disc_cell 0 tags1 @ stamp disc_cell 1 tags2))
+    let wrapped =
+      List.map
+        (fun (r, tags) ->
+          let v = get_value tags in
+          (bind_disc r disc_cell v, stamp v tags))
+        branches
+    in
+    (fold_alt wrapped, List.concat_map snd wrapped))
 
 (* [lower ir ~left ~right] converts an IR pattern to a low-level regexp
    and a list of compiled bindings. [left] and [right] are the known
@@ -491,11 +490,18 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
                         wrapped ))
         in
         (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
-    | Ir.Alt (a, b) ->
-        let r1, tags1 = lower ~left ~right a in
-        let r2, tags2 = lower ~left ~right b in
-        if tags1 <> [] || tags2 <> [] then add_discriminators r1 tags1 r2 tags2
-        else (alt r1 r2, [])
+    | Ir.Alt branches ->
+        let lowered = List.map (lower ~left ~right) branches in
+        let has_captures = List.exists (fun (_, tags) -> tags <> []) lowered in
+        if has_captures then add_discriminators lowered
+        else (
+          let r =
+            List.fold_left
+              (fun acc (r, _) -> alt acc r)
+              (fst (List.hd lowered))
+              (List.tl lowered)
+          in
+          (r, []))
     | Ir.Seq elems ->
         (* Sequence — propagate left/right position contexts through elements.
            Right positions are computed right-to-left; left positions are
@@ -512,14 +518,14 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
             acc := retreat !acc lengths_arr.(i)
           done
         in
-        (* Fallback for [update_left]: if [advance] fails (unknown
-           current left or variable-length element), but the element
-           was a [Capture] whose end position is a [Tag], that tag
-           records a runtime position we can use as the [left] anchor
-           for the next element. [Start_plus]/[End_minus] endpoints
-           are not useful here: they are relative to token boundaries,
-           so they only propagate through [advance]/[retreat] — they
-           cannot serve as fresh anchors after a variable-length gap. *)
+        (* Fallback for [update_left]: if [advance] returns [None]
+           (because the current left is unknown or the element has
+           variable length), but the element was a [Capture] whose
+           end position is a [Tag], we can use that tag as the [left]
+           anchor for the next element — it records a runtime position.
+           [Start_plus]/[End_minus] endpoints don't help here: they
+           are already factored into [advance], so if [advance] failed,
+           they have nothing more to offer. *)
         let left_from_end_tag ir tags' =
           match ir with
             | Ir.Capture _ -> (
