@@ -120,6 +120,44 @@ type compiled = {
     initial state. *)
 val compile : regexp array -> compiled
 
+(** {2 High-level compilation from IR}
+
+    [compile_ir] takes an array of {!Ir.t} patterns, handles tag allocation
+    (including [Start_plus]/[End_minus] optimizations), discriminator insertion
+    for or-patterns, and DFA construction. Returns the DFA and all information
+    needed to generate binding extraction code. *)
+
+(** How to compute a sub-match boundary position at runtime. *)
+type pos_expr =
+  | Tag of { tag : int; offset : int }
+      (** Read memory cell [tag] and add [offset]. *)
+  | Start_plus of int  (** Position is [n] code points from the token start. *)
+  | End_minus of int  (** Position is [n] code points before the token end. *)
+
+(** Information about a single binding in the compiled output. *)
+type compiled_binding = {
+  name : string;
+  start_pos : pos_expr;
+  end_pos : pos_expr;
+  disc : (int * int) list;
+      (** Discriminator conditions: [(cell, value)] pairs. Empty for simple
+          (non-or) bindings. For or-patterns, each branch has distinct values.
+      *)
+}
+
+(** Result of [compile_ir]. *)
+type compiled_ir = {
+  dfa : dfa;
+  init_tags : tag_op list;
+  num_tags : int;
+  bindings : compiled_binding list array;
+      (** [bindings.(i)] is the list of binding info for rule [i]. *)
+}
+
+(** [compile_ir rules] compiles an array of IR patterns into a tagged DFA.
+    Raises [Invalid_argument] if validation fails. *)
+val compile_ir : Ir.t array -> compiled_ir
+
 (** [dfa_to_dot dfa] returns a Graphviz DOT representation of the DFA, including
     state labels, accepting state markers, transition character sets, and tag
     operations on edges. *)
