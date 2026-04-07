@@ -61,16 +61,16 @@ let rec fixed_length = function
       else None
   | Star _ | Plus _ -> None
 
+module SSet = Set.Make (String)
+
 let rec capture_names_acc acc = function
   | Chars _ | Eps -> acc
-  | Capture (name, inner) ->
-      let acc = if List.mem name acc then acc else name :: acc in
-      capture_names_acc acc inner
+  | Capture (name, inner) -> capture_names_acc (SSet.add name acc) inner
   | Seq elems -> List.fold_left capture_names_acc acc elems
   | Alt branches -> List.fold_left capture_names_acc acc branches
   | Star inner | Plus inner | Rep (inner, _, _) -> capture_names_acc acc inner
 
-let capture_names t = capture_names_acc [] t |> List.sort_uniq String.compare
+let capture_names t = capture_names_acc SSet.empty t
 
 (* Validation *)
 
@@ -81,7 +81,7 @@ let validate t =
       | Capture (_, _) when inside_rep ->
           Error "'as' bindings are not supported inside repetition operators"
       | Capture (name, inner) ->
-          if List.mem name (capture_names inner) then
+          if SSet.mem name (capture_names inner) then
             Error
               (Printf.sprintf
                  "'as' binding '%s' shadows an inner binding of the same name"
@@ -103,7 +103,7 @@ let validate t =
           match names_per_branch with
             | [] | [_] -> Ok ()
             | first :: rest ->
-                if List.for_all (fun ns -> ns = first) rest then Ok ()
+                if List.for_all (SSet.equal first) rest then Ok ()
                 else
                   Error "all branches of '|' must bind the same names with 'as'"
           )
