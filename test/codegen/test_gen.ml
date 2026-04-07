@@ -159,8 +159,7 @@ let%expect_test "as binding: simple" =
     | 0 ->
         let x =
           let __s = 1 in
-          let __e = (Sedlexing.lexeme_length buf) - 1 in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 2 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore x
     | _ -> ()
     |}]
@@ -241,12 +240,10 @@ let%expect_test "as binding: multiple bindings" =
     | 0 ->
         let x =
           let __s = 0 in
-          let __e = (Sedlexing.lexeme_length buf) - 2 in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 1 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         let y =
           let __s = 1 in
-          let __e = (Sedlexing.lexeme_length buf) - 1 in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 2 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore (x, y)
     | _ -> ()
     |}]
@@ -364,11 +361,11 @@ let%expect_test "as binding: shared prefix or-pattern" =
           if (Sedlexing.__private__mem_value buf 0) = 0
           then
             let __s = 0 in
-            let __e = (Sedlexing.lexeme_length buf) - 3 in
+            let __e = 3 in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
             (let __s = 1 in
-             let __e = (Sedlexing.lexeme_length buf) - 2 in
+             let __e = 4 in
              { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }) in
         ignore x
     | _ -> ()
@@ -398,7 +395,7 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
       state3 -> state4 [label="'d' {d0=0}"];
       state3 -> state6 [label="'e' {d0=1}"];
       state4 [label="4\n[rule 0]", shape=doublecircle];
-      state4 -> state5 [label="'f' {d0=0}"];
+      state4 -> state5 [label="'f' {d0=2}"];
       state5 [label="5\n[rule 0]", shape=doublecircle];
       state6 [label="6\n[rule 0]", shape=doublecircle];
     }
@@ -423,7 +420,7 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
     and __sedlex_state_4 buf =
       Sedlexing.mark buf 0;
       (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
-       | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
+       | 0 -> (Sedlexing.__private__set_mem_value buf 0 2; 0)
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
           Sedlexing.__private__init_mem buf 1;
@@ -434,17 +431,17 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
           if (Sedlexing.__private__mem_value buf 0) = 0
           then
             let __s = 0 in
-            let __e = (Sedlexing.lexeme_length buf) - 2 in
+            let __e = 2 in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
             if (Sedlexing.__private__mem_value buf 0) = 1
             then
               (let __s = 0 in
-               let __e = (Sedlexing.lexeme_length buf) - 3 in
+               let __e = 1 in
                { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) })
             else
               (let __s = 0 in
-               let __e = (Sedlexing.lexeme_length buf) - 2 in
+               let __e = 3 in
                { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }) in
         ignore x
     | _ -> ()
@@ -493,8 +490,7 @@ let%expect_test "as binding: multi-rule" =
     | 0 ->
         let x =
           let __s = 1 in
-          let __e = Sedlexing.lexeme_length buf in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 2 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore x
     | 1 -> ()
     | _ -> ()
@@ -531,8 +527,7 @@ let%expect_test "as binding: wrapping alternation" =
     | 0 ->
         let y =
           let __s = 1 in
-          let __e = Sedlexing.lexeme_length buf in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 2 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore y
     | _ -> ()
     |}]
@@ -1425,13 +1420,13 @@ let%expect_test "as binding: or-chain then nested or on right" =
           if (Sedlexing.__private__mem_value buf 1) = 0
           then
             let __s = 0 in
-            let __e = (Sedlexing.lexeme_length buf) - 2 in
+            let __e = 2 in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
             if (Sedlexing.__private__mem_value buf 1) = 1
             then
               (let __s = 0 in
-               let __e = (Sedlexing.lexeme_length buf) - 3 in
+               let __e = 1 in
                { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) })
             else
               if
@@ -1439,23 +1434,23 @@ let%expect_test "as binding: or-chain then nested or on right" =
                   ((Sedlexing.__private__mem_value buf 0) = 0)
               then
                 (let __s = 0 in
-                 let __e = (Sedlexing.lexeme_length buf) - 3 in
+                 let __e = 3 in
                  { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) })
               else
                 (let __s = 0 in
-                 let __e = (Sedlexing.lexeme_length buf) - 4 in
+                 let __e = 1 in
                  { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }) in
         let y =
           if (Sedlexing.__private__mem_value buf 1) = 0
           then
             let __s = 2 in
-            let __e = Sedlexing.lexeme_length buf in
+            let __e = 4 in
             { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) }
           else
             if (Sedlexing.__private__mem_value buf 1) = 1
             then
               (let __s = 1 in
-               let __e = Sedlexing.lexeme_length buf in
+               let __e = 4 in
                { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) })
             else
               (let __s = (Sedlexing.lexeme_length buf) - 2 in

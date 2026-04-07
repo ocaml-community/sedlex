@@ -405,25 +405,17 @@ let shift_pos pe delta =
 let advance pe len = shift_pos pe len
 let retreat pe len = shift_pos pe (Option.map Int.neg len)
 
-(* [prefer ~best a b]: pick the best position expression.
-   [Start_plus]/[End_minus] always beat [Tag] (no runtime tag needed).
-   [~best] selects which tag-free form is preferred: [`Start] for
-   start boundaries (a plain constant), [`End] for end boundaries
-   (relative to token end).  Among [Tag] values, [a] wins (caller
-   controls priority by argument order). *)
-let prefer ~best a b =
-  let is_best = function
-    | Some (Start_plus _) -> best = `Start
-    | Some (End_minus _) -> best = `End
-    | _ -> false
+(* [prefer a b]: pick the best position expression.
+   [Start_plus] > [End_minus] > [Tag] (fewer runtime operations).
+   Among equal-rank values, [a] wins. *)
+let prefer a b =
+  let rank = function
+    | Some (Start_plus _) -> 2
+    | Some (End_minus _) -> 1
+    | Some (Tag _) -> 0
+    | None -> -1
   in
-  match (a, b) with
-    | s, _ when is_best s -> s
-    | _, s when is_best s -> s
-    | (Some (Start_plus _ | End_minus _) as s), _ -> s
-    | _, (Some (Start_plus _ | End_minus _) as s) -> s
-    | Some _, _ -> a
-    | _ -> b
+  if rank a >= rank b then a else b
 
 (* [add_discriminators branches] takes a list of [(regexp, bindings)] pairs
    from an n-ary alternation and wraps each branch with a discriminator tag
@@ -508,14 +500,10 @@ let rec lower ~left ~right (ir : Ir.t) :
         let elem_len = Ir.fixed_length inner in
         let from_right_retreat = retreat right elem_len in
         let known_start =
-          prefer ~best:`Start from_right_retreat
-            (prefer ~best:`Start start_anchor left)
+          prefer from_right_retreat (prefer start_anchor left)
         in
         let from_start_advance = advance known_start elem_len in
-        let known_end =
-          prefer ~best:`End right
-            (prefer ~best:`End end_anchor from_start_advance)
-        in
+        let known_end = prefer right (prefer end_anchor from_start_advance) in
         let st, et, r =
           match (known_start, known_end) with
             | Some st, Some et -> (st, et, r)
@@ -604,9 +592,7 @@ let rec lower ~left ~right (ir : Ir.t) :
           lower ~left ~right:rights.(0) elems_arr.(0)
         in
         let r0 =
-          match boundary_tags.(0) with
-            | Some tag -> tag_end tag r0
-            | None -> r0
+          match boundary_tags.(0) with Some tag -> tag_end tag r0 | None -> r0
         in
         let left0 = update_left left 0 end0 in
         let _, _, r_acc, tags_acc, last_end =
@@ -626,8 +612,8 @@ let rec lower ~left ~right (ir : Ir.t) :
                 (i + 1, new_left, seq r_acc r', tags_acc @ tags', ea)))
             (0, left, r0, tags0, end0) elems_arr
         in
-        let end_anchor = prefer ~best:`End rights.(n - 1) last_end in
-        let start_anchor = prefer ~best:`Start pre_start start0 in
+        let end_anchor = prefer rights.(n - 1) last_end in
+        let start_anchor = prefer pre_start start0 in
         (r_acc, tags_acc, (start_anchor, end_anchor))
 
 let optimize ~live (compiled : compiled) : compiled * int array =

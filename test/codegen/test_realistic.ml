@@ -178,12 +178,10 @@ let%expect_test "realistic: multi-token lexer" =
     | 3 ->
         let x =
           let __s = 1 in
-          let __e = (Sedlexing.lexeme_length buf) - 3 in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 2 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         let y =
           let __s = 3 in
-          let __e = (Sedlexing.lexeme_length buf) - 1 in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+          let __e = 4 in { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore (x, y)
     | 4 ->
         let tok =
