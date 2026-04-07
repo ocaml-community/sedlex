@@ -228,7 +228,7 @@ let%expect_test "error: invalid pattern" =
     File "test/codegen/test_errors.ml", characters 42-50:
         |   [%compile_error [%sedlex match buf with Some 'a' -> () | _ -> ()]];
                                                     ^^^^^^^^
-    Error: Sedlex: this pattern is not a valid regexp
+    Error: Sedlex: unknown sedlex operator Some
     |}]
 
 let%expect_test "error: invalid interval type" =
@@ -325,6 +325,38 @@ let%expect_test "error: sedlex not on match expression" =
         |   [%compile_error [%sedlex 42]];
                             ^^^^^^^^^^^^
     Error: Sedlex: the %sedlex extension is only recognized on match expressions
+    |}]
+
+(* Error tests for bare operators (missing argument) *)
+
+let%expect_test "error: Star without argument" =
+  [%compile_error [%sedlex match buf with Star -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 42-46:
+        |   [%compile_error [%sedlex match buf with Star -> () | _ -> ()]];
+                                                    ^^^^
+    Error: Sedlex: the Star operator requires an argument
+    |}]
+
+let%expect_test "error: Plus without argument" =
+  [%compile_error [%sedlex match buf with Plus -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 42-46:
+        |   [%compile_error [%sedlex match buf with Plus -> () | _ -> ()]];
+                                                    ^^^^
+    Error: Sedlex: the Plus operator requires an argument
+    |}]
+
+let%expect_test "error: Opt without argument" =
+  [%compile_error [%sedlex match buf with Opt -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 42-45:
+        |   [%compile_error [%sedlex match buf with Opt -> () | _ -> ()]];
+                                                    ^^^
+    Error: Sedlex: the Opt operator requires an argument
     |}]
 
 (* Error tests for regexp definitions *)

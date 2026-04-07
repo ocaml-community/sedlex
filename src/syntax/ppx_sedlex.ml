@@ -687,6 +687,20 @@ let ir_of_pattern env =
             | Pconst_integer (i, _) ->
                 Ir.chars (Cset.singleton (codepoint (int_of_string i)))
             | _ -> err p.ppat_loc "this pattern is not a valid regexp")
+      (* Bare operator without argument *)
+      | Ppat_construct
+          ( {
+              txt =
+                Lident
+                  (("Star" | "Plus" | "Opt" | "Utf8" | "Latin1" | "Ascii") as
+                   name);
+              _;
+            },
+            None ) ->
+          err p.ppat_loc "the %s operator requires an argument" name
+      (* Unknown constructor *)
+      | Ppat_construct ({ txt = Lident name; _ }, _) ->
+          err p.ppat_loc "unknown sedlex operator %s" name
       (* name — reference to a previously defined regexp *)
       | Ppat_var { txt = x; _ } -> (
           match StringMap.find_opt x env with
