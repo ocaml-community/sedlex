@@ -78,6 +78,17 @@ let%expect_test "error: as inside Intersect" =
     Error: Sedlex: 'as' bindings are not supported inside Intersect
     |}]
 
+let%expect_test "error: as shadows inner binding" =
+  [%compile_error
+    [%sedlex match buf with (('a' as x), 'b') as x -> ignore x | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 49-50:
+       |     [%sedlex match buf with (('a' as x), 'b') as x -> ignore x | _ -> ()]];
+                                                          ^
+    Error: Sedlex: 'as' binding 'x' shadows an inner binding of the same name
+    |}]
+
 let%expect_test "error: different names in or-pattern" =
   [%compile_error
     [%sedlex
@@ -97,8 +108,8 @@ let%expect_test "error: Sub on multi-char regexp" =
   [%expect
     {|
     File "test/codegen/test_errors.ml", characters 42-57:
-       |   [%compile_error [%sedlex match buf with Sub ("ab", 'a') -> () | _ -> ()]];
-                                                   ^^^^^^^^^^^^^^^
+        |   [%compile_error [%sedlex match buf with Sub ("ab", 'a') -> () | _ -> ()]];
+                                                    ^^^^^^^^^^^^^^^
     Error: Sedlex: the Sub operator can only applied to single-character length regexps
     |}]
 
