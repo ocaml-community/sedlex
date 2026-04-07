@@ -557,10 +557,7 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
         (r_acc, tags_acc)
 
 let compile_ir (rules : Ir.t array) =
-  Array.iter
-    (fun ir ->
-      match Ir.validate ir with Ok () -> () | Error msg -> invalid_arg msg)
-    rules;
+  Array.iter (fun ir -> Ir.check_invariant ir) rules;
   reset_tags ();
   let lowered =
     Array.map
