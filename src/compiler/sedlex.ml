@@ -492,16 +492,7 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
         (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
     | Ir.Alt branches ->
         let lowered = List.map (lower ~left ~right) branches in
-        let has_captures = List.exists (fun (_, tags) -> tags <> []) lowered in
-        if has_captures then add_discriminators lowered
-        else (
-          let r =
-            List.fold_left
-              (fun acc (r, _) -> alt acc r)
-              (fst (List.hd lowered))
-              (List.tl lowered)
-          in
-          (r, []))
+        add_discriminators lowered
     | Ir.Seq elems ->
         (* Sequence — propagate left/right position contexts through elements.
            Right positions are computed right-to-left; left positions are
