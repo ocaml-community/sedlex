@@ -156,7 +156,7 @@ type compiled_ir = {
 }
 
 (** [compile_ir rules] compiles an array of IR patterns into a tagged DFA.
-    Raises [Invalid_argument] if validation fails. *)
+    Raises [Assert_failure] if invariant checking fails. *)
 val compile_ir : Ir.t array -> compiled_ir
 
 (** [dfa_to_dot dfa] returns a Graphviz DOT representation of the DFA, including
