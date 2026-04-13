@@ -602,6 +602,7 @@ let ir_of_pattern env =
             | Pconst_integer (i1, _), Pconst_integer (i2, _) ->
                 let i1 = int_of_string i1 in
                 let i2 = int_of_string i2 in
+                (* Check bounds explicitly here for better error locations *)
                 if 0 <= i1 && i1 <= i2 then unwrap p0.ppat_loc (Ir.rep r i1 i2)
                 else err p.ppat_loc "Invalid range for Rep operator"
             | _ ->

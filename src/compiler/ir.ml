@@ -70,9 +70,11 @@ let plus t =
   match reject_captures "Plus" t with Error _ as e -> e | Ok t -> Ok (Plus t)
 
 let rep t n m =
-  match reject_captures "Rep" t with
-    | Error _ as e -> e
-    | Ok t -> Ok (Rep (t, n, m))
+  if not (0 <= n && n <= m) then Error "Invalid range for Rep operator"
+  else (
+    match reject_captures "Rep" t with
+      | Error _ as e -> e
+      | Ok t -> Ok (Rep (t, n, m)))
 
 let seq a b =
   match (a, b) with
