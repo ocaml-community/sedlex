@@ -44,7 +44,8 @@ let rec fixed_length = function
       match List.map fixed_length branches with
         | [] -> None
         | first :: rest ->
-            if List.for_all (( = ) first) rest then first else None)
+            if List.for_all (Option.equal Int.equal first) rest then first
+            else None)
   | Rep (inner, n, m) ->
       if n = m then (
         match fixed_length inner with Some l -> Some (n * l) | None -> None)
