@@ -83,64 +83,64 @@ let seq a b =
     | _ -> Seq [a; b]
 
 let alt a b =
-  let branches =
-    match (a, b) with
-      | Chars c1, Chars c2 -> [Chars (Cset.union c1 c2)]
-      | Alt l1, Alt l2 -> l1 @ l2
-      | Alt l1, x -> l1 @ [x]
-      | x, Alt l2 -> x :: l2
-      | _ -> [a; b]
-  in
-  let names = List.map capture_names branches in
-  match names with
-    | [] | [_] -> Ok (match branches with [x] -> x | _ -> Alt branches)
-    | first :: rest ->
-        if List.for_all (SSet.equal first) rest then
-          Ok (match branches with [x] -> x | _ -> Alt branches)
-        else Error "all branches of '|' must bind the same names with 'as'"
+  let an = capture_names a in
+  let bn = capture_names b in
+  if not (SSet.equal an bn) then
+    Error "all branches of '|' must bind the same names with 'as'"
+  else
+    Ok
+      (match (a, b) with
+        | Chars c1, Chars c2 -> Chars (Cset.union c1 c2)
+        | Alt l1, Alt l2 -> Alt (l1 @ l2)
+        | Alt l1, x -> Alt (l1 @ [x])
+        | x, Alt l2 -> Alt (x :: l2)
+        | _ -> Alt [a; b])
 
 (* All structural constraints are enforced by the smart constructors.
    [check_invariant] verifies them as a debug assertion. *)
 let check_invariant t =
-  let rec check ~inside_rep = function
-    | Chars _ | Eps -> ()
+  let rec check = function
+    | Chars _ | Eps -> SSet.empty
     | Capture (name, inner) ->
-        assert (not inside_rep);
-        assert (not (SSet.mem name (capture_names inner)));
-        check ~inside_rep inner
+        let names = check inner in
+        assert (not (SSet.mem name names));
+        SSet.add name names
     | Seq elems ->
         assert (List.length elems >= 2);
-        List.iter (check ~inside_rep) elems
-    | Alt branches ->
-        assert (List.length branches >= 2);
-        (match List.map capture_names branches with
-          | first :: rest -> assert (List.for_all (SSet.equal first) rest)
-          | [] -> assert false);
-        List.iter (check ~inside_rep) branches
-    | Star inner | Plus inner -> check ~inside_rep:true inner
-    | Rep (inner, _, _) -> check ~inside_rep:true inner
+        List.fold_left (fun acc x -> SSet.union acc (check x)) SSet.empty elems
+    | Alt [] | Alt [_] -> assert false
+    | Alt (first :: rest) ->
+        let names = check first in
+        List.iter (fun x -> assert (SSet.equal names (check x))) rest;
+        names
+    | Star inner | Plus inner ->
+        assert (SSet.is_empty (check inner));
+        SSet.empty
+    | Rep (inner, _, _) ->
+        assert (SSet.is_empty (check inner));
+        SSet.empty
   in
-  check ~inside_rep:false t
+  let _ : SSet.t = check t in
+  ()
 
 (* Pretty-printing *)
 
 let rec pp fmt = function
   | Chars cset -> (
       let intervals = (cset : Cset.t :> (int * int) list) in
+      let cp fmt c =
+        if c >= 32 && c <= 126 then Format.fprintf fmt "'%c'" (Char.chr c)
+        else Format.fprintf fmt "0x%04X" c
+      in
       match intervals with
-        | [(c, c')] when c = c' ->
-            if c >= 32 && c <= 126 then Format.fprintf fmt "'%c'" (Char.chr c)
-            else Format.fprintf fmt "0x%04X" c
+        | [(c, c')] when c = c' -> cp fmt c
         | _ ->
             Format.fprintf fmt "[%a]"
               (Format.pp_print_list
                  ~pp_sep:(fun fmt () -> Format.fprintf fmt ", ")
                  (fun fmt (lo, hi) ->
-                   if lo = hi then
-                     if lo >= 32 && lo <= 126 then
-                       Format.fprintf fmt "'%c'" (Char.chr lo)
-                     else Format.fprintf fmt "0x%04X" lo
-                   else Format.fprintf fmt "0x%04X-0x%04X" lo hi))
+                   if lo = hi then cp fmt lo
+                   else Format.fprintf fmt "%a-%a" cp lo cp hi))
               intervals)
   | Eps -> Format.fprintf fmt "eps"
   | Seq elems ->
