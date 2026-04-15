@@ -1,0 +1,3 @@
+(library
+ (name ocamllex_oracle)
+ (libraries sedlex.compiler ocamllex_vendored))

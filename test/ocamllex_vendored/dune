@@ -1,0 +1,4 @@
+(library
+ (name ocamllex_vendored)
+ (flags
+  (:standard -w -32-34-37-60-69-70)))
