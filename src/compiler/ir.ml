@@ -78,12 +78,21 @@ let rep t n m =
       | Ok t -> Ok (Rep (t, n, m)))
 
 let seq a b =
-  match (a, b) with
-    | Eps, x | x, Eps -> x
-    | Seq l1, Seq l2 -> Seq (l1 @ l2)
-    | Seq l1, x -> Seq (l1 @ [x])
-    | x, Seq l2 -> Seq (x :: l2)
-    | _ -> Seq [a; b]
+  let an = capture_names a in
+  let bn = capture_names b in
+  let dups = SSet.inter an bn in
+  if not (SSet.is_empty dups) then
+    Error
+      (Printf.sprintf "'as' binding '%s' is bound in multiple positions"
+         (SSet.choose dups))
+  else
+    Ok
+      (match (a, b) with
+        | Eps, x | x, Eps -> x
+        | Seq l1, Seq l2 -> Seq (l1 @ l2)
+        | Seq l1, x -> Seq (l1 @ [x])
+        | x, Seq l2 -> Seq (x :: l2)
+        | _ -> Seq [a; b])
 
 let alt a b =
   let an = capture_names a in
@@ -110,7 +119,12 @@ let check_invariant t =
         SSet.add name names
     | Seq elems ->
         assert (List.length elems >= 2);
-        List.fold_left (fun acc x -> SSet.union acc (check x)) SSet.empty elems
+        List.fold_left
+          (fun acc x ->
+            let names = check x in
+            assert (SSet.is_empty (SSet.inter acc names));
+            SSet.union acc names)
+          SSet.empty elems
     | Alt [] | Alt [_] -> assert false
     | Alt (first :: rest) ->
         let names = check first in

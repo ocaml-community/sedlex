@@ -35,10 +35,11 @@ type t =
     Constructors that enforce structural invariants return [result].
     - {!alt} checks name consistency across branches.
     - {!capture} checks for shadowed inner bindings.
+    - {!seq} rejects duplicate capture names across elements.
     - {!star}, {!plus}, {!rep} reject inner captures. *)
 
 val chars : Cset.t -> t
-val seq : t -> t -> t
+val seq : t -> t -> (t, string) result
 val alt : t -> t -> (t, string) result
 val star : t -> (t, string) result
 val plus : t -> (t, string) result
