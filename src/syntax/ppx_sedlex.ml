@@ -562,7 +562,7 @@ let ir_of_pattern env =
       (* (p1, p2, ...) — sequence *)
       | Ppat_tuple (p :: pl) ->
           List.fold_left
-            (fun acc p -> Ir.seq acc (aux ~encoding p))
+            (fun acc p -> unwrap p.ppat_loc (Ir.seq acc (aux ~encoding p)))
             (aux ~encoding p) pl
       (* Star p — zero-or-more repetition *)
       | Ppat_construct ({ txt = Lident "Star"; _ }, Some (_, p)) ->
@@ -682,7 +682,9 @@ let ir_of_pattern env =
             | Pconst_string (s, _, _) ->
                 let rev_l = rev_csets_of_string s ~loc:p.ppat_loc ~encoding in
                 List.fold_left
-                  (fun acc cset -> Ir.seq (Ir.chars cset) acc)
+                  (fun acc cset ->
+                    (* chars have no captures, so seq cannot fail *)
+                    Result.get_ok (Ir.seq (Ir.chars cset) acc))
                   Ir.eps rev_l
             | Pconst_char c -> Ir.chars (char c)
             | Pconst_integer (i, _) ->

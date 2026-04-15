@@ -89,6 +89,17 @@ let%expect_test "error: as shadows inner binding" =
     Error: Sedlex: 'as' binding 'x' shadows an inner binding of the same name
     |}]
 
+let%expect_test "error: duplicate as binding in sequence" =
+  [%compile_error
+    [%sedlex match buf with ('a' as x), 'b', ('c' as x) -> ignore x | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 45-55:
+       |     [%sedlex match buf with ('a' as x), 'b', ('c' as x) -> ignore x | _ -> ()]];
+                                                      ^^^^^^^^^^
+    Error: Sedlex: 'as' binding 'x' is bound in multiple positions
+    |}]
+
 let%expect_test "error: different names in or-pattern" =
   [%compile_error
     [%sedlex
@@ -96,8 +107,8 @@ let%expect_test "error: different names in or-pattern" =
   [%expect
     {|
     File "test/codegen/test_errors.ml", characters 21-44:
-       |       match buf with ('a' as x) | ('b' as y) -> ignore (x, y) | _ -> ()]];
-                              ^^^^^^^^^^^^^^^^^^^^^^^
+        |       match buf with ('a' as x) | ('b' as y) -> ignore (x, y) | _ -> ()]];
+                               ^^^^^^^^^^^^^^^^^^^^^^^
     Error: Sedlex: all branches of '|' must bind the same names with 'as'
     |}]
 
