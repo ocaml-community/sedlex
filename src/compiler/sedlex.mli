@@ -87,6 +87,11 @@ val bind_start_only : regexp -> regexp * int
     start position can be computed from a known offset. *)
 val bind_end_only : regexp -> regexp * int
 
+(** [tag_end tag_id r] wraps [r] with a pre-allocated end tag: the NFA becomes
+    [r → [tag_id] → successor]. Unlike [bind_end_only], does not allocate a
+    fresh tag — uses the given [tag_id]. *)
+val tag_end : int -> regexp -> regexp
+
 (** Reset the tag counter. Called before compiling each [match%sedlex] block. *)
 val reset_tags : unit -> unit
 
@@ -154,6 +159,14 @@ type compiled_ir = {
   bindings : compiled_binding list array;
       (** [bindings.(i)] is the list of binding info for rule [i]. *)
 }
+
+(** [optimize ~live compiled] eliminates dead tags and remaps live ones to a
+    dense range. [live] is a list of tag IDs that are referenced in the
+    generated code. Tags not in [live] are stripped from all DFA transitions and
+    [init_tags], and [num_tags] is reduced accordingly. Returns the optimized
+    compiled result and a mapping array [old_tag → new_tag] ([-1] for dead tags,
+    identity when nothing changed). *)
+val optimize : live:int list -> compiled -> compiled * int array
 
 (** [compile_ir rules] compiles an array of IR patterns into a tagged DFA.
     Raises [Assert_failure] if invariant checking fails. *)
