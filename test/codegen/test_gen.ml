@@ -1308,12 +1308,10 @@ let%expect_test "as binding: or-chain then nested or on right" =
 (* Known bugs pinned at the generated-code level. The comment states the goal;
    the fix flips the expect block. *)
 
-(* KNOWN BUG: nullable-only rule. When every rule matches the empty string,
-   state 0 is an accepting sink: no state function is generated for it, yet the
-   block still wraps a `let rec` around the empty list and calls the undefined
-   __sedlex_state_0 — "broken invariant in parsetree" at build time.
-   Goal: return the sink's rule index directly, with no `let rec`. *)
-let%expect_test "known bug: nullable-only rule" =
+(* Nullable-only rule. When every rule matches the empty string, state 0 is an
+   accepting sink: no state function is generated for it, and the block returns
+   the sink's rule index directly, with no `let rec`. *)
+let%expect_test "nullable-only rule" =
   (match%sedlex_test buf with "" -> () | _ -> ());
   [%expect
     {|
@@ -1328,7 +1326,7 @@ let%expect_test "known bug: nullable-only rule" =
       state0 [label="0\n[rule 0]", shape=doublecircle];
     }
     CODE:
-     in match Sedlexing.start buf; __sedlex_state_0 buf with | 0 -> () | _ -> ()
+    match Sedlexing.start buf; 0 with | 0 -> () | _ -> ()
     |}]
 
 (* KNOWN BUG: eof self-loop. [eof] is a zero-width transition (the runtime
