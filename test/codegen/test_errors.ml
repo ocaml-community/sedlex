@@ -406,25 +406,46 @@ let%expect_test "error: Rep 1..1 under Intersect" =
       match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
   [%expect {| NO ERROR |}]
 
-(* KNOWN BUG: an empty character set can never match. After a real character,
-   [Chars ""] crashes the PPX (an assertion in the code generator, reported here
-   as an uncaught exception); at the start of a rule, [Compl any] and [Sub] /
-   [Intersect] of coinciding classes silently compile to a rule that never
-   matches. Expected: a compile error at the pattern in all four cases. *)
+(* An empty character set can never match, so it is rejected where it is
+   formed: [Chars ""], [Compl any], and [Sub] / [Intersect] of coinciding
+   classes. *)
 let%expect_test "error: empty Chars" =
   [%compile_error [%sedlex match buf with 'a', Chars "" -> () | _ -> ()]];
   [%expect
-    {| Uncaught exception: File "src/syntax/ppx_sedlex.ml", line 239, characters 16-22: Assertion failed |}]
+    {|
+    File "test/codegen/test_errors.ml", characters 47-55:
+        |   [%compile_error [%sedlex match buf with 'a', Chars "" -> () | _ -> ()]];
+                                                         ^^^^^^^^
+    Error: Sedlex: empty character set: this pattern can never match
+    |}]
 
 let%expect_test "error: Compl any" =
   [%compile_error [%sedlex match buf with Compl any -> () | _ -> ()]];
-  [%expect {| NO ERROR |}]
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 42-51:
+        |   [%compile_error [%sedlex match buf with Compl any -> () | _ -> ()]];
+                                                    ^^^^^^^^^
+    Error: Sedlex: empty character set: this pattern can never match
+    |}]
 
 let%expect_test "error: Sub of coinciding classes" =
   [%compile_error [%sedlex match buf with Sub ('a', 'a') -> () | _ -> ()]];
-  [%expect {| NO ERROR |}]
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 42-56:
+        |   [%compile_error [%sedlex match buf with Sub ('a', 'a') -> () | _ -> ()]];
+                                                    ^^^^^^^^^^^^^^
+    Error: Sedlex: empty character set: this pattern can never match
+    |}]
 
 let%expect_test "error: Intersect of disjoint classes" =
   [%compile_error
     [%sedlex match buf with Intersect ('a', 'b') -> () | _ -> ()]];
-  [%expect {| NO ERROR |}]
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 28-48:
+        |     [%sedlex match buf with Intersect ('a', 'b') -> () | _ -> ()]];
+                                      ^^^^^^^^^^^^^^^^^^^^
+    Error: Sedlex: empty character set: this pattern can never match
+    |}]
