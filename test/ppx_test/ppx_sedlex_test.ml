@@ -33,12 +33,15 @@ let expand_error ~ctxt:_ expr =
     try
       let _ = P.map_expression expr in
       "NO ERROR"
-    with exn ->
-      let buf = Buffer.create 256 in
-      let fmt = Format.formatter_of_buffer buf in
-      Location.report_exception fmt exn;
-      Format.pp_print_flush fmt ();
-      strip_line_numbers (Buffer.contents buf)
+    with exn -> (
+      match Location.Error.of_exn exn with
+        | Some _ ->
+            let buf = Buffer.create 256 in
+            let fmt = Format.formatter_of_buffer buf in
+            Location.report_exception fmt exn;
+            Format.pp_print_flush fmt ();
+            strip_line_numbers (Buffer.contents buf)
+        | None -> "Uncaught exception: " ^ Printexc.to_string exn)
   in
   P.reset_state ();
   [%expr
