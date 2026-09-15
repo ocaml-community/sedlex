@@ -1475,3 +1475,77 @@ let%expect_test "as_bindings_nested_sedlex" =
     | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
   [%expect {| mem_cells=0 |}]
+
+(* ------------------------------------------------------------------------ *)
+(* Regression tests pinned to the current behavior. A test marked KNOWN BUG
+   records what the generated code does today; the comment above each case
+   states the expected result, and the fix flips the expect block. *)
+
+(* KNOWN BUG (#199, repetition loop before a capture): the epsilon closure
+   re-fires the capture's start tag on every iteration of a preceding Star, so
+   the recorded start drifts to the last iteration. *)
+let%expect_test "loop_before_capture" =
+  let sub = Sedlexing.Latin1.of_submatch in
+  (* expected x="abb" *)
+  let buf = Sedlexing.Latin1.from_string "aabb" in
+  (match%sedlex buf with
+    | Star 'a', (('a', Plus 'b') as x) -> Printf.printf "x=%S\n" (sub x)
+    | _ -> print_endline "nomatch");
+  [%expect {| x="bb" |}];
+  (* expected x="a" *)
+  let buf = Sedlexing.Latin1.from_string "aab" in
+  (match%sedlex buf with
+    | Star 'a', (Plus 'a' as x), 'b' -> Printf.printf "x=%S\n" (sub x)
+    | _ -> print_endline "nomatch");
+  [%expect {| x="" |}];
+  (* the next two come out right today and pin the edge of the bug *)
+  let buf = Sedlexing.Latin1.from_string "aba" in
+  (match%sedlex buf with
+    | Star 'a', (('a', 'a' .. 'c' | Star 'a' .. 'c') as y) ->
+        Printf.printf "y=%S\n" (sub y)
+    | _ -> print_endline "nomatch");
+  [%expect {| y="ba" |}];
+  let buf = Sedlexing.Latin1.from_string "bb" in
+  (match%sedlex buf with
+    | Star 'a', ('b' as y), Star 'b' -> Printf.printf "y=%S\n" (sub y)
+    | _ -> print_endline "nomatch");
+  [%expect {| y="b" |}]
+
+(* KNOWN BUG (eof width): [eof] is zero-width at runtime — [next] reports it
+   without advancing — but the static offset optimization for captures counts
+   it as one code point, so a capture followed by [eof] loses its last
+   character, or gets a negative length and raises. A cset mixing [eof] with a
+   real character has no fixed width at all. *)
+let%expect_test "capture_before_eof" =
+  let sub x =
+    try Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x)
+    with e -> "raises " ^ Printexc.to_string e
+  in
+  (* expected x="abc" *)
+  let buf = Sedlexing.Latin1.from_string "abc" in
+  (match%sedlex buf with
+    | (Star any as x), eof -> Printf.printf "x=%s\n" (sub x)
+    | _ -> print_endline "nomatch");
+  [%expect {| x="ab" |}];
+  (* expected x="a" *)
+  let buf = Sedlexing.Latin1.from_string "a" in
+  (match%sedlex buf with
+    | ('a' as x), eof -> Printf.printf "x=%s\n" (sub x)
+    | _ -> print_endline "nomatch");
+  [%expect {| x="" |}];
+  (* expected x="" *)
+  let buf = Sedlexing.Latin1.from_string "b" in
+  (match%sedlex buf with
+    | Star any, (Opt 'a' as x), eof -> Printf.printf "x=%s\n" (sub x)
+    | _ -> print_endline "nomatch");
+  [%expect {| x=raises Invalid_argument("Bytes.create") |}];
+  (* expected x="x" on both inputs: the mixed cset is 0 or 1 wide *)
+  let lex buf =
+    match%sedlex buf with
+      | ('x' as x), ('a' | eof) -> Printf.printf "x=%s\n" (sub x)
+      | _ -> print_endline "nomatch"
+  in
+  lex (Sedlexing.Latin1.from_string "x");
+  [%expect {| x="" |}];
+  lex (Sedlexing.Latin1.from_string "xa");
+  [%expect {| x="x" |}]
