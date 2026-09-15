@@ -1787,6 +1787,25 @@ let%expect_test "rep_nullable_body" =
         | _ -> "nomatch");
   [%expect {| "bb" -> x="bb" |}]
 
+(* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
+   accept it: it normalizes to the bare Chars node. *)
+let%expect_test "rep_1_1_char_ops" =
+  let buf = Sedlexing.Utf8.from_string "b" in
+  (match%sedlex buf with
+    | Compl (Rep ('a', 1 .. 1)) -> print_string "compl-ok\n"
+    | _ -> assert false);
+  [%expect {| compl-ok |}];
+  let buf = Sedlexing.Utf8.from_string "b" in
+  (match%sedlex buf with
+    | Sub (any, Rep ('a', 1 .. 1)) -> print_string "sub-ok\n"
+    | _ -> assert false);
+  [%expect {| sub-ok |}];
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> print_string "inter-ok\n"
+    | _ -> assert false);
+  [%expect {| inter-ok |}]
+
 (* Greedy repetition guards. These pass today; they pin the disambiguation
    rules that a rewrite of the determinization must preserve. *)
 
