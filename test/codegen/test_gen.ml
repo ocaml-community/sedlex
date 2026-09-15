@@ -1330,3 +1330,39 @@ let%expect_test "known bug: nullable-only rule" =
     CODE:
      in match Sedlexing.start buf; __sedlex_state_0 buf with | 0 -> () | _ -> ()
     |}]
+
+(* KNOWN BUG: eof self-loop. [eof] is a zero-width transition (the runtime
+   reports -1 without advancing), so an accepting state whose eof arm leads
+   back to itself makes the generated function call itself forever at end of
+   input. Current: state1 has an EOF self-edge and its code is a self-call.
+   Goal: every eof arm leads to a sink (no outgoing transitions), i.e. the DFA
+   of [Plus eof] is the DFA of [eof]. *)
+let%expect_test "known bug: eof self-loop" =
+  (match%sedlex_test buf with Plus eof -> () | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="EOF"];
+      state1 [label="1\n[rule 0]", shape=doublecircle];
+      state1 -> state1 [label="EOF"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_1 buf
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf; __sedlex_state_0 buf with | 0 -> () | _ -> ()
+    |}]
