@@ -1303,3 +1303,30 @@ let%expect_test "as binding: or-chain then nested or on right" =
         ignore (x, y)
     | _ -> ()
     |}]
+
+(* ------------------------------------------------------------------------ *)
+(* Known bugs pinned at the generated-code level. The comment states the goal;
+   the fix flips the expect block. *)
+
+(* KNOWN BUG: nullable-only rule. When every rule matches the empty string,
+   state 0 is an accepting sink: no state function is generated for it, yet the
+   block still wraps a `let rec` around the empty list and calls the undefined
+   __sedlex_state_0 — "broken invariant in parsetree" at build time.
+   Goal: return the sink's rule index directly, with no `let rec`. *)
+let%expect_test "known bug: nullable-only rule" =
+  (match%sedlex_test buf with "" -> () | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0\n[rule 0]", shape=doublecircle];
+    }
+    CODE:
+     in match Sedlexing.start buf; __sedlex_state_0 buf with | 0 -> () | _ -> ()
+    |}]

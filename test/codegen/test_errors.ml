@@ -383,3 +383,66 @@ let%expect_test "error: as in regexp definition" =
                                            ^^^^^^^^
     Error: Sedlex: 'as' bindings are not allowed in regexp definitions
     |}]
+
+(* ------------------------------------------------------------------------ *)
+(* Edge cases pinned to the current behavior. A test marked KNOWN BUG records
+   what the PPX does today; its comment states the expected result. *)
+
+(* KNOWN BUG: Rep (c, 1 .. 1) is a single-character regexp, so Compl, Sub and
+   Intersect should accept it. Expected: no error. *)
+let%expect_test "error: Rep 1..1 under Compl" =
+  [%compile_error
+    [%sedlex match buf with Compl (Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 28-53:
+        |     [%sedlex match buf with Compl (Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+    Error: Sedlex: the Compl operator can only applied to a single-character length regexp
+    |}]
+
+let%expect_test "error: Rep 1..1 under Sub" =
+  [%compile_error
+    [%sedlex match buf with Sub (any, Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 28-56:
+        |     [%sedlex match buf with Sub (any, Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Error: Sedlex: the Sub operator can only applied to single-character length regexps
+    |}]
+
+let%expect_test "error: Rep 1..1 under Intersect" =
+  [%compile_error
+    [%sedlex
+      match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+  [%expect
+    {|
+    File "test/codegen/test_errors.ml", characters 21-62:
+        |       match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Error: Sedlex: the Intersect operator can only applied to single-character length regexps
+    |}]
+
+(* KNOWN BUG: an empty character set can never match. After a real character,
+   [Chars ""] crashes the PPX (an assertion in the code generator, reported here
+   as an uncaught exception); at the start of a rule, [Compl any] and [Sub] /
+   [Intersect] of coinciding classes silently compile to a rule that never
+   matches. Expected: a compile error at the pattern in all four cases. *)
+let%expect_test "error: empty Chars" =
+  [%compile_error [%sedlex match buf with 'a', Chars "" -> () | _ -> ()]];
+  [%expect
+    {| Uncaught exception: File "src/syntax/ppx_sedlex.ml", line 239, characters 16-22: Assertion failed |}]
+
+let%expect_test "error: Compl any" =
+  [%compile_error [%sedlex match buf with Compl any -> () | _ -> ()]];
+  [%expect {| NO ERROR |}]
+
+let%expect_test "error: Sub of coinciding classes" =
+  [%compile_error [%sedlex match buf with Sub ('a', 'a') -> () | _ -> ()]];
+  [%expect {| NO ERROR |}]
+
+let%expect_test "error: Intersect of disjoint classes" =
+  [%compile_error
+    [%sedlex match buf with Intersect ('a', 'b') -> () | _ -> ()]];
+  [%expect {| NO ERROR |}]
