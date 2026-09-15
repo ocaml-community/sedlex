@@ -75,7 +75,10 @@ let rep t n m =
   else (
     match reject_captures "Rep" t with
       | Error _ as e -> e
-      | Ok t -> Ok (Rep (t, n, m)))
+      (* [Rep (t, 1, 1)] is just [t]; normalize so single-character-length
+         checks (Compl/Sub/Intersect) still see the bare [Chars] node, as they
+         did on master where [repeat r (1, 1)] desugared to [r]. *)
+      | Ok t -> if n = 1 && m = 1 then Ok t else Ok (Rep (t, n, m)))
 
 let seq a b =
   let an = capture_names a in

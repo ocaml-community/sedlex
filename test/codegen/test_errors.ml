@@ -388,41 +388,23 @@ let%expect_test "error: as in regexp definition" =
 (* Edge cases pinned to the current behavior. A test marked KNOWN BUG records
    what the PPX does today; its comment states the expected result. *)
 
-(* KNOWN BUG: Rep (c, 1 .. 1) is a single-character regexp, so Compl, Sub and
-   Intersect should accept it. Expected: no error. *)
+(* Rep (c, 1 .. 1) is a single-character regexp (it normalizes to c), so
+   Compl, Sub and Intersect accept it. *)
 let%expect_test "error: Rep 1..1 under Compl" =
   [%compile_error
     [%sedlex match buf with Compl (Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-  [%expect
-    {|
-    File "test/codegen/test_errors.ml", characters 28-53:
-        |     [%sedlex match buf with Compl (Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
-    Error: Sedlex: the Compl operator can only applied to a single-character length regexp
-    |}]
+  [%expect {| NO ERROR |}]
 
 let%expect_test "error: Rep 1..1 under Sub" =
   [%compile_error
     [%sedlex match buf with Sub (any, Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-  [%expect
-    {|
-    File "test/codegen/test_errors.ml", characters 28-56:
-        |     [%sedlex match buf with Sub (any, Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    Error: Sedlex: the Sub operator can only applied to single-character length regexps
-    |}]
+  [%expect {| NO ERROR |}]
 
 let%expect_test "error: Rep 1..1 under Intersect" =
   [%compile_error
     [%sedlex
       match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-  [%expect
-    {|
-    File "test/codegen/test_errors.ml", characters 21-62:
-        |       match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    Error: Sedlex: the Intersect operator can only applied to single-character length regexps
-    |}]
+  [%expect {| NO ERROR |}]
 
 (* KNOWN BUG: an empty character set can never match. After a real character,
    [Chars ""] crashes the PPX (an assertion in the code generator, reported here
