@@ -30,7 +30,14 @@ let reject_captures ctx t =
 (* Analysis *)
 
 let rec fixed_length = function
-  | Chars _ -> Some 1
+  | Chars c ->
+      (* [eof] (code point -1) is zero-width at runtime: [next] reports EOF
+         without advancing [pos]. A pure-eof cset is width 0; a cset mixing
+         eof with real characters has a data-dependent width (0 or 1), so its
+         length is unknown. *)
+      if Cset.mem (-1) c then
+        if Cset.is_empty (Cset.difference c Cset.eof) then Some 0 else None
+      else Some 1
   | Eps -> Some 0
   | Capture (_, inner) -> fixed_length inner
   | Seq elems ->
