@@ -355,7 +355,7 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
             [%e eint ~loc compiled.num_tags]]
       in
       let set_init_tags =
-        gen_tag_ops lexbuf compiled.init_tags (appfun (state_fun 0) [lexbuf])
+        gen_tag_ops lexbuf compiled.init_tags (call_state lexbuf auto 0)
       in
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
@@ -363,11 +363,18 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
     else
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
-        (appfun (state_fun 0) [lexbuf])
+        (call_state lexbuf auto 0)
   in
-  pexp_let ~loc (gen_recflag auto) states
-    (pexp_match ~loc start_expr
-       (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))
+  let match_expr =
+    pexp_match ~loc start_expr
+      (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])
+  in
+  (* [states] is empty when state 0 is an accepting sink (e.g. the pattern
+     [""]): [call_state] inlines its result above, so there are no state
+     functions to bind and [pexp_let] with no bindings would be invalid. *)
+    match states with
+    | [] -> match_expr
+    | _ -> pexp_let ~loc (gen_recflag auto) states match_expr
 
 (* Lexer specification parser *)
 
