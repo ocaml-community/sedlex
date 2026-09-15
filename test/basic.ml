@@ -1511,11 +1511,10 @@ let%expect_test "loop_before_capture" =
     | _ -> print_endline "nomatch");
   [%expect {| y="b" |}]
 
-(* KNOWN BUG (eof width): [eof] is zero-width at runtime — [next] reports it
-   without advancing — but the static offset optimization for captures counts
-   it as one code point, so a capture followed by [eof] loses its last
-   character, or gets a negative length and raises. A cset mixing [eof] with a
-   real character has no fixed width at all. *)
+(* [eof] is zero-width at runtime — [next] reports it without advancing — so
+   the static offset optimization for captures must count it as zero code
+   points, and a cset mixing [eof] with a real character has no fixed width at
+   all. *)
 let%expect_test "capture_before_eof" =
   let sub x =
     try Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x)
@@ -1526,19 +1525,19 @@ let%expect_test "capture_before_eof" =
   (match%sedlex buf with
     | (Star any as x), eof -> Printf.printf "x=%s\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="ab" |}];
+  [%expect {| x="abc" |}];
   (* expected x="a" *)
   let buf = Sedlexing.Latin1.from_string "a" in
   (match%sedlex buf with
     | ('a' as x), eof -> Printf.printf "x=%s\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="" |}];
+  [%expect {| x="a" |}];
   (* expected x="" *)
   let buf = Sedlexing.Latin1.from_string "b" in
   (match%sedlex buf with
     | Star any, (Opt 'a' as x), eof -> Printf.printf "x=%s\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x=raises Invalid_argument("Bytes.create") |}];
+  [%expect {| x="" |}];
   (* expected x="x" on both inputs: the mixed cset is 0 or 1 wide *)
   let lex buf =
     match%sedlex buf with
@@ -1546,7 +1545,7 @@ let%expect_test "capture_before_eof" =
       | _ -> print_endline "nomatch"
   in
   lex (Sedlexing.Latin1.from_string "x");
-  [%expect {| x="" |}];
+  [%expect {| x="x" |}];
   lex (Sedlexing.Latin1.from_string "xa");
   [%expect {| x="x" |}]
 
@@ -1593,10 +1592,13 @@ let%expect_test "eof_rule_priority" =
     "a"  -> rule0
     |}]
 
-(* KNOWN BUG (eof tie within a rule): when the leftmost-greedy parse only
-   becomes accepting through the zero-width [eof] arm, the state reached by the
-   last real character has already marked an equal-length parse of the same
-   rule with a shorter capture, and that first mark wins. *)
+(* eof tie within a rule: the leftmost-greedy parse only becomes accepting
+   through the zero-width [eof] arm, after the state reached by the last real
+   character has already marked an equal-length parse of the same rule with a
+   shorter capture. The eof arm's parse outranks it (its Star is still open in
+   that state), so its mark must win. Today it does because [mark] keeps the
+   last mark; a rule-priority fix for [eof_rule_priority] that breaks
+   equal-length ties by "first mark wins" would regress this test. *)
 let%expect_test "eof_zero_width_tie_within_rule" =
   let sub = Sedlexing.Latin1.of_submatch in
   (* expected x="aaa" and x="a" *)
@@ -1606,9 +1608,9 @@ let%expect_test "eof_zero_width_tie_within_rule" =
       | _ -> print_endline "nomatch"
   in
   lex (Sedlexing.Latin1.from_string "aaa");
-  [%expect {| x="aa" |}];
+  [%expect {| x="aaa" |}];
   lex (Sedlexing.Latin1.from_string "a");
-  [%expect {| x="" |}];
+  [%expect {| x="a" |}];
   (* expected x="b" and x="cb" *)
   let lex buf =
     match%sedlex buf with
@@ -1616,15 +1618,15 @@ let%expect_test "eof_zero_width_tie_within_rule" =
       | _ -> print_endline "nomatch"
   in
   lex (Sedlexing.Latin1.from_string "b");
-  [%expect {| x="" |}];
+  [%expect {| x="b" |}];
   lex (Sedlexing.Latin1.from_string "cb");
-  [%expect {| x="c" |}];
+  [%expect {| x="cb" |}];
   (* expected x="a": the left branch of the or-pattern parses "ab" too *)
   let buf = Sedlexing.Latin1.from_string "ab" in
   (match%sedlex buf with
     | ('a' as x), 'b', eof | 'a', ('b' as x) -> Printf.printf "x=%S\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="" |}]
+  [%expect {| x="a" |}]
 
 (* KNOWN BUG (eof self-loop): the test below is disabled until the bug is
    fixed. Its timeout relies on threads and Unix, which do not work on
