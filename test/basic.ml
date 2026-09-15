@@ -1669,3 +1669,64 @@ let%expect_test "eof_self_loop_terminates" =
   with_timeout (fun () ->
       match%sedlex buf with Star 'a', Star eof -> "rule0" | _ -> "none");
   [%expect {| TIMEOUT |}]
+
+(* Greedy repetition guards. These pass today; they pin the disambiguation
+   rules that a rewrite of the determinization must preserve. *)
+
+(* Opt is greedy (consume-first) and agrees with Rep (_, 0 .. 1): when the
+   empty and the consuming parse have the same total length, the leading
+   optional takes the character and the trailing Star stays empty. *)
+let%expect_test "opt_greedy" =
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Opt 'a', (Star 'a' as x) ->
+        Printf.printf "opt x=%S\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| opt x="" |}];
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Rep ('a', 0 .. 1), (Star 'a' as x) ->
+        Printf.printf "rep x=%S\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| rep x="" |}]
+
+(* [Plus r] is [r, Star r]: after a first iteration that consumed nothing, a
+   second (consuming) iteration still has priority over leaving the loop,
+   exactly as for [Star]. The capture must be greedy in all three forms. *)
+let%expect_test "plus_nullable_first_alternative" =
+  let sub = Sedlexing.Latin1.of_submatch in
+  let inputs = ["b"; "bb"; "db"] in
+  let run lex =
+    List.iter
+      (fun s ->
+        Printf.printf "%-4S -> %s\n" s (lex (Sedlexing.Latin1.from_string s)))
+      inputs
+  in
+  run (fun buf ->
+      match%sedlex buf with
+        | (Plus (Opt 'd' | 'b') as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {|
+    "b"  -> x="b"
+    "bb" -> x="bb"
+    "db" -> x="db"
+    |}];
+  run (fun buf ->
+      match%sedlex buf with
+        | (Star (Opt 'd' | 'b') as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {|
+    "b"  -> x="b"
+    "bb" -> x="bb"
+    "db" -> x="db"
+    |}];
+  run (fun buf ->
+      match%sedlex buf with
+        | (((Opt 'd' | 'b'), Star (Opt 'd' | 'b')) as x), Star 'b' ->
+            Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {|
+    "b"  -> x="b"
+    "bb" -> x="bb"
+    "db" -> x="db"
+    |}]
