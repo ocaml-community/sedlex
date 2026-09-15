@@ -236,7 +236,10 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   if Array.length trans = 0 then (
     match best_final finals with
       | Some i -> eint ~loc:default_loc i
-      | None -> assert false)
+      | None ->
+          (* A non-accepting sink would need a transition on an empty
+             character set, which [ir_of_pattern] rejects. *)
+          assert false)
   else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
@@ -519,6 +522,16 @@ let gen_binding_code lexbuf (bindings : Sedlex.compiled_binding list) action =
    optimization are deferred to the compiler's [compile_ir]. *)
 let ir_of_pattern env =
   let unwrap loc = function Ok ir -> ir | Error msg -> err loc "%s" msg in
+  (* An empty character set can never match; it would also leave the DFA
+     with a dead state the code generator cannot express. Reject it where it
+     is formed ([Chars ""], [Compl any], [Sub]/[Intersect] of coinciding
+     classes) so the mistake is reported at its source. *)
+  let nonempty loc r =
+    match r with
+      | Ir.Chars c when Cset.is_empty c ->
+          err loc "empty character set: this pattern can never match"
+      | r -> r
+  in
   let rec char_pair_op func name ~encoding ~loc tuple =
     (* Construct something like Sub(a,b) *)
       match tuple with
@@ -530,7 +543,7 @@ let ir_of_pattern env =
             unwrap p1.ppat_loc (Ir.reject_captures name (aux ~encoding p1))
           in
           match func r0 r1 with
-            | Some r -> r
+            | Some r -> nonempty loc r
             | None ->
                 err loc
                   "the %s operator can only applied to single-character length \
@@ -625,7 +638,7 @@ let ir_of_pattern env =
                     (Ir.reject_captures "Compl" (aux ~encoding p0))
                 in
                 match ir_compl r with
-                  | Some r -> r
+                  | Some r -> nonempty p.ppat_loc r
                   | None ->
                       err p.ppat_loc
                         "the Compl operator can only applied to a \
@@ -650,7 +663,7 @@ let ir_of_pattern env =
             | Some (Pconst_string (s, _, _)) ->
                 let l = rev_csets_of_string ~loc:p.ppat_loc ~encoding s in
                 let chars = List.fold_left Cset.union Cset.empty l in
-                Ir.chars chars
+                nonempty p.ppat_loc (Ir.chars chars)
             | _ ->
                 err p.ppat_loc "the Chars operator requires a string argument")
       (* 'a' .. 'z' or 0x41 .. 0x5a — character/codepoint range *)
