@@ -1675,6 +1675,118 @@ let%expect_test "eof_self_loop_terminates" =
   [%expect {| TIMEOUT |}]
 *)
 
+(* KNOWN BUG (#199, capture before a repetition loop): the mirror of
+   [loop_before_capture]. The capture's end tag keeps firing inside the
+   repetition that follows it, so the submatch swallows characters the rest of
+   the rule then consumes, and the reported parse is one that cannot exist. *)
+let%expect_test "capture_before_loop" =
+  let sub x =
+    try Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x)
+    with e -> "raises " ^ Printexc.to_string e
+  in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        Printf.printf "%-7S -> %s\n" s (lex (Sedlexing.Latin1.from_string s)))
+      inputs
+  in
+  (* expected z="aa" and z="a": the Plus needs at least one 'a' *)
+  run ["aaa"; "aa"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ('a' .. 'c', 0 .. 2) as z), Plus 'a' -> "z=" ^ sub z
+        | _ -> "nomatch");
+  [%expect {|
+    "aaa"   -> z="aa"
+    "aa"    -> z="aa"
+    |}];
+  (* expected z="a": the tail needs an even number of characters *)
+  run ["aaaaa"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ('a', 0 .. 2) as z), Plus ('a', 'a') -> "z=" ^ sub z
+        | _ -> "nomatch");
+  [%expect {| "aaaaa" -> z="aa" |}];
+  (* expected x="bd": one character is left for the middle class *)
+  run ["bdc"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'b' .. 'd' as x), 'a' .. 'd', Star 'c' .. 'd' -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect {| "bdc"   -> x="bdc" |}];
+  (* expected x="b" y="b": y cannot be empty *)
+  run ["bbac"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ('b', 1 .. 3) as x), (Plus 'b' as y) ->
+            "x=" ^ sub x ^ " y=" ^ sub y
+        | _ -> "nomatch");
+  [%expect {| "bbac"  -> x="bb" y="" |}];
+  (* expected x="c" *)
+  run ["ccd"] (fun buf ->
+      match%sedlex buf with
+        | (Star (Star 'c') as x), Plus 'a' .. 'c' -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect {| "ccd"   -> x="cc" |}];
+  (* expected x="a": the parse is ambiguous and the Star is greedy *)
+  run ["aaa"] (fun buf ->
+      match%sedlex buf with
+        | Star 'a', (Plus 'a' as x) -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect {| "aaa"   -> x="" |}];
+  (* expected y="d" w="": today both submatches have garbage bounds and
+     extracting them raises *)
+  run ["ddd"] (fun buf ->
+      match%sedlex buf with
+        | Star 'd', ('a' .. 'd' as y), 'a' .. 'd', ((Star 'a' | 'b') as w) ->
+            "y=" ^ sub y ^ " w=" ^ sub w
+        | _ -> "nomatch");
+  [%expect
+    {| "ddd"   -> y=raises Invalid_argument("index out of bounds") w=raises Invalid_argument("Bytes.create") |}];
+  (* the fixed-width tail comes out right today and pins the edge of the bug *)
+  run ["aa"; "aaa"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ('a' .. 'c', 0 .. 2) as z), 'a' -> "z=" ^ sub z
+        | _ -> "nomatch");
+  [%expect {|
+    "aa"    -> z="a"
+    "aaa"   -> z="aa"
+    |}]
+
+(* Bounded repetition of a nullable body. [Rep (r, 0 .. 1)] unrolls to
+   [r | ""], and [r] itself parses "" through its first alternative [Opt 'd']
+   before it parses "b" through its second. Today the consuming parse wins in
+   all four forms; a leftmost-first reading of the unrolling gives x="" for
+   each, with the Star taking the 'b'. This test records the current answer so
+   that a change of tie-break is visible. *)
+let%expect_test "rep_nullable_body" =
+  let sub = Sedlexing.Latin1.of_submatch in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        Printf.printf "%-4S -> %s\n" s (lex (Sedlexing.Latin1.from_string s)))
+      inputs
+  in
+  run ["b"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ((Opt 'd' | 'b'), 0 .. 1) as x), Star 'b' ->
+            Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {| "b"  -> x="b" |}];
+  run ["b"] (fun buf ->
+      match%sedlex buf with
+        | ((Opt 'd' | 'b' | "") as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {| "b"  -> x="b" |}];
+  run ["b"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ((Opt 'd' | 'b'), 1 .. 2) as x), Star 'b' ->
+            Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {| "b"  -> x="b" |}];
+  run ["bb"] (fun buf ->
+      match%sedlex buf with
+        | (Rep ((Opt 'd' | 'b'), 0 .. 2) as x), Star 'b' ->
+            Printf.sprintf "x=%S" (sub x)
+        | _ -> "nomatch");
+  [%expect {| "bb" -> x="bb" |}]
+
 (* Greedy repetition guards. These pass today; they pin the disambiguation
    rules that a rewrite of the determinization must preserve. *)
 
