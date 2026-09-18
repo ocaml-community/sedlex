@@ -215,32 +215,7 @@ let partition (name, p) =
 
 (* Code generation for the automata *)
 
-(* [best_final finals] returns the lowest-numbered accepting rule for this
-   state, or [None] if the state is not accepting. Lowest-numbered = highest
-   priority, matching the first-match semantics of [match%sedlex]. *)
-let best_final final =
-  let fin = ref None in
-  for i = Array.length final - 1 downto 0 do
-    if final.(i) then fin := Some i
-  done;
-  !fin
-
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
-
-(* [call_state lexbuf auto state] generates the expression that transitions
-   into DFA [state]. If the state has no outgoing transitions (a sink), it
-   returns the accepting rule index directly; otherwise it emits a function
-   call to the generated state function. *)
-let call_state lexbuf (auto : Sedlex.dfa) state =
-  let { Sedlex.trans; finals } = auto.(state) in
-  if Array.length trans = 0 then (
-    match best_final finals with
-      | Some i -> eint ~loc:default_loc i
-      | None ->
-          (* A non-accepting sink would need a transition on an empty
-             character set, which [ir_of_pattern] rejects. *)
-          assert false)
-  else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
    operation calls. Each [Set_position {dst}] becomes a call to
@@ -268,9 +243,28 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
               [%e acc]])
     ops cont
 
-(* [gen_state (lexbuf_name, lexbuf) auto i {trans; finals}] generates the
+(* [call_state lexbuf auto state] generates the expression that transitions
+   into DFA [state]. If the state has no outgoing transitions (a sink), it
+   executes the state's final tag operations and returns the accepting rule
+   index directly; otherwise it emits a function call to the generated state
+   function. *)
+let call_state lexbuf (auto : Sedlex.dfa) state =
+  let { Sedlex.trans; accept } = auto.(state) in
+  if Array.length trans = 0 then (
+    match accept with
+      | Some { Sedlex.rule; final_ops } ->
+          gen_tag_ops lexbuf final_ops (eint ~loc:default_loc rule)
+      | None ->
+          (* A non-accepting sink would need a transition on an empty
+             character set, which [ir_of_pattern] rejects. *)
+          assert false)
+  else appfun (state_fun state) [lexbuf]
+
+(* [gen_state (lexbuf_name, lexbuf) auto i {trans; accept}] generates the
    function [__sedlex_state_N] for DFA state [i]. The function:
-   1. If the state is accepting, calls [mark] to save the current position.
+   1. If the state is accepting ([accept = Some { rule; final_ops }]), executes
+      [final_ops] then calls [mark] to save the current position and a
+      snapshot of the memory cells.
    2. Reads the next code point, maps it through the partition function to
       get an equivalence class index, then pattern-matches on that index.
    3. Each transition arm executes its tag operations then calls the target
@@ -278,7 +272,7 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
    4. The default arm calls [backtrack] to return the last accepted rule.
    Returns [] for accepting states with no outgoing transitions (sinks). *)
 let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
-    { Sedlex.trans; finals } =
+    { Sedlex.trans; accept } =
   let loc = default_loc in
   let partition = Array.map (fun (cs, _, _) -> cs) trans in
   let cases =
@@ -309,14 +303,15 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
         ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
     ]
   in
-  match best_final finals with
+  match accept with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i ->
+    | Some { Sedlex.rule; final_ops } ->
         ret
-          [%expr
-            Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
-            [%e body ()]]
+          (gen_tag_ops lexbuf final_ops
+             [%expr
+               Sedlexing.mark [%e lexbuf] [%e eint ~loc rule];
+               [%e body ()]])
 
 (* [gen_recflag auto] determines whether the generated state functions need
    [let rec]. If every transition leads to a sink state (no further
