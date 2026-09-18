@@ -302,13 +302,27 @@ let transition (state : state) =
   Array.sort (fun (c1, _, _) (c2, _, _) -> compare c1 c2) t;
   t
 
+type accept = { rule : int; final_ops : tag_op list }
+
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
-  finals : bool array;
+  accept : accept option;
 }
 
 type dfa = dfa_state array
 type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+(* [accepting_rule rules is_final] is the lowest-numbered rule whose final
+   node satisfies [is_final], i.e. the highest-priority accepting rule of a
+   state under the first-match semantics of [match%sedlex]. *)
+let accepting_rule rules is_final =
+  let n = Array.length rules in
+  let rec aux i =
+    if i = n then None
+    else if is_final (snd rules.(i)) then Some i
+    else aux (i + 1)
+  in
+  aux 0
 
 (* [compile rs] determinizes the NFA for an array of regexp rules.
    Each rule is compiled to an NFA (entry node, final node) pair. The initial
@@ -329,8 +343,12 @@ let compile rs =
       Hashtbl.add states state i;
       let trans = transition state in
       let trans = Array.map (fun (p, t, tags) -> (p, aux t, tags)) trans in
-      let finals = Array.map (fun (_, f) -> List.memq f state) rs in
-      Hashtbl.add states_def i { trans; finals };
+      let accept =
+        Option.map
+          (fun rule -> { rule; final_ops = [] })
+          (accepting_rule rs (fun f -> List.memq f state))
+      in
+      Hashtbl.add states_def i { trans; accept };
       i
   in
   let init = ref ([], []) in
@@ -590,6 +608,12 @@ let cset_to_label cset =
   String.concat ", "
     (List.map format_interval (cset : Cset.t :> (int * int) list))
 
+let tag_op_to_string = function
+  | Set_position { dst } -> "t" ^ string_of_int dst
+  | Set_value { dst; value } ->
+      "d" ^ string_of_int dst ^ "=" ^ string_of_int value
+  | Copy { dst; src } -> "t" ^ string_of_int dst ^ "<-t" ^ string_of_int src
+
 let dfa_to_dot dfa =
   let buf = Buffer.create 1024 in
   let bprintf = Printf.bprintf in
@@ -599,30 +623,23 @@ let dfa_to_dot dfa =
   bprintf buf "  _start [shape=point];\n";
   bprintf buf "  _start -> state0;\n\n";
   Array.iteri
-    (fun i { trans; finals } ->
-      let accepted =
-        let acc = ref [] in
-        for r = Array.length finals - 1 downto 0 do
-          if finals.(r) then acc := r :: !acc
-        done;
-        !acc
-      in
-      (match accepted with
-        | [] -> bprintf buf "  state%d [label=\"%d\"];\n" i i
-        | rules ->
+    (fun i { trans; accept } ->
+      (match accept with
+        | None -> bprintf buf "  state%d [label=\"%d\"];\n" i i
+        | Some { rule; final_ops } ->
+            let ops =
+              if final_ops = [] then ""
+              else
+                "\\n{"
+                ^ String.concat "," (List.map tag_op_to_string final_ops)
+                ^ "}"
+            in
             bprintf buf
-              "  state%d [label=\"%d\\n[rule %s]\", shape=doublecircle];\n" i i
-              (String.concat "," (List.map string_of_int rules)));
+              "  state%d [label=\"%d\\n[rule %d]%s\", shape=doublecircle];\n" i
+              i rule ops);
       Array.iter
         (fun (cset, target, tags) ->
           let label = cset_to_label cset in
-          let tag_op_to_string = function
-            | Set_position { dst } -> "t" ^ string_of_int dst
-            | Set_value { dst; value } ->
-                "d" ^ string_of_int dst ^ "=" ^ string_of_int value
-            | Copy { dst; src } ->
-                "t" ^ string_of_int dst ^ "<-t" ^ string_of_int src
-          in
           let label =
             if tags = [] then label
             else
