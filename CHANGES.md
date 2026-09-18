@@ -1,6 +1,13 @@
 # unreleased
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
 - Add support for named captured group (#177, #178)
+- Accept `Rep (c, 1 .. 1)` as the argument of `Compl`, `Sub` and `Intersect` (#201)
+- Report empty character sets (`Chars ""`, `Compl any`, `Sub`/`Intersect` of
+  coinciding classes) as a compile error instead of crashing the ppx or
+  generating a rule that never matches (#201)
+- Fix generated code for rule sets where every rule is nullable (#201)
+- Fix captures followed by `eof`: eof is zero-width, so the capture no longer
+  loses its last character or raises (#201)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
