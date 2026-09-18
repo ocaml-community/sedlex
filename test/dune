@@ -1,6 +1,6 @@
 (library
  (name sedlex_test)
- (libraries sedlex unix threads.posix)
+ (libraries sedlex)
  (inline_tests
   (deps UTF-8-test.txt))
  (enabled_if
