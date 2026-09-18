@@ -853,19 +853,12 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
         (* Sequence — propagate left/right position contexts through elements.
            Right positions are computed right-to-left; left positions are
            updated left-to-right after lowering each element. *)
-        let n = List.length elems in
-        let lengths = List.map Ir.fixed_length elems in
-        let lengths_arr = Array.of_list lengths in
-        (* Compute right positions (right-to-left) *)
-        let rights = Array.make n None in
-        let () =
-          let acc = ref right in
-          for i = n - 1 downto 0 do
-            rights.(i) <- !acc;
-            acc := retreat !acc lengths_arr.(i)
-          done
+        let _, rights =
+          List.fold_right
+            (fun e (acc, l) -> (retreat acc (Ir.fixed_length e), acc :: l))
+            elems (right, [])
         in
-        (* Fallback for [update_left]: if [advance] returns [None]
+        (* Fallback for the left context: if [advance] returns [None]
            (because the current left is unknown or the element has
            variable length), but the element was a [Capture] whose
            end position is a [Tag], we can use that tag as the [left]
@@ -881,25 +874,19 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
                   | _ -> None)
             | _ -> None
         in
-        let update_left cur i ir tags' =
-          match advance cur lengths_arr.(i) with
-            | Some _ as s -> s
-            | None -> left_from_end_tag ir tags'
-        in
-        let elems_arr = Array.of_list elems in
-        let r0, tags0 = lower ~left ~right:rights.(0) elems_arr.(0) in
-        let left0 = update_left left 0 elems_arr.(0) tags0 in
-        let _, _, r_acc, tags_acc =
-          Array.fold_left
-            (fun (i, cur_left, r_acc, tags_acc) ir_elem ->
-              if i = 0 then (1, left0, r_acc, tags_acc)
-              else (
-                let r', tags' =
-                  lower ~left:cur_left ~right:rights.(i) ir_elem
-                in
-                let new_left = update_left cur_left i ir_elem tags' in
-                (i + 1, new_left, seq r_acc r', tags_acc @ tags')))
-            (0, left, r0, tags0) elems_arr
+        (* [seq] is function composition and [eps] its identity, so the
+           fold needs no special case for the first element. *)
+        let _, r_acc, tags_acc =
+          List.fold_left2
+            (fun (cur_left, r_acc, tags_acc) e right ->
+              let r', tags' = lower ~left:cur_left ~right e in
+              let new_left =
+                match advance cur_left (Ir.fixed_length e) with
+                  | Some _ as s -> s
+                  | None -> left_from_end_tag e tags'
+              in
+              (new_left, seq r_acc r', tags_acc @ tags'))
+            (left, eps, []) elems rights
         in
         (r_acc, tags_acc)
 
