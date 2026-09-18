@@ -312,6 +312,9 @@ type dfa_state = {
 type dfa = dfa_state array
 type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
 
+let op_dest = function
+  | Copy { dst; _ } | Set_position { dst } | Set_value { dst; _ } -> dst
+
 (* [accepting_rule rules is_final] is the lowest-numbered rule whose final
    node satisfies [is_final], i.e. the highest-priority accepting rule of a
    state under the first-match semantics of [match%sedlex]. *)
