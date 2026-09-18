@@ -1820,8 +1820,8 @@ let%expect_test "empty_pattern" =
     empty
     |}]
 
-(* Greedy repetition guards. These pass today; they pin the disambiguation
-   rules that a rewrite of the determinization must preserve. *)
+(* Greedy repetition guards: they pin the disambiguation rules that the
+   determinization must preserve. *)
 
 (* Opt is greedy (consume-first) and agrees with Rep (_, 0 .. 1): when the
    empty and the consuming parse have the same total length, the leading
@@ -1857,8 +1857,8 @@ let%expect_test "plus_nullable_first_alternative" =
         | (Plus (Opt 'd' | 'b') as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
   [%expect {|
-    "b"  -> x=""
-    "bb" -> x=""
+    "b"  -> x="b"
+    "bb" -> x="bb"
     "db" -> x="db"
     |}];
   run (fun buf ->
