@@ -1698,8 +1698,8 @@ let%expect_test "capture_before_loop" =
         | (Rep ('a' .. 'c', 0 .. 2) as z), Plus 'a' -> "z=" ^ sub z
         | _ -> "nomatch");
   [%expect {|
-    "aaa"   -> z=""
-    "aa"    -> z=""
+    "aaa"   -> z="aa"
+    "aa"    -> z="a"
     |}];
   (* expected z="a": the tail needs an even number of characters *)
   run ["aaaaa"] (fun buf ->
@@ -1837,7 +1837,7 @@ let%expect_test "opt_greedy" =
     | Rep ('a', 0 .. 1), (Star 'a' as x) ->
         Printf.printf "rep x=%S\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| rep x="a" |}]
+  [%expect {| rep x="" |}]
 
 (* [Plus r] is [r, Star r]: after a first iteration that consumed nothing, a
    second (consuming) iteration still has priority over leaving the loop,
