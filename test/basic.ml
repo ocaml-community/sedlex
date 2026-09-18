@@ -1859,8 +1859,8 @@ let%expect_test "plus_nullable_first_alternative" =
         | (Plus (Opt 'd' | 'b') as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
   [%expect {|
-    "b"  -> x=""
-    "bb" -> x=""
+    "b"  -> x="b"
+    "bb" -> x="bb"
     "db" -> x="db"
     |}];
   run (fun buf ->

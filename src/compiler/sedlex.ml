@@ -141,12 +141,13 @@ let rep r succ =
   n.eps <- [r n; succ];
   n
 
-let plus r succ =
-  let n = new_node () in
-  let nr = r n in
-  n.eps <- [nr; succ];
-  nr
-
+(* [plus r] is [r, Star r], with the body duplicated (as ocamllex does).
+   Building a single loop entered at the body instead would order the loop
+   exit ahead of a second iteration whenever the first iteration consumed
+   nothing: the closure walk reaches the loop node from inside the body,
+   finds the body already visited, and continues to [succ] before the
+   body's remaining (consuming) alternatives. *)
+let plus r succ = r (rep r succ)
 let eps succ = succ (* eps for epsilon *)
 
 let rec repeat r n m succ =
