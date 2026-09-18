@@ -1,6 +1,8 @@
 # unreleased
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
 - Add support for named captured group (#177, #178)
+- Rewrite determinization as a Laurikari tagged DFA, fixing incorrect
+  submatch positions when a repetition loop overlaps a capture (#199)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0

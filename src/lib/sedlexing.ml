@@ -239,38 +239,82 @@ let[@inline always] next_aux some none lexbuf =
 let next lexbuf = (next_aux [@inlined]) (fun x -> Some x) None lexbuf
 let __private__next_int lexbuf = (next_aux [@inlined]) Uchar.to_int (-1) lexbuf
 
-let mark lexbuf i =
+let[@inline] mark_pos lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
   lexbuf.marked_bytes_pos <- lexbuf.bytes_pos;
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
-  lexbuf.marked_val <- i;
-  (* Snapshot tagged DFA memory cells so backtrack can restore them. *)
-  let n = Array.length lexbuf.__private__mem in
-  if n > 0 then
-    Array.blit lexbuf.__private__mem 0 lexbuf.__private__mem_saved 0 n
+  lexbuf.marked_val <- i
 
-let start lexbuf =
+let[@inline] start_pos lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
   lexbuf.start_bytes_pos <- lexbuf.bytes_pos;
   lexbuf.start_bol <- lexbuf.curr_bol;
   lexbuf.start_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.start_line <- lexbuf.curr_line;
-  mark lexbuf (-1)
+  mark_pos lexbuf (-1)
 
-let backtrack lexbuf =
+let[@inline] backtrack_pos lexbuf =
   lexbuf.pos <- lexbuf.marked_pos;
   lexbuf.bytes_pos <- lexbuf.marked_bytes_pos;
   lexbuf.curr_bol <- lexbuf.marked_bol;
   lexbuf.curr_bytes_bol <- lexbuf.marked_bytes_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
-  (* Restore tagged DFA memory cells to the snapshot taken at the last
-     accepting state, so sub-match positions are correct after backtracking. *)
+  lexbuf.marked_val
+
+(* Snapshot / restore the tagged DFA memory cells, so backtrack can restore the
+   sub-match positions recorded at the last accepting state. No-op when the
+   lexbuf has no cells. *)
+let snapshot_mem lexbuf =
   let n = Array.length lexbuf.__private__mem in
   if n > 0 then
-    Array.blit lexbuf.__private__mem_saved 0 lexbuf.__private__mem 0 n;
-  lexbuf.marked_val
+    Array.blit lexbuf.__private__mem 0 lexbuf.__private__mem_saved 0 n
+
+let restore_mem lexbuf =
+  let n = Array.length lexbuf.__private__mem in
+  if n > 0 then
+    Array.blit lexbuf.__private__mem_saved 0 lexbuf.__private__mem 0 n
+
+(* An accepting state should record its match only when it beats the one
+   already marked: a strictly longer match always wins, and among matches of
+   equal length the lowest-numbered (highest-priority) rule wins — the
+   first-match semantics of [match%sedlex]. Without this, a zero-width [eof]
+   transition (which reaches a new accepting state without advancing [pos])
+   would overwrite an equal-length, higher-priority match marked just before.
+   [marked_val < 0] is the "no match yet" sentinel set by [start]. *)
+let[@inline] mark_improves lexbuf i =
+  lexbuf.marked_val < 0 || lexbuf.pos > lexbuf.marked_pos || i < lexbuf.marked_val
+
+(* Public API (also usable by hand-written lexers): mark/start/backtrack carry
+   the mem snapshot along with the position bookkeeping. *)
+let mark lexbuf i =
+  if mark_improves lexbuf i then begin
+    mark_pos lexbuf i;
+    snapshot_mem lexbuf
+  end
+
+let start lexbuf =
+  start_pos lexbuf;
+  snapshot_mem lexbuf
+
+let backtrack lexbuf =
+  let v = backtrack_pos lexbuf in
+  restore_mem lexbuf;
+  v
+
+(* PPX entry points. [__private__start] skips the mem snapshot: a tagged block
+   re-establishes the baseline with [__private__init_mem] immediately after,
+   and a tagless block never reads mem — so the snapshot would be dead work.
+   Tagless blocks also use the [_no_mem] mark/backtrack so their hot accepting
+   path never blits cells left over from an earlier tagged block on the same
+   lexbuf. Tagged blocks keep using [mark]/[backtrack] to snapshot/restore. *)
+let __private__start = start_pos
+
+let __private__mark_no_mem lexbuf i =
+  if mark_improves lexbuf i then mark_pos lexbuf i
+
+let __private__backtrack_no_mem = backtrack_pos
 
 let rollback lexbuf =
   lexbuf.pos <- lexbuf.start_pos;
@@ -303,6 +347,17 @@ let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
 let __private__set_mem_value lexbuf i v =
   assert (v >= 0);
   lexbuf.__private__mem.(i) <- -(v + 2)
+
+(* Copies the raw cell contents, preserving the position/value encoding. *)
+let __private__copy_mem lexbuf dst src =
+  lexbuf.__private__mem.(dst) <- lexbuf.__private__mem.(src)
+
+(* Raw cell access, used by generated code to save a cell in a local
+   variable when a parallel register move both reads and overwrites it. The
+   value is opaque (position/value encoding preserved); [__private__mem_set]
+   must only be given values obtained from [__private__mem_get]. *)
+let __private__mem_get lexbuf i = lexbuf.__private__mem.(i)
+let __private__mem_set lexbuf i v = lexbuf.__private__mem.(i) <- v
 
 (* Returns position relative to token start, for use in sub_lexeme. *)
 let __private__mem_pos lexbuf i = lexbuf.__private__mem.(i) - lexbuf.start_pos

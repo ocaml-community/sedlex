@@ -212,10 +212,14 @@ val start : lexbuf -> unit
     is incremented. *)
 val next : lexbuf -> Uchar.t option
 
-(** [mark lexbuf i] stores the integer [i] in the internal slot. The backtrack
-    position is set to the current position. If the lexbuf has tagged DFA memory
-    cells (from [as] bindings), the current cell values are snapshotted so they
-    can be restored by [backtrack]. *)
+(** [mark lexbuf i] records rule [i] and the current position as the current
+    match, but only if it improves on the match already marked since [start]: a
+    strictly longer match always wins, and among equal-length matches the
+    lowest-numbered [i] wins (the first-match semantics of [match%sedlex]). This
+    keeps a zero-width [eof] transition from overriding an equal-length,
+    higher-priority match. When it does record, the backtrack position is set to
+    the current position, and if the lexbuf has tagged DFA memory cells (from
+    [as] bindings) their values are snapshotted for [backtrack] to restore. *)
 val mark : lexbuf -> int -> unit
 
 (** [backtrack lexbuf] returns the value stored in the internal slot of the
@@ -233,6 +237,22 @@ val backtrack : lexbuf -> int
     This is a private API, it should not be used by code using this module's API
     and can be removed at any time. *)
 val __private__next_int : lexbuf -> int
+
+(** [__private__start], [__private__mark_no_mem] and [__private__backtrack_no_mem]
+    are the entry points emitted by generated code. They behave like {!start},
+    {!mark} and {!backtrack} but skip the tagged-mem snapshot/restore:
+    [__private__start] because a block using [as] bindings re-initializes the
+    cells with {!__private__init_mem} right after (and a block without bindings
+    never reads them); the [_no_mem] mark/backtrack are used only by blocks with
+    no [as] bindings, whose hot path must not blit cells left over from an
+    earlier block on the same lexbuf. Blocks with bindings keep using {!mark}
+    and {!backtrack}.
+
+    This is a private API used by generated code and may change at any time. *)
+val __private__start : lexbuf -> unit
+
+val __private__mark_no_mem : lexbuf -> int -> unit
+val __private__backtrack_no_mem : lexbuf -> int
 
 (** Tagged DFA memory cells for [as] bindings.
 
@@ -260,6 +280,21 @@ val __private__set_mem_pos : lexbuf -> int -> unit
     sentinel. Used by [Set_value] tag operations for or-pattern discriminators.
 *)
 val __private__set_mem_value : lexbuf -> int -> int -> unit
+
+(** [__private__copy_mem lexbuf dst src] copies the contents of cell [src] into
+    cell [dst], preserving the position/value encoding. Used by [Copy] tag
+    operations on DFA transitions. *)
+val __private__copy_mem : lexbuf -> int -> int -> unit
+
+(** [__private__mem_get lexbuf i] returns the raw contents of cell [i]. Used by
+    generated code to save a cell in a local variable when a parallel register
+    move both reads and overwrites it. The returned value is opaque; only pass
+    it to {!__private__mem_set}. *)
+val __private__mem_get : lexbuf -> int -> int
+
+(** [__private__mem_set lexbuf i v] stores [v] — a value previously obtained
+    from {!__private__mem_get} — into cell [i]. *)
+val __private__mem_set : lexbuf -> int -> int -> unit
 
 (** [__private__mem_pos lexbuf i] returns the position stored in cell [i], as an
     offset relative to the start of the current token. *)

@@ -30,7 +30,14 @@ let reject_captures ctx t =
 (* Analysis *)
 
 let rec fixed_length = function
-  | Chars _ -> Some 1
+  | Chars c ->
+      (* [eof] (code point -1) is zero-width at runtime: [next] reports EOF
+         without advancing [pos]. A pure-eof cset is width 0; a cset mixing
+         eof with real characters has a data-dependent width (0 or 1), so its
+         length is unknown. *)
+      if Cset.mem (-1) c then
+        if Cset.is_empty (Cset.difference c Cset.eof) then Some 0 else None
+      else Some 1
   | Eps -> Some 0
   | Capture (_, inner) -> fixed_length inner
   | Seq elems ->
@@ -75,7 +82,10 @@ let rep t n m =
   else (
     match reject_captures "Rep" t with
       | Error _ as e -> e
-      | Ok t -> Ok (Rep (t, n, m)))
+      (* [Rep (t, 1, 1)] is just [t]; normalize so single-character-length
+         checks (Compl/Sub/Intersect) still see the bare [Chars] node, as they
+         did on master where [repeat r (1, 1)] desugared to [r]. *)
+      | Ok t -> if n = 1 && m = 1 then Ok t else Ok (Rep (t, n, m)))
 
 let seq a b =
   let an = capture_names a in

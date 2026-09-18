@@ -74,5 +74,10 @@ let complement c =
   in
   match c with (-1, j) :: l -> aux (succ j) l | l -> aux (-1) l
 
+let rec mem c = function
+  | [] -> false
+  | (lo, hi) :: rest ->
+      if c < lo then false else if c <= hi then true else mem c rest
+
 let intersection c1 c2 = complement (union (complement c1) (complement c2))
 let difference c1 c2 = complement (union (complement c1) c2)

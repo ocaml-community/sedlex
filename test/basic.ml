@@ -1329,6 +1329,89 @@ let%expect_test "as_bindings" =
     | _ -> assert false);
   [%expect {| x=a y=ba |}]
 
+let%expect_test "opt_greedy" =
+  (* Opt is greedy (consume-first), so it agrees with Rep (_, 0 .. 1): when the
+     empty parse and the consuming parse have the same total length, both let
+     the leading optional take the character, leaving the trailing Star empty. *)
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Opt 'a', (Star 'a' as x) ->
+        Printf.printf "opt x=%S\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| opt x="" |}];
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Rep ('a', 0 .. 1), (Star 'a' as x) ->
+        Printf.printf "rep x=%S\n" (Sedlexing.Utf8.of_submatch x)
+    | _ -> assert false);
+  [%expect {| rep x="" |}]
+
+let%expect_test "rep_1_1_char_ops" =
+  (* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
+     accept it: it normalizes to the bare Chars node, as repeat r (1, 1) did
+     on master. *)
+  let buf = Sedlexing.Utf8.from_string "b" in
+  (match%sedlex buf with
+    | Compl (Rep ('a', 1 .. 1)) -> print_string "compl-ok\n"
+    | _ -> assert false);
+  [%expect {| compl-ok |}];
+  let buf = Sedlexing.Utf8.from_string "b" in
+  (match%sedlex buf with
+    | Sub (any, Rep ('a', 1 .. 1)) -> print_string "sub-ok\n"
+    | _ -> assert false);
+  [%expect {| sub-ok |}];
+  let buf = Sedlexing.Utf8.from_string "a" in
+  (match%sedlex buf with
+    | Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> print_string "inter-ok\n"
+    | _ -> assert false);
+  [%expect {| inter-ok |}]
+
+let%expect_test "empty_pattern" =
+  (* A nullable-only rule makes DFA state 0 an accepting sink; the generated
+     code must not emit an empty `let rec` or call an undefined state function.
+     [""] matches the zero-length prefix at position 0 regardless of input. *)
+  let lex buf =
+    match%sedlex buf with "" -> "empty" | _ -> "other"
+  in
+  Printf.printf "%s\n" (lex (Sedlexing.Utf8.from_string ""));
+  Printf.printf "%s\n" (lex (Sedlexing.Utf8.from_string "abc"));
+  [%expect
+    {|
+    empty
+    empty
+    |}]
+
+let%expect_test "eof_rule_priority" =
+  (* An earlier rule and a later eof-terminated rule match the same lexeme
+     length; declaration order must break the tie, even though eof's zero-width
+     accept is reached last. Exercises the generated runtime, not just the DFA
+     interpreter. *)
+  let lex buf =
+    match%sedlex buf with
+    | Plus ('b' | 'c') -> "rule0"
+    | (Star ('a' .. 'c')), eof -> "rule1"
+    | _ -> "none"
+  in
+  let lex_eof_first buf =
+    match%sedlex buf with
+    | (Star ('a' .. 'c')), eof -> "rule0"
+    | Plus ('b' | 'c') -> "rule1"
+    | _ -> "none"
+  in
+  List.iter
+    (fun s ->
+      Printf.printf "%-4S -> %-5s | %s\n" s
+        (lex (Sedlexing.Utf8.from_string s))
+        (lex_eof_first (Sedlexing.Utf8.from_string s)))
+    [ "cc"; "c"; ""; "a" ];
+  [%expect
+    {|
+    "cc" -> rule0 | rule0
+    "c"  -> rule0 | rule0
+    ""   -> rule1 | rule0
+    "a"  -> rule1 | rule0
+    |}]
+
 let num_mem buf = Sedlexing.__private__num_mem_cells buf
 
 let%expect_test "as_bindings_num_mem_cells" =
@@ -1370,7 +1453,10 @@ let%expect_test "as_bindings_num_mem_cells" =
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
   [%expect {| mem_cells=0 |}];
-  (* Or-pattern with different offsets: 1 cell (disc only, positions known) *)
+  (* Or-pattern with different offsets: positions are known, so only the
+     discriminator cell is needed (conflict-free: a branch's discriminator
+     fires just before its final node, so its holder never survives into a
+     state where the other branch writes) *)
   let buf = Sedlexing.Utf8.from_string "abcdef" in
   (match%sedlex buf with
     | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->

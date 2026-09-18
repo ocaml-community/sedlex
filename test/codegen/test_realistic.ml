@@ -31,121 +31,121 @@ let%expect_test "realistic: multi-token lexer" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'('"];
-      state0 -> state6 [label="'0'"];
-      state0 -> state7 [label="'1'-'9'"];
-      state0 -> state11 [label="'A'-'Z' {t1}"];
-      state0 -> state14 [label="'a'-'z' {t0}"];
-      state1 [label="1"];
-      state1 -> state2 [label="'a'-'z'"];
+      state0 -> state4 [label="'('"];
+      state0 -> state3 [label="'0'"];
+      state0 -> state5 [label="'1'-'9'"];
+      state0 -> state2 [label="'A'-'Z' {t1}"];
+      state0 -> state1 [label="'a'-'z' {t0}"];
+      state1 [label="1\n[rule 4]", shape=doublecircle];
+      state1 -> state6 [label="'.'"];
+      state1 -> state1 [label="'a'-'z' {t0}"];
       state2 [label="2"];
-      state2 -> state3 [label="','"];
-      state3 [label="3"];
-      state3 -> state4 [label="'a'-'z'"];
+      state2 -> state7 [label="'='"];
+      state2 -> state2 [label="'A'-'Z' {t1}"];
+      state3 [label="3\n[rule 4]", shape=doublecircle];
+      state3 -> state5 [label="'0'-'9'"];
+      state3 -> state8 [label="'x'"];
       state4 [label="4"];
-      state4 -> state5 [label="')'"];
-      state5 [label="5\n[rule 3]", shape=doublecircle];
-      state6 [label="6\n[rule 4]", shape=doublecircle];
-      state6 -> state7 [label="'0'-'9'"];
-      state6 -> state8 [label="'x'"];
-      state7 [label="7\n[rule 4]", shape=doublecircle];
-      state7 -> state7 [label="'0'-'9'"];
+      state4 -> state9 [label="'a'-'z'"];
+      state5 [label="5\n[rule 4]", shape=doublecircle];
+      state5 -> state5 [label="'0'-'9'"];
+      state6 [label="6"];
+      state6 -> state10 [label="'a'-'z'"];
+      state7 [label="7"];
+      state7 -> state11 [label="'0'-'9'"];
       state8 [label="8"];
-      state8 -> state9 [label="'0'-'9', 'a'-'f'"];
+      state8 -> state12 [label="'0'-'9', 'a'-'f'"];
       state9 [label="9"];
-      state9 -> state9 [label="'0'-'9', 'a'-'f'"];
-      state9 -> state10 [label="';'"];
-      state10 [label="10\n[rule 2]", shape=doublecircle];
-      state11 [label="11"];
-      state11 -> state12 [label="'='"];
-      state11 -> state11 [label="'A'-'Z' {t1}"];
+      state9 -> state13 [label="','"];
+      state10 [label="10\n[rule 0]", shape=doublecircle];
+      state10 -> state10 [label="'a'-'z'"];
+      state11 [label="11\n[rule 1]", shape=doublecircle];
+      state11 -> state11 [label="'0'-'9'"];
       state12 [label="12"];
-      state12 -> state13 [label="'0'-'9'"];
-      state13 [label="13\n[rule 1]", shape=doublecircle];
-      state13 -> state13 [label="'0'-'9'"];
-      state14 [label="14\n[rule 4]", shape=doublecircle];
-      state14 -> state15 [label="'.'"];
-      state14 -> state14 [label="'a'-'z' {t0}"];
+      state12 -> state12 [label="'0'-'9', 'a'-'f'"];
+      state12 -> state14 [label="';'"];
+      state13 [label="13"];
+      state13 -> state15 [label="'a'-'z'"];
+      state14 [label="14\n[rule 2]", shape=doublecircle];
       state15 [label="15"];
-      state15 -> state16 [label="'a'-'z'"];
-      state16 [label="16\n[rule 0]", shape=doublecircle];
-      state16 -> state16 [label="'a'-'z'"];
+      state15 -> state16 [label="')'"];
+      state16 [label="16\n[rule 3]", shape=doublecircle];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_1 buf
-      | 1 -> __sedlex_state_6 buf
-      | 2 -> __sedlex_state_7 buf
-      | 3 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_11 buf)
-      | 4 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_14 buf)
+      | 0 -> __sedlex_state_4 buf
+      | 1 -> __sedlex_state_3 buf
+      | 2 -> __sedlex_state_5 buf
+      | 3 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_2 buf)
+      | 4 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
-      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_2 buf
-      | _ -> Sedlexing.backtrack buf
+      Sedlexing.mark buf 4;
+      (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_6 buf
+       | 1 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_1 buf)
+       | _ -> Sedlexing.backtrack buf)
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_3 buf
+      | 0 -> __sedlex_state_7 buf
+      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
-      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_4 buf
-      | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_4 buf =
-      match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> 3
-      | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_6 buf =
       Sedlexing.mark buf 4;
-      (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_7 buf
+      (match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_5 buf
        | 1 -> __sedlex_state_8 buf
        | _ -> Sedlexing.backtrack buf)
-    and __sedlex_state_7 buf =
+    and __sedlex_state_4 buf =
+      match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_9 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_5 buf =
       Sedlexing.mark buf 4;
       (match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_7 buf
+       | 0 -> __sedlex_state_5 buf
        | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_6 buf =
+      match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_10 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_7 buf =
+      match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_11 buf
+      | _ -> Sedlexing.backtrack buf
     and __sedlex_state_8 buf =
       match __sedlex_partition_7 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_9 buf
+      | 0 -> __sedlex_state_12 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_9 buf =
       match __sedlex_partition_8 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_9 buf
-      | 1 -> 2
-      | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_11 buf =
-      match __sedlex_partition_9 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_12 buf
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_11 buf)
-      | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_12 buf =
-      match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
       | 0 -> __sedlex_state_13 buf
       | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_13 buf =
+    and __sedlex_state_10 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_10 buf
+       | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_11 buf =
       Sedlexing.mark buf 1;
       (match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_13 buf
+       | 0 -> __sedlex_state_11 buf
        | _ -> Sedlexing.backtrack buf)
-    and __sedlex_state_14 buf =
-      Sedlexing.mark buf 4;
-      (match __sedlex_partition_10 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_15 buf
-       | 1 -> (Sedlexing.__private__set_mem_pos buf 0; __sedlex_state_14 buf)
-       | _ -> Sedlexing.backtrack buf)
-    and __sedlex_state_15 buf =
-      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_16 buf
+    and __sedlex_state_12 buf =
+      match __sedlex_partition_9 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_12 buf
+      | 1 -> 2
       | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_16 buf =
-      Sedlexing.mark buf 0;
-      (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_16 buf
-       | _ -> Sedlexing.backtrack buf) in
-    match Sedlexing.start buf;
+    and __sedlex_state_13 buf =
+      match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_15 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_15 buf =
+      match __sedlex_partition_10 (Sedlexing.__private__next_int buf) with
+      | 0 -> 3
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.__private__start buf;
           Sedlexing.__private__init_mem buf 2;
           __sedlex_state_0 buf
     with

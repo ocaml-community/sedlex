@@ -59,12 +59,19 @@ val intersection : regexp -> regexp -> regexp option
 
 (** Tag operations emitted on DFA transitions. *)
 type tag_op =
-  | Set_position of int
-      (** [Set_position i]: record the current lexbuf position in memory cell
-          [i]. *)
-  | Set_value of int * int
-      (** [Set_value (cell, v)]: record integer [v] in memory cell [cell] (used
-          for or-pattern discriminators). *)
+  | Set_position of { dst : int }
+      (** [Set_position {dst}]: record the current lexbuf position in memory
+          cell [dst]. *)
+  | Set_value of { dst : int; value : int }
+      (** [Set_value {dst; value}]: record integer [value] in memory cell [dst]
+          (used for or-pattern discriminators). *)
+  | Copy of { dst : int; src : int }
+      (** [Copy {dst; src}]: copy the contents of cell [src] into cell [dst].
+          Emitted when determinization must preserve a position that a parallel
+          NFA path is about to overwrite. *)
+
+(** [op_dest op] is the memory cell written by [op]. *)
+val op_dest : tag_op -> int
 
 (** [bind r] wraps [r] with start/end tag epsilon nodes. Returns
     [(wrapped_regexp, start_tag, end_tag)] where [start_tag] and [end_tag] are
@@ -95,9 +102,22 @@ val reset_tags : unit -> unit
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
-          execute when this transition fires). *)
+          execute when this transition fires). The operations form a parallel
+          move: every [Copy] reads its source as it was {b before} any operation
+          of the same list executed, and no two operations write the same cell.
+      *)
   finals : bool array;
-      (** [finals.(i)] is [true] if this state is accepting for rule [i]. *)
+      (** [finals.(i)] is [true] if this state is accepting for rule [i]. Kept
+          for {!dfa_to_dot} (which displays every accepting rule); code driving
+          the automaton should use [accept], which resolves rule priority. *)
+  accept : (int * tag_op list) option;
+      (** For an accepting state, [Some (rule, final_ops)]: [rule] is the
+          lowest-numbered — hence highest-priority — accepting rule, matching
+          the first-match semantics of [match%sedlex], and [final_ops]
+          materializes that path's registers into the canonical cells (cell
+          index = logical tag id) read by the binding extraction code, executed
+          when entering the state just before [Sedlexing.mark]. [None] for
+          non-accepting states. *)
 }
 
 (** DFA states, indexed by state number. State 0 is the initial state. *)
@@ -110,8 +130,9 @@ type compiled = {
       (** Tag operations to execute before entering the DFA (from epsilon
           closure of the initial NFA nodes). *)
   num_tags : int;
-      (** Total number of memory cells needed at runtime. When [num_tags = 0],
-          no memory is allocated (pattern has no [as] bindings). *)
+      (** Total number of memory cells needed at runtime (canonical cells plus
+          working registers). When [num_tags = 0], no memory is allocated
+          (pattern has no [as] bindings). *)
 }
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using

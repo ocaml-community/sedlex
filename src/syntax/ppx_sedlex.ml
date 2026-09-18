@@ -215,68 +215,120 @@ let partition (name, p) =
 
 (* Code generation for the automata *)
 
-(* [best_final finals] returns the lowest-numbered accepting rule for this
-   state, or [None] if the state is not accepting. Lowest-numbered = highest
-   priority, matching the first-match semantics of [match%sedlex]. *)
-let best_final final =
-  let fin = ref None in
-  for i = Array.length final - 1 downto 0 do
-    if final.(i) then fin := Some i
-  done;
-  !fin
-
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
+
+(* [gen_tag_ops lexbuf ops cont] wraps [cont] in the code performing the tag
+   operations [ops], which form a parallel move: every [Copy] must read its
+   source as it was before any operation of the list executed. Sources that
+   the list also writes are first saved in let-bound locals; everything else
+   compiles to direct [__private__set_mem_pos] / [__private__set_mem_value] /
+   [__private__copy_mem] calls in list order. *)
+let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
+  let loc = default_loc in
+  let dests = List.map Sedlex.op_dest ops in
+  let clobbered =
+    List.sort_uniq compare
+      (List.filter_map
+         (fun (op : Sedlex.tag_op) ->
+           match op with
+             | Copy { src; _ } when List.mem src dests -> Some src
+             | _ -> None)
+         ops)
+  in
+  let local s = Printf.sprintf "__sedlex_mem_%d" s in
+  let writes =
+    List.fold_right
+      (fun (op : Sedlex.tag_op) acc ->
+        match op with
+          | Set_position { dst } ->
+              [%expr
+                Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc dst];
+                [%e acc]]
+          | Set_value { dst; value } ->
+              [%expr
+                Sedlexing.__private__set_mem_value [%e lexbuf]
+                  [%e eint ~loc dst] [%e eint ~loc value];
+                [%e acc]]
+          | Copy { dst; src } when List.mem src clobbered ->
+              [%expr
+                Sedlexing.__private__mem_set [%e lexbuf] [%e eint ~loc dst]
+                  [%e evar ~loc (local src)];
+                [%e acc]]
+          | Copy { dst; src } ->
+              [%expr
+                Sedlexing.__private__copy_mem [%e lexbuf] [%e eint ~loc dst]
+                  [%e eint ~loc src];
+                [%e acc]])
+      ops cont
+  in
+  List.fold_right
+    (fun s acc ->
+      [%expr
+        let [%p pvar ~loc (local s)] =
+          Sedlexing.__private__mem_get [%e lexbuf] [%e eint ~loc s]
+        in
+        [%e acc]])
+    clobbered writes
 
 (* [call_state lexbuf auto state] generates the expression that transitions
    into DFA [state]. If the state has no outgoing transitions (a sink), it
-   returns the accepting rule index directly; otherwise it emits a function
-   call to the generated state function. *)
+   executes the state's final tag operations and returns the accepting rule
+   index directly; otherwise it emits a call to the state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
-  let { Sedlex.trans; finals } = auto.(state) in
+  let { Sedlex.trans; accept; _ } = auto.(state) in
   if Array.length trans = 0 then (
-    match best_final finals with
-      | Some i -> eint ~loc:default_loc i
+    match accept with
+      | Some (i, ops) -> gen_tag_ops lexbuf ops (eint ~loc:default_loc i)
       | None -> assert false)
   else appfun (state_fun state) [lexbuf]
 
-(* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
-   operation calls. Each [Set_position t] becomes a call to
-   [__private__set_mem_pos], and each [Set_value (cell, v)] becomes a call to
-   [__private__set_mem_value]. Operations are folded right so they execute
-   before [cont]. *)
-let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
-  let loc = default_loc in
-  List.fold_right
-    (fun (op : Sedlex.tag_op) acc ->
-      match op with
-        | Set_position t ->
-            [%expr
-              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc t];
-              [%e acc]]
-        | Set_value (cell, value) ->
-            [%expr
-              Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc cell]
-                [%e eint ~loc value];
-              [%e acc]])
-    ops cont
-
-(* [gen_state (lexbuf_name, lexbuf) auto i {trans; finals}] generates the
-   function [__sedlex_state_N] for DFA state [i]. The function:
-   1. If the state is accepting, calls [mark] to save the current position.
+(* [gen_state ~tagged (lexbuf_name, lexbuf) auto i {trans; accept; _}]
+   generates the function [__sedlex_state_N] for DFA state [i]. The function:
+   1. If the state is accepting ([accept = Some (rule, final_ops)]), executes
+      [final_ops] (materializing tag registers into their canonical cells) then
+      calls [mark] to save the current position and a snapshot of memory.
    2. Reads the next code point, maps it through the partition function to
       get an equivalence class index, then pattern-matches on that index.
    3. Each transition arm executes its tag operations then calls the target
       state function (or returns the rule index for sink states).
    4. The default arm calls [backtrack] to return the last accepted rule.
    Returns [] for accepting states with no outgoing transitions (sinks). *)
-let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
-    { Sedlex.trans; finals } =
+let gen_state ~tagged (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
+    { Sedlex.trans; accept; _ } =
   let loc = default_loc in
+  (* Blocks with [as] bindings snapshot/restore the mem cells in mark/backtrack;
+     tagless blocks skip that with the [_no_mem] variants (see sedlexing.mli). *)
+  let backtrack =
+    if tagged then [%expr Sedlexing.backtrack [%e lexbuf]]
+    else [%expr Sedlexing.__private__backtrack_no_mem [%e lexbuf]]
+  in
+  let mark i =
+    if tagged then [%expr Sedlexing.mark [%e lexbuf] [%e eint ~loc i]]
+    else [%expr Sedlexing.__private__mark_no_mem [%e lexbuf] [%e eint ~loc i]]
+  in
   let partition = Array.map (fun (cs, _, _) -> cs) trans in
+  (* Destination for a transition arm. [call_state] inlines an accepting sink
+     as a direct rule return, which is sound only when the arm advances [pos]
+     (a real character): a longer match always wins. But an arm whose set
+     contains [eof] (-1) may be taken without advancing [pos], so a direct
+     return would bypass longest-match/priority arbitration. For those, route
+     through [mark] (guarded) + [backtrack] so an equal-length, higher-priority
+     match already marked still wins. *)
+  let dest cs j =
+    let target = auto.(j) in
+    match target.Sedlex.accept with
+      | Some (r, final_ops)
+        when Cset.mem (-1) cs && Array.length target.Sedlex.trans = 0 ->
+          gen_tag_ops lexbuf final_ops
+            [%expr
+              [%e mark r];
+              [%e backtrack]]
+      | _ -> call_state lexbuf auto j
+  in
   let cases =
     Array.mapi
-      (fun i (_, j, tags) ->
-        let rhs = gen_tag_ops lexbuf tags (call_state lexbuf auto j) in
+      (fun i (cs, j, tags) ->
+        let rhs = gen_tag_ops lexbuf tags (dest cs j) in
         case ~lhs:(pint ~loc i) ~guard:None ~rhs)
       trans
   in
@@ -285,13 +337,7 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     pexp_match ~loc
       (appfun (partition_name partition)
          [[%expr Sedlexing.__private__next_int [%e lexbuf]]])
-      (cases
-      @ [
-          case
-            ~lhs:[%pat? _]
-            ~guard:None
-            ~rhs:[%expr Sedlexing.backtrack [%e lexbuf]];
-        ])
+      (cases @ [ case ~lhs:[%pat? _] ~guard:None ~rhs:backtrack ])
   in
   let ret body =
     let lhs = pvar ~loc:lexbuf.pexp_loc lexbuf_name in
@@ -301,14 +347,15 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
         ~expr:(Exp.fun_ ~loc Nolabel None lhs body);
     ]
   in
-  match best_final finals with
+  match accept with
     | None -> ret (body ())
     | Some _ when Array.length trans = 0 -> []
-    | Some i ->
+    | Some (i, ops) ->
         ret
-          [%expr
-            Sedlexing.mark [%e lexbuf] [%e eint ~loc i];
-            [%e body ()]]
+          (gen_tag_ops lexbuf ops
+             [%expr
+               [%e mark i];
+               [%e body ()]])
 
 (* [gen_recflag auto] determines whether the generated state functions need
    [let rec]. If every transition leads to a sink state (no further
@@ -339,10 +386,11 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
     (compiled : Sedlex.compiled) l error =
   let loc = default_loc in
   let auto = compiled.dfa in
+  let tagged = compiled.num_tags > 0 in
   let cases =
     List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
   in
-  let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
+  let states = Array.mapi (gen_state ~tagged lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
   let start_expr =
     if compiled.num_tags > 0 then (
@@ -352,19 +400,26 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
             [%e eint ~loc compiled.num_tags]]
       in
       let set_init_tags =
-        gen_tag_ops lexbuf compiled.init_tags (appfun (state_fun 0) [lexbuf])
+        gen_tag_ops lexbuf compiled.init_tags (call_state lexbuf auto 0)
       in
       pexp_sequence ~loc
-        [%expr Sedlexing.start [%e lexbuf]]
+        [%expr Sedlexing.__private__start [%e lexbuf]]
         (pexp_sequence ~loc init_mem set_init_tags))
     else
       pexp_sequence ~loc
-        [%expr Sedlexing.start [%e lexbuf]]
-        (appfun (state_fun 0) [lexbuf])
+        [%expr Sedlexing.__private__start [%e lexbuf]]
+        (call_state lexbuf auto 0)
   in
-  pexp_let ~loc (gen_recflag auto) states
-    (pexp_match ~loc start_expr
-       (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error]))
+  let match_expr =
+    pexp_match ~loc start_expr
+      (cases @ [case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:error])
+  in
+  (* [states] is empty when state 0 is an accepting sink (e.g. the pattern
+     [""]): [call_state] inlines its result above, so there are no state
+     functions to bind and [pexp_let] with no bindings would be invalid. *)
+  match states with
+    | [] -> match_expr
+    | _ -> pexp_let ~loc (gen_recflag auto) states match_expr
 
 (* Lexer specification parser *)
 
@@ -610,12 +665,14 @@ let ir_of_pattern env =
       (* Rep _ — malformed *)
       | Ppat_construct ({ txt = Lident "Rep"; _ }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
-      (* Opt p — optional (zero or one) *)
+      (* Opt p — optional (zero or one). Lower as [alt r eps] (consume-first)
+         so Opt is greedy, matching Star/Plus/Rep and keeping [Opt p] and
+         [Rep (p, 0 .. 1)] equivalent under leftmost-greedy disambiguation. *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
           let r =
             unwrap p.ppat_loc (Ir.reject_captures "Opt" (aux ~encoding p))
           in
-          unwrap p.ppat_loc (Ir.alt Ir.eps r)
+          unwrap p.ppat_loc (Ir.alt r Ir.eps)
       (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> (
           match arg with
