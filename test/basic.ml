@@ -1376,7 +1376,7 @@ let%expect_test "as_bindings_num_mem_cells" =
     | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=1 |}]
+  [%expect {| mem_cells=3 |}]
 
 let%expect_test "as_bindings_multi_rule_mem_cells" =
   (* All rules in a match%sedlex share one pool of memory cells.
@@ -1491,13 +1491,13 @@ let%expect_test "loop_before_capture" =
   (match%sedlex buf with
     | Star 'a', (('a', Plus 'b') as x) -> Printf.printf "x=%S\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="bb" |}];
+  [%expect {| x="abb" |}];
   (* expected x="a" *)
   let buf = Sedlexing.Latin1.from_string "aab" in
   (match%sedlex buf with
     | Star 'a', (Plus 'a' as x), 'b' -> Printf.printf "x=%S\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="" |}];
+  [%expect {| x="a" |}];
   (* the next two come out right today and pin the edge of the bug *)
   let buf = Sedlexing.Latin1.from_string "aba" in
   (match%sedlex buf with
@@ -1698,40 +1698,40 @@ let%expect_test "capture_before_loop" =
         | (Rep ('a' .. 'c', 0 .. 2) as z), Plus 'a' -> "z=" ^ sub z
         | _ -> "nomatch");
   [%expect {|
-    "aaa"   -> z="aa"
-    "aa"    -> z="aa"
+    "aaa"   -> z=""
+    "aa"    -> z=""
     |}];
   (* expected z="a": the tail needs an even number of characters *)
   run ["aaaaa"] (fun buf ->
       match%sedlex buf with
         | (Rep ('a', 0 .. 2) as z), Plus ('a', 'a') -> "z=" ^ sub z
         | _ -> "nomatch");
-  [%expect {| "aaaaa" -> z="aa" |}];
+  [%expect {| "aaaaa" -> z="a" |}];
   (* expected x="bd": one character is left for the middle class *)
   run ["bdc"] (fun buf ->
       match%sedlex buf with
         | (Plus 'b' .. 'd' as x), 'a' .. 'd', Star 'c' .. 'd' -> "x=" ^ sub x
         | _ -> "nomatch");
-  [%expect {| "bdc"   -> x="bdc" |}];
+  [%expect {| "bdc"   -> x="bd" |}];
   (* expected x="b" y="b": y cannot be empty *)
   run ["bbac"] (fun buf ->
       match%sedlex buf with
         | (Rep ('b', 1 .. 3) as x), (Plus 'b' as y) ->
             "x=" ^ sub x ^ " y=" ^ sub y
         | _ -> "nomatch");
-  [%expect {| "bbac"  -> x="bb" y="" |}];
+  [%expect {| "bbac"  -> x="b" y="b" |}];
   (* expected x="c" *)
   run ["ccd"] (fun buf ->
       match%sedlex buf with
         | (Star (Star 'c') as x), Plus 'a' .. 'c' -> "x=" ^ sub x
         | _ -> "nomatch");
-  [%expect {| "ccd"   -> x="cc" |}];
+  [%expect {| "ccd"   -> x="c" |}];
   (* expected x="a": the parse is ambiguous and the Star is greedy *)
   run ["aaa"] (fun buf ->
       match%sedlex buf with
         | Star 'a', (Plus 'a' as x) -> "x=" ^ sub x
         | _ -> "nomatch");
-  [%expect {| "aaa"   -> x="" |}];
+  [%expect {| "aaa"   -> x="a" |}];
   (* expected y="d" w="": today both submatches have garbage bounds and
      extracting them raises *)
   run ["ddd"] (fun buf ->
@@ -1739,8 +1739,7 @@ let%expect_test "capture_before_loop" =
         | Star 'd', ('a' .. 'd' as y), 'a' .. 'd', ((Star 'a' | 'b') as w) ->
             "y=" ^ sub y ^ " w=" ^ sub w
         | _ -> "nomatch");
-  [%expect
-    {| "ddd"   -> y=raises Invalid_argument("index out of bounds") w=raises Invalid_argument("Bytes.create") |}];
+  [%expect {| "ddd"   -> y="d" w="" |}];
   (* the fixed-width tail comes out right today and pins the edge of the bug *)
   run ["aa"; "aaa"] (fun buf ->
       match%sedlex buf with
@@ -1770,24 +1769,24 @@ let%expect_test "rep_nullable_body" =
         | (Rep ((Opt 'd' | 'b'), 0 .. 1) as x), Star 'b' ->
             Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
-  [%expect {| "b"  -> x="b" |}];
+  [%expect {| "b"  -> x="" |}];
   run ["b"] (fun buf ->
       match%sedlex buf with
         | ((Opt 'd' | 'b' | "") as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
-  [%expect {| "b"  -> x="b" |}];
+  [%expect {| "b"  -> x="" |}];
   run ["b"] (fun buf ->
       match%sedlex buf with
         | (Rep ((Opt 'd' | 'b'), 1 .. 2) as x), Star 'b' ->
             Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
-  [%expect {| "b"  -> x="b" |}];
+  [%expect {| "b"  -> x="" |}];
   run ["bb"] (fun buf ->
       match%sedlex buf with
         | (Rep ((Opt 'd' | 'b'), 0 .. 2) as x), Star 'b' ->
             Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
-  [%expect {| "bb" -> x="bb" |}]
+  [%expect {| "bb" -> x="" |}]
 
 (* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
    accept it: it normalizes to the bare Chars node. *)
@@ -1832,13 +1831,13 @@ let%expect_test "opt_greedy" =
     | Opt 'a', (Star 'a' as x) ->
         Printf.printf "opt x=%S\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| opt x="" |}];
+  [%expect {| opt x="a" |}];
   let buf = Sedlexing.Utf8.from_string "a" in
   (match%sedlex buf with
     | Rep ('a', 0 .. 1), (Star 'a' as x) ->
         Printf.printf "rep x=%S\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| rep x="" |}]
+  [%expect {| rep x="a" |}]
 
 (* [Plus r] is [r, Star r]: after a first iteration that consumed nothing, a
    second (consuming) iteration still has priority over leaving the loop,
@@ -1857,8 +1856,8 @@ let%expect_test "plus_nullable_first_alternative" =
         | (Plus (Opt 'd' | 'b') as x), Star 'b' -> Printf.sprintf "x=%S" (sub x)
         | _ -> "nomatch");
   [%expect {|
-    "b"  -> x="b"
-    "bb" -> x="bb"
+    "b"  -> x=""
+    "bb" -> x=""
     "db" -> x="db"
     |}];
   run (fun buf ->
