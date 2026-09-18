@@ -64,6 +64,13 @@
       bindings. They run just before [Sedlexing.mark], so the
       snapshot/backtrack machinery needs no changes.
 
+      A final rename pass collapses the registers of conflict-free tags,
+      tags that never hold two distinct registers in one state, into
+      their canonical cell, dropping the no-op copies this creates. Only
+      genuinely conflicted tags (e.g. a capture start reachable from a
+      preceding loop's closure, or a discriminator written by two branches
+      that stay alive together) pay for extra working registers.
+
    Possible future optimizations (see #175)
    -----------------------------------------
 
@@ -274,7 +281,8 @@ let closure (seeds : config list) : config list =
       (* Keep only configurations that matter: nodes with outgoing
          character transitions, and rule-final nodes (no transitions, no
          epsilon successors). Epsilon-only nodes contribute nothing once
-         visited; keeping them would bloat state keys. *)
+         visited; keeping them would bloat state keys and flag spurious tag
+         conflicts (e.g. the losing branch's discriminator node). *)
       if node.trans <> [] || node.eps = [] then acc := { node; tags } :: !acc;
       List.iter (fun n -> visit n tags) node.eps)
   in
@@ -347,10 +355,17 @@ type registers = {
       (* Per-logical-tag pool of working registers allocated so far;
          reusing them keeps the total cell count small. Pools of distinct
          tags are disjoint. *)
+  conflicted : (int, unit) Hashtbl.t;
+      (* Tags seen holding two distinct registers in one DFA state. *)
 }
 
 let make_registers (num_logical : int) : registers =
-  { num_logical; next_cell = num_logical; pools = Hashtbl.create 8 }
+  {
+    num_logical;
+    next_cell = num_logical;
+    pools = Hashtbl.create 8;
+    conflicted = Hashtbl.create 8;
+  }
 
 (* [alloc_cell regs used tag] picks a working register for [tag],
    preferring a register from the tag's pool not already in [used], and
@@ -370,6 +385,24 @@ let alloc_cell (regs : registers) (used : int list ref) (tag : int) : int =
   in
   used := c :: !used;
   c
+
+(* [check_conflicts regs configs] records in [regs.conflicted] every tag
+   for which [configs] holds two distinct registers, i.e. two
+   simultaneously-live NFA paths recorded different values. Conflict-free
+   tags can live directly in their canonical cell (see
+   [collapse_conflict_free]). Checking candidates is enough: a stored
+   state has the same canonical key, hence the same sharing structure. *)
+let check_conflicts (regs : registers) (configs : config list) : unit =
+  let seen = Hashtbl.create 8 in
+  List.iter
+    (fun c ->
+      TagMap.iter
+        (fun tag a ->
+          match Hashtbl.find_opt seen tag with
+            | None -> Hashtbl.add seen tag a
+            | Some a' -> if a <> a' then Hashtbl.replace regs.conflicted tag ())
+        c.tags)
+    configs
 
 (* The identity of a DFA state. States are looked up modulo bijective
    register renaming: the key numbers each distinct register (a tag's
@@ -542,6 +575,7 @@ let accept_of (ctx : ctx) (configs : config list) : accept option =
    it) if new, plus the tag operations the transition reaching it must
    perform. *)
 let rec get_state (ctx : ctx) (candidate : config list) : int * tag_op list =
+  check_conflicts ctx.regs candidate;
   let key = State_key.of_configs candidate in
   match State_key.Tbl.find_opt ctx.tbl.by_key key with
     | Some num -> (num, moves_to candidate (Hashtbl.find ctx.tbl.configs num))
@@ -585,6 +619,63 @@ and transition (ctx : ctx) (configs : config list) :
       (cset, num, ops))
     pieces
 
+(* [collapse_conflict_free regs] is the rename pass: a conflict-free tag
+   only ever needs one register at a time, so its whole pool collapses
+   into its canonical cell. Writes then go there directly, and the
+   realignment / materialization copies become no-op Copy(t, t), dropped
+   by [rewrite_ops]. Register pools are per-tag, so the rename cannot
+   collide with another tag's cells. The surviving working registers
+   (conflicted tags) are compacted just above the canonical cells.
+   Returns the cell renaming and the total cell count after it. *)
+let collapse_conflict_free (regs : registers) : int array * int =
+  let cell_map = Array.init regs.next_cell (fun c -> c) in
+  Hashtbl.iter
+    (fun tag pool ->
+      if not (Hashtbl.mem regs.conflicted tag) then
+        List.iter (fun c -> cell_map.(c) <- tag) pool)
+    regs.pools;
+  let compact = ref regs.num_logical in
+  for c = regs.num_logical to regs.next_cell - 1 do
+    if cell_map.(c) = c then (
+      cell_map.(c) <- !compact;
+      incr compact)
+  done;
+  (cell_map, !compact)
+
+(* [rewrite_ops cell_map ops] applies the renaming to one operation list,
+   dropping the copies it makes trivial. *)
+let rewrite_ops (cell_map : int array) (ops : tag_op list) : tag_op list =
+  let ops =
+    List.filter_map
+      (fun op ->
+        match op with
+          | Set_position { dst } -> Some (Set_position { dst = cell_map.(dst) })
+          | Set_value { dst; value } ->
+              Some (Set_value { dst = cell_map.(dst); value })
+          | Copy { dst; src } ->
+              let dst = cell_map.(dst) and src = cell_map.(src) in
+              if dst = src then None else Some (Copy { dst; src }))
+      ops
+  in
+  (* The renaming must preserve the parallel-move property: no two
+     operations of one list write the same cell (the generated code relies
+     on this when saving clobbered Copy sources). *)
+  let dsts = List.map op_dest ops in
+  assert (List.length (List.sort_uniq compare dsts) = List.length dsts);
+  ops
+
+(* [rename_state cell_map s] applies the renaming to every operation list
+   of a state. *)
+let rename_state (cell_map : int array) (s : dfa_state) : dfa_state =
+  {
+    trans =
+      Array.map (fun (c, t, ops) -> (c, t, rewrite_ops cell_map ops)) s.trans;
+    accept =
+      Option.map
+        (fun a -> { a with final_ops = rewrite_ops cell_map a.final_ops })
+        s.accept;
+  }
+
 (* [compile rs] determinizes the NFA for an array of regexp rules. See the
    implementation overview at the top of this file. *)
 let compile (rs : regexp array) : compiled =
@@ -599,11 +690,12 @@ let compile (rs : regexp array) : compiled =
   in
   let num0, init_tags = get_state ctx (closure seeds) in
   assert (num0 = 0);
-  {
-    dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
-    init_tags;
-    num_tags = ctx.regs.next_cell;
-  }
+  let cell_map, num_tags = collapse_conflict_free ctx.regs in
+  let dfa =
+    Array.init ctx.tbl.n_states (fun i ->
+        rename_state cell_map (Hashtbl.find ctx.tbl.defs i))
+  in
+  { dfa; init_tags = rewrite_ops cell_map init_tags; num_tags }
 
 (* High-level compilation from IR.
 
