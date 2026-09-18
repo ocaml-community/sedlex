@@ -332,18 +332,39 @@ let lowest_final (rules : rule array) (is_final : node -> bool) : int option =
    records: [registers] (memory-cell allocation) and [state_table] (the DFA
    states discovered so far), grouped with the compiled rules in [ctx]. *)
 
-(* Memory-cell allocation state. Canonical cells 0..num_logical-1 are
-   written only by final operations and read by the generated
-   binding-extraction code; working registers live above them. *)
-type registers = { num_logical : int; mutable next_cell : int }
+(* Memory-cell allocation state. *)
+type registers = {
+  num_logical : int;
+      (* Number of logical tags. Canonical cells 0..num_logical-1 are
+         written only by final operations and read by the generated
+         binding-extraction code; working registers live above them. *)
+  mutable next_cell : int; (* Next fresh working register. *)
+  pools : (int, int list) Hashtbl.t;
+      (* Per-logical-tag pool of working registers allocated so far;
+         reusing them keeps the total cell count small. Pools of distinct
+         tags are disjoint. *)
+}
 
 let make_registers (num_logical : int) : registers =
-  { num_logical; next_cell = num_logical }
+  { num_logical; next_cell = num_logical; pools = Hashtbl.create 8 }
 
-(* [alloc_cell regs] returns a fresh working register. *)
-let alloc_cell (regs : registers) : int =
-  let c = regs.next_cell in
-  regs.next_cell <- c + 1;
+(* [alloc_cell regs used tag] picks a working register for [tag],
+   preferring a register from the tag's pool not already in [used], and
+   adds it to [used]. *)
+let alloc_cell (regs : registers) (used : int list ref) (tag : int) : int =
+  let pool =
+    match Hashtbl.find_opt regs.pools tag with Some l -> l | None -> []
+  in
+  let c =
+    match List.find_opt (fun c -> not (List.mem c !used)) pool with
+      | Some c -> c
+      | None ->
+          let c = regs.next_cell in
+          regs.next_cell <- c + 1;
+          Hashtbl.replace regs.pools tag (c :: pool);
+          c
+  in
+  used := c :: !used;
   c
 
 (* The identity of a DFA state. States are looked up modulo bijective
@@ -413,17 +434,29 @@ let add_state (tbl : state_table) (key : State_key.t) (configs : config list) :
 
 type ctx = { regs : registers; rules : rule array; tbl : state_table }
 
+(* [old_cells configs] lists the concrete cells [configs] already hold,
+   which a new register must not reuse. *)
+let old_cells (configs : config list) : int list =
+  List.concat
+    (List.map
+       (fun c ->
+         List.filter_map
+           (fun (_, a) -> match a with Old c -> Some c | New _ -> None)
+           (TagMap.bindings c.tags))
+       configs)
+
 (* Creating a new state: [Old] registers are kept as-is, [New] writes get
    concrete cells; the transition only carries the Set operations. *)
 let concretize (regs : registers) (configs : config list) :
     config list * tag_op list =
+  let used = ref (old_cells configs) in
   let assigned = Hashtbl.create 4 in
   let ops = ref [] in
   let cell_for_new tag w =
     match Hashtbl.find_opt assigned (tag, w) with
       | Some c -> c
       | None ->
-          let c = alloc_cell regs in
+          let c = alloc_cell regs used tag in
           Hashtbl.add assigned (tag, w) c;
           ops := op_of_write c w :: !ops;
           c

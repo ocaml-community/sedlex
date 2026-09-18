@@ -1376,7 +1376,7 @@ let%expect_test "as_bindings_num_mem_cells" =
     | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=3 |}]
+  [%expect {| mem_cells=2 |}]
 
 let%expect_test "as_bindings_multi_rule_mem_cells" =
   (* All rules in a match%sedlex share one pool of memory cells.
