@@ -271,7 +271,11 @@ let closure (seeds : config list) : config list =
               TagMap.add dst (New (Wval value)) tags
           | Some (Copy _) -> assert false (* never carried by NFA nodes *)
       in
-      acc := { node; tags } :: !acc;
+      (* Keep only configurations that matter: nodes with outgoing
+         character transitions, and rule-final nodes (no transitions, no
+         epsilon successors). Epsilon-only nodes contribute nothing once
+         visited; keeping them would bloat state keys. *)
+      if node.trans <> [] || node.eps = [] then acc := { node; tags } :: !acc;
       List.iter (fun n -> visit n tags) node.eps)
   in
   List.iter (fun c -> visit c.node c.tags) seeds;
