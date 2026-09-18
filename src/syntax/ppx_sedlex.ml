@@ -260,6 +260,11 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
             [%expr
               Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc cell]
                 [%e eint ~loc value];
+              [%e acc]]
+        | Copy (dst, src) ->
+            [%expr
+              Sedlexing.__private__copy_mem [%e lexbuf] [%e eint ~loc dst]
+                [%e eint ~loc src];
               [%e acc]])
     ops cont
 

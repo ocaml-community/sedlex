@@ -261,6 +261,11 @@ val __private__set_mem_pos : lexbuf -> int -> unit
 *)
 val __private__set_mem_value : lexbuf -> int -> int -> unit
 
+(** [__private__copy_mem lexbuf dst src] copies the contents of cell [src] into
+    cell [dst], preserving the position/value encoding. Used by [Copy] tag
+    operations on DFA transitions. *)
+val __private__copy_mem : lexbuf -> int -> int -> unit
+
 (** [__private__mem_pos lexbuf i] returns the position stored in cell [i], as an
     offset relative to the start of the current token. *)
 val __private__mem_pos : lexbuf -> int -> int
