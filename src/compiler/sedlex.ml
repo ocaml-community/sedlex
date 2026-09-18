@@ -113,12 +113,10 @@ let rep r succ =
   n.eps <- [r n; succ];
   n
 
-let plus r succ =
-  let n = new_node () in
-  let nr = r n in
-  n.eps <- [nr; succ];
-  nr
-
+(* [r, Star r] with the body duplicated. A single loop entered at the body
+   would put the exit ahead of a second iteration when the first one
+   consumed nothing. *)
+let plus r succ = r (rep r succ)
 let eps succ = succ (* eps for epsilon *)
 
 let rec repeat r n m succ =
