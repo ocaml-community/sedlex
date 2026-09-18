@@ -3,7 +3,7 @@
 module CSet = Sedlex_compiler.Cset
 module Unicode = Sedlex_ppx.Unicode
 
-let test_versions = ("16.0.0", "17.0.0")
+let test_versions = ("17.0.0", "18.0.0")
 
 let regressions =
   [ (* Example *)
