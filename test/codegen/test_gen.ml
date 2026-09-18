@@ -375,58 +375,10 @@ let%expect_test "as binding: multiple bindings, no static elimination" =
     | _ -> ()
     |}]
 
-let%expect_test "as binding: or-pattern with discriminator" =
-  (match%sedlex_test buf with
-    | (Plus '0' .. '9' as x) | (Plus 'a' .. 'z' as x) -> ignore x
-    | _ -> ());
-  [%expect
-    {|
-    DOT:
-    digraph {
-      rankdir=LR;
-      node [shape=circle];
-
-      _start [shape=point];
-      _start -> state0;
-
-      state0 [label="0"];
-      state0 -> state1 [label="'0'-'9'"];
-      state0 -> state2 [label="'a'-'z'"];
-      state1 [label="1\n[rule 0]", shape=doublecircle];
-      state1 -> state1 [label="'0'-'9'"];
-      state2 [label="2\n[rule 0]", shape=doublecircle];
-      state2 -> state2 [label="'a'-'z'"];
-    }
-    CODE:
-    let rec __sedlex_state_0 buf =
-      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_1 buf
-      | 1 -> __sedlex_state_2 buf
-      | _ -> Sedlexing.backtrack buf
-    and __sedlex_state_1 buf =
-      Sedlexing.mark buf 0;
-      (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_1 buf
-       | _ -> Sedlexing.backtrack buf)
-    and __sedlex_state_2 buf =
-      Sedlexing.mark buf 0;
-      (match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-       | 0 -> __sedlex_state_2 buf
-       | _ -> Sedlexing.backtrack buf) in
-    match Sedlexing.start buf; __sedlex_state_0 buf with
-    | 0 ->
-        let x =
-          let __s = 0 in
-          let __e = Sedlexing.lexeme_length buf in
-          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
-        ignore x
-    | _ -> ()
-    |}]
-
-(* Counterpart of "as binding: or-pattern with discriminator" where the
-   positions cannot be derived statically: each branch allocates a real
-   position tag for x, and the branches get distinct discriminator values
-   so extraction can pick the right tag at runtime. *)
+(* Counterpart of "optim: discriminator elision" where the positions
+   cannot be derived statically: each branch allocates a real position
+   tag for x, and the branches get distinct discriminator values so
+   extraction can pick the right tag at runtime. *)
 let%expect_test
     "as binding: or-pattern with discriminator, no static elimination" =
   (match%sedlex_test buf with
