@@ -250,6 +250,10 @@ type 'a state = 'a config list
 type candidate = addr state
 type stored = cell state
 
+(* Only nodes with character transitions and final nodes belong in a
+   state; epsilon-only nodes would just bloat its key. *)
+let is_relevant (node : node) : bool = node.trans <> [] || node.eps = []
+
 (* DFS along [eps] lists; the first path to reach a node wins, which is the
    leftmost-greedy policy. Tag writes on the way become [Pending]. *)
 let eps_closure (seeds : addr config list) : candidate =
@@ -267,7 +271,7 @@ let eps_closure (seeds : addr config list) : candidate =
               TagMap.add dst (Pending (Value value)) tags
           | Some (Copy _) -> assert false (* never carried by NFA nodes *)
       in
-      acc := { node; tags } :: !acc;
+      if is_relevant node then acc := { node; tags } :: !acc;
       List.iter (fun n -> visit n tags) node.eps)
   in
   List.iter (fun c -> visit c.node c.tags) seeds;
