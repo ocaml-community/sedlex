@@ -74,7 +74,10 @@ module Cset = Cset
 
 (* NFA *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op =
+  | Set_position of int
+  | Set_value of int * int
+  | Copy of int * int
 
 type node = {
   id : int;  (** Unique identifier, used for sorting transitions by target. *)
@@ -246,12 +249,12 @@ let dedup_tags tags =
           match Hashtbl.find_opt dominated cell with
             | Some v when v <= value -> ()
             | _ -> Hashtbl.replace dominated cell value)
-      | Set_position _ -> ())
+      | Set_position _ | Copy _ -> ())
     tags;
   List.filter
     (function
       | Set_value (cell, value) -> Hashtbl.find dominated cell = value
-      | Set_position _ -> true)
+      | Set_position _ | Copy _ -> true)
     tags
 
 (* [transition state] computes all outgoing DFA transitions from a DFA state.
@@ -616,6 +619,8 @@ let dfa_to_dot dfa =
           let tag_op_to_string = function
             | Set_position t -> "t" ^ string_of_int t
             | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
+            | Copy (dst, src) ->
+                "t" ^ string_of_int dst ^ "<-t" ^ string_of_int src
           in
           let label =
             if tags = [] then label

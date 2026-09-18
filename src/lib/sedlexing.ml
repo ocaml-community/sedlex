@@ -304,6 +304,10 @@ let __private__set_mem_value lexbuf i v =
   assert (v >= 0);
   lexbuf.__private__mem.(i) <- -(v + 2)
 
+(* Copies the raw cell contents, preserving the position/value encoding. *)
+let __private__copy_mem lexbuf dst src =
+  lexbuf.__private__mem.(dst) <- lexbuf.__private__mem.(src)
+
 (* Returns position relative to token start, for use in sub_lexeme. *)
 let __private__mem_pos lexbuf i = lexbuf.__private__mem.(i) - lexbuf.start_pos
 

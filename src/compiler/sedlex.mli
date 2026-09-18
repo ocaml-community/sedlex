@@ -65,6 +65,10 @@ type tag_op =
   | Set_value of int * int
       (** [Set_value (cell, v)]: record integer [v] in memory cell [cell] (used
           for or-pattern discriminators). *)
+  | Copy of int * int
+      (** [Copy (dst, src)]: copy the contents of cell [src] into cell [dst].
+          Emitted when determinization must preserve a position that a parallel
+          NFA path is about to overwrite. *)
 
 (** [bind r] wraps [r] with start/end tag epsilon nodes. Returns
     [(wrapped_regexp, start_tag, end_tag)] where [start_tag] and [end_tag] are
