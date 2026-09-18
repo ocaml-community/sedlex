@@ -96,12 +96,23 @@ val reset_tags : unit -> unit
 
 (** {2 DFA compilation} *)
 
+(** What an accepting state accepts. *)
+type accept = {
+  rule : int;
+      (** The lowest-numbered, hence highest-priority, accepting rule, matching
+          the first-match semantics of [match%sedlex]. *)
+  final_ops : tag_op list;
+      (** Tag operations to execute when entering the state, just before
+          [Sedlexing.mark]. They materialize the accepting path's registers into
+          the cells read by the binding extraction code; the list is empty until
+          the compiler allocates working registers. *)
+}
+
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
           execute when this transition fires). *)
-  finals : bool array;
-      (** [finals.(i)] is [true] if this state is accepting for rule [i]. *)
+  accept : accept option;  (** [None] for non-accepting states. *)
 }
 
 (** DFA states, indexed by state number. State 0 is the initial state. *)
