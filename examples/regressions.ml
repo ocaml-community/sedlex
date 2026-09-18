@@ -16,21 +16,21 @@ let compare name (old_ : CSet.t) (new_ : CSet.t) =
       | exception Not_found -> CSet.empty
       | x -> x
   in
-  let regressions_intersect = CSet.intersection regressions old_ in
-  let regressions = CSet.difference regressions regressions_intersect in
-  let regressions_useless = CSet.difference regressions new_ in
+  (* A regression is a code point of the old set that is expected to be
+   * missing in the new set. *)
+  let regressions_not_in_old = CSet.difference regressions old_ in
+  let regressions_still_in_new = CSet.intersection regressions new_ in
   let diff = CSet.difference diff regressions in
   Seq.iter
     (fun x ->
-      Printf.printf
-        "Invalid regression for 0x%x in %s: already present in old set.\n" x
+      Printf.printf "Invalid regression for 0x%x in %s: absent in old set.\n" x
         name)
-    (CSet.to_seq regressions_intersect);
+    (CSet.to_seq regressions_not_in_old);
   Seq.iter
     (fun x ->
-      Printf.printf "Invalid regression for 0x%x in %s: absent in new set.\n" x
-        name)
-    (CSet.to_seq regressions_useless);
+      Printf.printf
+        "Invalid regression for 0x%x in %s: still present in new set.\n" x name)
+    (CSet.to_seq regressions_still_in_new);
   Seq.iter
     (fun x -> Printf.printf "Code point 0x%x missing in %s!\n" x name)
     (CSet.to_seq diff)
