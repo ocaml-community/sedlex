@@ -226,7 +226,21 @@ type state = node list
 (* [add_node (state, tags) node] adds [node] to the NFA-node set [state]
    via epsilon closure: it follows all epsilon edges recursively, collecting
    any tag operations encountered along the way. Returns the updated
-   (state, tags) pair. Physical identity (memq) prevents revisiting nodes. *)
+   (state, tags) pair. Physical identity (memq) prevents revisiting nodes.
+
+   FIXME: all NFA paths through the epsilon closure contribute to a single
+   flat tag-op list, which is then attached to the DFA transition. At
+   runtime, every op in that list executes at the same position (the current
+   lexbuf position when the transition fires). This is correct when each
+   tag cell is written by at most one NFA path. But when a repetition
+   (Star/Plus) creates an epsilon loop that re-enters a bind's tag node,
+   [memq] prevents the second visit, so the tag op appears only once — set
+   by whichever path the closure explored first. A correct tagged DFA
+   (Laurikari, 2000) would maintain per-thread tag registers in each DFA
+   state so that different NFA paths record independent tag values and the
+   right one is selected on acceptance. Without this, patterns like
+   [Star 'a', ('a' as x)] produce wrong capture positions.
+   See test/test_oracle.ml "known limitation" for counterexamples. *)
 let rec add_node (state, tags) node =
   if List.memq node state then (state, tags)
   else (
