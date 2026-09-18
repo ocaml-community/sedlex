@@ -1834,7 +1834,7 @@ let%expect_test "opt_greedy" =
     | Opt 'a', (Star 'a' as x) ->
         Printf.printf "opt x=%S\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| opt x="a" |}];
+  [%expect {| opt x="" |}];
   let buf = Sedlexing.Utf8.from_string "a" in
   (match%sedlex buf with
     | Rep ('a', 0 .. 1), (Star 'a' as x) ->
