@@ -125,7 +125,8 @@ let rec repeat r n m succ =
   assert (0 <= n && n <= m);
   match (n, m) with
     | 0, 0 -> succ
-    | 0, m -> alt eps (fun succ -> r (repeat r 0 (m - 1) succ)) succ
+    (* Taking an iteration comes first: repetition is greedy. *)
+    | 0, m -> alt (fun succ -> r (repeat r 0 (m - 1) succ)) eps succ
     | n, m -> r (repeat r (n - 1) (m - 1) succ)
 
 let compl r =

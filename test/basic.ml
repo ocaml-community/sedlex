@@ -1678,10 +1678,11 @@ let%expect_test "eof_self_loop_terminates" =
   [%expect {| TIMEOUT |}]
 *)
 
-(* KNOWN BUG (#199, capture before a repetition loop): the mirror of
-   [loop_before_capture]. The capture's end tag keeps firing inside the
-   repetition that follows it, so the submatch swallows characters the rest of
-   the rule then consumes, and the reported parse is one that cannot exist. *)
+(* Regression (#199, capture before a repetition loop): the mirror of
+   [loop_before_capture]. The capture's end tag used to keep firing inside the
+   repetition that follows it, so the submatch swallowed characters the rest
+   of the rule then consumed, and the reported parse was one that cannot
+   exist. *)
 let%expect_test "capture_before_loop" =
   let sub x =
     try Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x)
@@ -1699,8 +1700,8 @@ let%expect_test "capture_before_loop" =
         | (Rep ('a' .. 'c', 0 .. 2) as z), Plus 'a' -> "z=" ^ sub z
         | _ -> "nomatch");
   [%expect {|
-    "aaa"   -> z=""
-    "aa"    -> z=""
+    "aaa"   -> z="aa"
+    "aa"    -> z="a"
     |}];
   (* expected z="a": the tail needs an even number of characters *)
   run ["aaaaa"] (fun buf ->
@@ -1733,15 +1734,15 @@ let%expect_test "capture_before_loop" =
         | Star 'a', (Plus 'a' as x) -> "x=" ^ sub x
         | _ -> "nomatch");
   [%expect {| "aaa"   -> x="a" |}];
-  (* expected y="d" w="": today both submatches have garbage bounds and
-     extracting them raises *)
+  (* expected y="d" w="": both submatches used to have garbage bounds, and
+     extracting them raised *)
   run ["ddd"] (fun buf ->
       match%sedlex buf with
         | Star 'd', ('a' .. 'd' as y), 'a' .. 'd', ((Star 'a' | 'b') as w) ->
             "y=" ^ sub y ^ " w=" ^ sub w
         | _ -> "nomatch");
   [%expect {| "ddd"   -> y="d" w="" |}];
-  (* the fixed-width tail comes out right today and pins the edge of the bug *)
+  (* the fixed-width tail was never affected and pins the edge of the bug *)
   run ["aa"; "aaa"] (fun buf ->
       match%sedlex buf with
         | (Rep ('a' .. 'c', 0 .. 2) as z), 'a' -> "z=" ^ sub z
@@ -1837,7 +1838,7 @@ let%expect_test "opt_greedy" =
     | Rep ('a', 0 .. 1), (Star 'a' as x) ->
         Printf.printf "rep x=%S\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| rep x="a" |}]
+  [%expect {| rep x="" |}]
 
 (* [Plus r] is [r, Star r]: after a first iteration that consumed nothing, a
    second (consuming) iteration still has priority over leaving the loop,
