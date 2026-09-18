@@ -243,25 +243,25 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   else appfun (state_fun state) [lexbuf]
 
 (* [gen_tag_ops lexbuf ops cont] wraps [cont] in a sequence of tag
-   operation calls. Each [Set_position t] becomes a call to
-   [__private__set_mem_pos], and each [Set_value (cell, v)] becomes a call to
-   [__private__set_mem_value]. Operations are folded right so they execute
+   operation calls. Each [Set_position {dst}] becomes a call to
+   [__private__set_mem_pos], and each [Set_value {dst; value}] becomes a call
+   to [__private__set_mem_value]. Operations are folded right so they execute
    before [cont]. *)
 let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
   List.fold_right
     (fun (op : Sedlex.tag_op) acc ->
       match op with
-        | Set_position t ->
+        | Set_position { dst } ->
             [%expr
-              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc t];
+              Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc dst];
               [%e acc]]
-        | Set_value (cell, value) ->
+        | Set_value { dst; value } ->
             [%expr
-              Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc cell]
+              Sedlexing.__private__set_mem_value [%e lexbuf] [%e eint ~loc dst]
                 [%e eint ~loc value];
               [%e acc]]
-        | Copy (dst, src) ->
+        | Copy { dst; src } ->
             [%expr
               Sedlexing.__private__copy_mem [%e lexbuf] [%e eint ~loc dst]
                 [%e eint ~loc src];
