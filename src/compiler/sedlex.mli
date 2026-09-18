@@ -59,14 +59,14 @@ val intersection : regexp -> regexp -> regexp option
 
 (** Tag operations emitted on DFA transitions. *)
 type tag_op =
-  | Set_position of int
-      (** [Set_position i]: record the current lexbuf position in memory cell
-          [i]. *)
-  | Set_value of int * int
-      (** [Set_value (cell, v)]: record integer [v] in memory cell [cell] (used
-          for or-pattern discriminators). *)
-  | Copy of int * int
-      (** [Copy (dst, src)]: copy the contents of cell [src] into cell [dst].
+  | Set_position of { dst : int }
+      (** [Set_position {dst}]: record the current lexbuf position in memory
+          cell [dst]. *)
+  | Set_value of { dst : int; value : int }
+      (** [Set_value {dst; value}]: record integer [value] in memory cell [dst]
+          (used for or-pattern discriminators). *)
+  | Copy of { dst : int; src : int }
+      (** [Copy {dst; src}]: copy the contents of cell [src] into cell [dst].
           Emitted when determinization must preserve a position that a parallel
           NFA path is about to overwrite. *)
 
