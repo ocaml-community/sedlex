@@ -70,6 +70,9 @@ type tag_op =
           Emitted when determinization must preserve a position that a parallel
           NFA path is about to overwrite. *)
 
+(** [op_dest op] is the memory cell written by [op]. *)
+val op_dest : tag_op -> int
+
 (** [bind r] wraps [r] with start/end tag epsilon nodes. Returns
     [(wrapped_regexp, start_tag, end_tag)] where [start_tag] and [end_tag] are
     the allocated memory cell indices. *)
@@ -111,7 +114,9 @@ type accept = {
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
-          execute when this transition fires). *)
+          execute when this transition fires). The operations form a parallel
+          move: a [Copy] reads its source as it was before any operation of the
+          same list executed, and no two operations write the same cell. *)
   accept : accept option;  (** [None] for non-accepting states. *)
 }
 

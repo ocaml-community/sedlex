@@ -308,6 +308,13 @@ let __private__set_mem_value lexbuf i v =
 let __private__copy_mem lexbuf dst src =
   lexbuf.__private__mem.(dst) <- lexbuf.__private__mem.(src)
 
+(* Raw cell access, used by generated code to save a cell in a local
+   variable when a parallel register move both reads and overwrites it. The
+   value is opaque (position/value encoding preserved); [__private__mem_set]
+   must only be given values obtained from [__private__mem_get]. *)
+let __private__mem_get lexbuf i = lexbuf.__private__mem.(i)
+let __private__mem_set lexbuf i v = lexbuf.__private__mem.(i) <- v
+
 (* Returns position relative to token start, for use in sub_lexeme. *)
 let __private__mem_pos lexbuf i = lexbuf.__private__mem.(i) - lexbuf.start_pos
 
