@@ -1,4 +1,5 @@
 # unreleased
+- Add support for unicode `18.0.0`
 - Support nested `let..in` for `[%sedlex.regexp?]` definitions
 - Add support for named captured group (#177, #178)
 - Accept `Rep (c, 1 .. 1)` as the argument of `Compl`, `Sub` and `Intersect` (#201)
