@@ -8,6 +8,8 @@
 - Fix generated code for rule sets where every rule is nullable (#201)
 - Fix captures followed by `eof`: eof is zero-width, so the capture no longer
   loses its last character or raises (#201)
+- Rewrite determinization as a Laurikari tagged DFA, fixing incorrect
+  submatch positions when a repetition loop overlaps a capture (#204)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0

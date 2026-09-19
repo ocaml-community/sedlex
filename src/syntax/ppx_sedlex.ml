@@ -657,12 +657,14 @@ let ir_of_pattern env =
       (* Rep _ — malformed *)
       | Ppat_construct ({ txt = Lident "Rep"; _ }, _) ->
           err p.ppat_loc "the Rep operator takes 2 arguments"
-      (* Opt p — optional (zero or one) *)
+      (* Opt p — optional (zero or one). Lower as [alt r eps] (consume-first)
+         so Opt is greedy, matching Star/Plus/Rep and keeping [Opt p] and
+         [Rep (p, 0 .. 1)] equivalent under leftmost-greedy disambiguation. *)
       | Ppat_construct ({ txt = Lident "Opt"; _ }, Some (_, p)) ->
           let r =
             unwrap p.ppat_loc (Ir.reject_captures "Opt" (aux ~encoding p))
           in
-          unwrap p.ppat_loc (Ir.alt Ir.eps r)
+          unwrap p.ppat_loc (Ir.alt r Ir.eps)
       (* Compl p — complement of a character class *)
       | Ppat_construct ({ txt = Lident "Compl"; _ }, arg) -> (
           match arg with
