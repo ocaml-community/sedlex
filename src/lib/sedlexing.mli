@@ -261,6 +261,21 @@ val __private__set_mem_pos : lexbuf -> int -> unit
 *)
 val __private__set_mem_value : lexbuf -> int -> int -> unit
 
+(** [__private__copy_mem lexbuf dst src] copies the contents of cell [src] into
+    cell [dst], preserving the position/value encoding. Used by [Copy] tag
+    operations on DFA transitions. *)
+val __private__copy_mem : lexbuf -> int -> int -> unit
+
+(** [__private__mem_get lexbuf i] returns the raw contents of cell [i]. Used by
+    generated code to save a cell in a local variable when a parallel register
+    move both reads and overwrites it. The returned value is opaque; only pass
+    it to {!__private__mem_set}. *)
+val __private__mem_get : lexbuf -> int -> int
+
+(** [__private__mem_set lexbuf i v] stores [v], a value previously obtained from
+    {!__private__mem_get}, into cell [i]. *)
+val __private__mem_set : lexbuf -> int -> int -> unit
+
 (** [__private__mem_pos lexbuf i] returns the position stored in cell [i], as an
     offset relative to the start of the current token. *)
 val __private__mem_pos : lexbuf -> int -> int

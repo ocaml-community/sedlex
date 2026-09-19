@@ -74,7 +74,10 @@ module Cset = Cset
 
 (* NFA *)
 
-type tag_op = Set_position of int | Set_value of int * int
+type tag_op =
+  | Set_position of { dst : int }
+  | Set_value of { dst : int; value : int }
+  | Copy of { dst : int; src : int }
 
 type node = {
   id : int;  (** Unique identifier, used for sorting transitions by target. *)
@@ -172,10 +175,10 @@ let bind r =
   let start_tag = new_tag () in
   let end_tag = new_tag () in
   let wrapped succ =
-    let end_node = new_tagged_node (Set_position end_tag) in
+    let end_node = new_tagged_node (Set_position { dst = end_tag }) in
     end_node.eps <- [succ];
     let inner = r end_node in
-    let start_node = new_tagged_node (Set_position start_tag) in
+    let start_node = new_tagged_node (Set_position { dst = start_tag }) in
     start_node.eps <- [inner];
     start_node
   in
@@ -185,7 +188,7 @@ let bind_start_only r =
   let start_tag = new_tag () in
   let wrapped succ =
     let inner = r succ in
-    let start_node = new_tagged_node (Set_position start_tag) in
+    let start_node = new_tagged_node (Set_position { dst = start_tag }) in
     start_node.eps <- [inner];
     start_node
   in
@@ -194,7 +197,7 @@ let bind_start_only r =
 let bind_end_only r =
   let end_tag = new_tag () in
   let wrapped succ =
-    let end_node = new_tagged_node (Set_position end_tag) in
+    let end_node = new_tagged_node (Set_position { dst = end_tag }) in
     end_node.eps <- [succ];
     r end_node
   in
@@ -204,7 +207,7 @@ let new_disc_cell () = new_tag ()
 
 let bind_disc r cell value =
   let wrapped succ =
-    let disc_node = new_tagged_node (Set_value (cell, value)) in
+    let disc_node = new_tagged_node (Set_value { dst = cell; value }) in
     disc_node.eps <- [succ];
     r disc_node
   in
@@ -242,16 +245,16 @@ let dedup_tags tags =
   let dominated = Hashtbl.create 4 in
   List.iter
     (function
-      | Set_value (cell, value) -> (
-          match Hashtbl.find_opt dominated cell with
+      | Set_value { dst; value } -> (
+          match Hashtbl.find_opt dominated dst with
             | Some v when v <= value -> ()
-            | _ -> Hashtbl.replace dominated cell value)
-      | Set_position _ -> ())
+            | _ -> Hashtbl.replace dominated dst value)
+      | Set_position _ | Copy _ -> ())
     tags;
   List.filter
     (function
-      | Set_value (cell, value) -> Hashtbl.find dominated cell = value
-      | Set_position _ -> true)
+      | Set_value { dst; value } -> Hashtbl.find dominated dst = value
+      | Set_position _ | Copy _ -> true)
     tags
 
 (* [transition state] computes all outgoing DFA transitions from a DFA state.
@@ -299,13 +302,30 @@ let transition (state : state) =
   Array.sort (fun (c1, _, _) (c2, _, _) -> compare c1 c2) t;
   t
 
+type accept = { rule : int; final_ops : tag_op list }
+
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
-  finals : bool array;
+  accept : accept option;
 }
 
 type dfa = dfa_state array
 type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+
+let op_dest = function
+  | Copy { dst; _ } | Set_position { dst } | Set_value { dst; _ } -> dst
+
+(* [lowest_final rules is_final] is the lowest-numbered rule whose final
+   node satisfies [is_final], i.e. the highest-priority accepting rule of a
+   state under the first-match semantics of [match%sedlex]. *)
+let lowest_final rules is_final =
+  let n = Array.length rules in
+  let rec aux i =
+    if i = n then None
+    else if is_final (snd rules.(i)) then Some i
+    else aux (i + 1)
+  in
+  aux 0
 
 (* [compile rs] determinizes the NFA for an array of regexp rules.
    Each rule is compiled to an NFA (entry node, final node) pair. The initial
@@ -326,8 +346,12 @@ let compile rs =
       Hashtbl.add states state i;
       let trans = transition state in
       let trans = Array.map (fun (p, t, tags) -> (p, aux t, tags)) trans in
-      let finals = Array.map (fun (_, f) -> List.memq f state) rs in
-      Hashtbl.add states_def i { trans; finals };
+      let accept =
+        Option.map
+          (fun rule -> { rule; final_ops = [] })
+          (lowest_final rs (fun f -> List.memq f state))
+      in
+      Hashtbl.add states_def i { trans; accept };
       i
   in
   let init = ref ([], []) in
@@ -587,6 +611,12 @@ let cset_to_label cset =
   String.concat ", "
     (List.map format_interval (cset : Cset.t :> (int * int) list))
 
+let tag_op_to_string = function
+  | Set_position { dst } -> "t" ^ string_of_int dst
+  | Set_value { dst; value } ->
+      "d" ^ string_of_int dst ^ "=" ^ string_of_int value
+  | Copy { dst; src } -> "t" ^ string_of_int dst ^ "<-t" ^ string_of_int src
+
 let dfa_to_dot dfa =
   let buf = Buffer.create 1024 in
   let bprintf = Printf.bprintf in
@@ -596,27 +626,23 @@ let dfa_to_dot dfa =
   bprintf buf "  _start [shape=point];\n";
   bprintf buf "  _start -> state0;\n\n";
   Array.iteri
-    (fun i { trans; finals } ->
-      let accepted =
-        let acc = ref [] in
-        for r = Array.length finals - 1 downto 0 do
-          if finals.(r) then acc := r :: !acc
-        done;
-        !acc
-      in
-      (match accepted with
-        | [] -> bprintf buf "  state%d [label=\"%d\"];\n" i i
-        | rules ->
+    (fun i { trans; accept } ->
+      (match accept with
+        | None -> bprintf buf "  state%d [label=\"%d\"];\n" i i
+        | Some { rule; final_ops } ->
+            let ops =
+              if final_ops = [] then ""
+              else
+                "\\n{"
+                ^ String.concat "," (List.map tag_op_to_string final_ops)
+                ^ "}"
+            in
             bprintf buf
-              "  state%d [label=\"%d\\n[rule %s]\", shape=doublecircle];\n" i i
-              (String.concat "," (List.map string_of_int rules)));
+              "  state%d [label=\"%d\\n[rule %d]%s\", shape=doublecircle];\n" i
+              i rule ops);
       Array.iter
         (fun (cset, target, tags) ->
           let label = cset_to_label cset in
-          let tag_op_to_string = function
-            | Set_position t -> "t" ^ string_of_int t
-            | Set_value (c, v) -> "d" ^ string_of_int c ^ "=" ^ string_of_int v
-          in
           let label =
             if tags = [] then label
             else

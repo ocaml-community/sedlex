@@ -59,12 +59,19 @@ val intersection : regexp -> regexp -> regexp option
 
 (** Tag operations emitted on DFA transitions. *)
 type tag_op =
-  | Set_position of int
-      (** [Set_position i]: record the current lexbuf position in memory cell
-          [i]. *)
-  | Set_value of int * int
-      (** [Set_value (cell, v)]: record integer [v] in memory cell [cell] (used
-          for or-pattern discriminators). *)
+  | Set_position of { dst : int }
+      (** [Set_position {dst}]: record the current lexbuf position in memory
+          cell [dst]. *)
+  | Set_value of { dst : int; value : int }
+      (** [Set_value {dst; value}]: record integer [value] in memory cell [dst]
+          (used for or-pattern discriminators). *)
+  | Copy of { dst : int; src : int }
+      (** [Copy {dst; src}]: copy the contents of cell [src] into cell [dst].
+          Emitted when determinization must preserve a position that a parallel
+          NFA path is about to overwrite. *)
+
+(** [op_dest op] is the memory cell written by [op]. *)
+val op_dest : tag_op -> int
 
 (** [bind r] wraps [r] with start/end tag epsilon nodes. Returns
     [(wrapped_regexp, start_tag, end_tag)] where [start_tag] and [end_tag] are
@@ -92,12 +99,25 @@ val reset_tags : unit -> unit
 
 (** {2 DFA compilation} *)
 
+(** What an accepting state accepts. *)
+type accept = {
+  rule : int;
+      (** The lowest-numbered, hence highest-priority, accepting rule, matching
+          the first-match semantics of [match%sedlex]. *)
+  final_ops : tag_op list;
+      (** Tag operations to execute when entering the state, just before
+          [Sedlexing.mark]. They materialize the accepting path's registers into
+          the cells read by the binding extraction code; the list is empty until
+          the compiler allocates working registers. *)
+}
+
 type dfa_state = {
   trans : (Cset.t * int * tag_op list) array;
       (** Each transition: (character set, target state, tag operations to
-          execute when this transition fires). *)
-  finals : bool array;
-      (** [finals.(i)] is [true] if this state is accepting for rule [i]. *)
+          execute when this transition fires). The operations form a parallel
+          move: a [Copy] reads its source as it was before any operation of the
+          same list executed, and no two operations write the same cell. *)
+  accept : accept option;  (** [None] for non-accepting states. *)
 }
 
 (** DFA states, indexed by state number. State 0 is the initial state. *)
