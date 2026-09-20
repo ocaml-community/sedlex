@@ -1,6 +1,5 @@
 (* Realistic multi-rule lexer exercising many patterns simultaneously.
-   Current: init_mem 4 (2 tags, each with its canonical cell and a working
-   register).
+   Current: init_mem 2 (2 tags, each in its canonical cell).
    - Rule 0: (Plus 'a'..'z' as ns), '.', (Plus 'a'..'z' as name) → 1 tag
      (ns: start=0, end=tag0; name: start=tag0+1 via Tag offset, end=lexeme_length)
    - Rule 1: (Plus 'A'..'Z' as label), '=', (Plus '0'..'9' as value) → 1 tag
@@ -10,8 +9,6 @@
    - Rule 4: (Plus digits as tok) | (Plus letters as tok) → 0 tags (discriminator elided)
    Each tag is set once, on the '.' or '=' transition leaving the loop.
    Remaining optimization goals:
-   - Unambiguous tags written directly to their canonical cell (init_mem
-     4 → 2)
    - Cross-rule cell sharing → rules 0,1 share cells (init_mem 2 → 1) *)
 let%expect_test "realistic: multi-token lexer" =
   (match%sedlex_test buf with
