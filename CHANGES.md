@@ -9,6 +9,10 @@
 - Fix generated code for rule sets where every rule is nullable (#201)
 - Fix captures followed by `eof`: eof is zero-width, so the capture no longer
   loses its last character or raises (#201)
+- Fix rule priority with `eof`: a rule matching `s, eof` no longer beats an
+  earlier rule matching `s` (#211)
+- End of input is read once: `Plus eof` or `Star ('a' | eof)` no longer loop
+  forever at end of input, and `eof, eof` no longer matches (#211)
 - Rewrite determinization as a Laurikari tagged DFA, fixing incorrect
   submatch positions when a repetition loop overlaps a capture (#204)
 

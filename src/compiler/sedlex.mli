@@ -117,8 +117,9 @@ type dfa_state = {
           move: a [Copy] reads its source as it was before any operation of the
           same list executed, and no two operations write the same cell. They
           execute {e before} the character of the transition is consumed. A
-          character set is either [Cset.eof] or does not contain end of input.
-      *)
+          character set is either [Cset.eof] or does not contain end of input,
+          and the target of a [Cset.eof] transition has no transitions: end of
+          input is read once. *)
   accept : accept option;  (** [None] for non-accepting states. *)
 }
 

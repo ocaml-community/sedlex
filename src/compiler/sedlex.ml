@@ -44,6 +44,10 @@
         of [Plus digit as n] is written once, on leaving the loop.
       - Transition operations execute before their character is consumed,
         final operations on entering the state.
+      - End of input is a transition of its own, read once: it leads to a
+        state without transitions. It has zero width, so it ties with the
+        state's own accept; only configurations of higher priority than
+        that accept may take it.
       - Each tag write of a transition gets a fresh register. States are
         looked up modulo register renaming, with equal delayed writes;
         reaching an existing state emits the moves realigning the
@@ -284,8 +288,7 @@ let eps_closure (seeds : addr config list) : candidate =
 
 (* Splits the moves into pairwise-disjoint character sets. Moves come in
    priority order and a configuration is appended last to each piece it
-   overlaps, so seeds stay in priority order. End of input gets pieces of
-   its own: unlike a character, reading it does not advance. *)
+   overlaps, so seeds stay in priority order. *)
 let split_moves (moves : (Cset.t * addr config) list) :
     (Cset.t * addr config list) list =
   let add_move pieces (cset, cfg) =
@@ -307,12 +310,7 @@ let split_moves (moves : (Cset.t * addr config) list) :
     in
     insert cset pieces
   in
-  let apart (cset, seeds) =
-    let chars = Cset.difference cset Cset.eof in
-    if Cset.is_empty chars || not (Cset.mem (-1) cset) then [(cset, seeds)]
-    else [(Cset.eof, seeds); (chars, seeds)]
-  in
-  List.concat (List.map apart (List.fold_left add_move [] moves))
+  List.fold_left add_move [] moves
 
 (* Mutable state of the construction *)
 
@@ -513,32 +511,51 @@ and build_state (ctx : ctx) (num : int) (configs : stored) : unit =
 
 (* Outgoing transitions: split the character moves into disjoint sets,
    close each piece, and look the pieces up in character-set order, so that
-   state numbers follow that order. *)
+   state numbers follow that order.
+
+   End of input is apart. It has zero width, so matching it ties with the
+   state's own accept, and priority decides: only the configurations that
+   precede the first final one may read it. End of input is read once, so
+   what they reach is cut down to its accepting configuration, which has no
+   transitions, or dropped if it has none: reading end of input then fails
+   like any missing transition. *)
 and transitions (ctx : ctx) (configs : stored) :
     (Cset.t * int * tag_op list) array =
-  let moves =
-    List.concat
-      (List.map
-         (fun c ->
-           (* Taking a character transition performs the delayed writes. *)
-           let tags =
-             TagMap.fold
-               (fun tag w tags -> TagMap.add tag (Pending w) tags)
-               c.delayed
-               (TagMap.map (fun cell -> Cell cell) c.tags)
-           in
-           List.map
-             (fun (cset, node) ->
-               (cset, { node; tags; delayed = TagMap.empty }))
-             c.node.trans)
-         configs)
+  let is_final c = Array.exists (fun r -> r.final == c.node) ctx.rules in
+  let moves_of ~eof c =
+    (* Taking a transition performs the delayed writes. *)
+    let tags =
+      TagMap.fold
+        (fun tag w tags -> TagMap.add tag (Pending w) tags)
+        c.delayed
+        (TagMap.map (fun cell -> Cell cell) c.tags)
+    in
+    List.filter_map
+      (fun (cset, node) ->
+        let cset =
+          if eof then Cset.intersection cset Cset.eof
+          else Cset.difference cset Cset.eof
+        in
+        if Cset.is_empty cset then None
+        else Some (cset, { node; tags; delayed = TagMap.empty }))
+      c.node.trans
   in
-  let pieces =
-    Array.of_list
-      (List.map
-         (fun (cset, seeds) -> (cset, eps_closure seeds))
-         (split_moves moves))
+  let rec leading = function
+    | c :: rest when not (is_final c) -> c :: leading rest
+    | _ -> []
   in
+  let on_eof =
+    let seeds = List.concat (List.map (moves_of ~eof:true) (leading configs)) in
+    match List.find_opt is_final (eps_closure (List.map snd seeds)) with
+      | Some accepting -> [(Cset.eof, [accepting])]
+      | None -> []
+  in
+  let on_chars =
+    List.map
+      (fun (cset, seeds) -> (cset, eps_closure seeds))
+      (split_moves (List.concat (List.map (moves_of ~eof:false) configs)))
+  in
+  let pieces = Array.of_list (on_eof @ on_chars) in
   Array.sort (fun (c1, _) (c2, _) -> compare c1 c2) pieces;
   Array.map
     (fun (cset, candidate) ->
