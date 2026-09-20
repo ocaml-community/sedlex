@@ -47,11 +47,12 @@
       - Canonical cells (cell = tag id) are what the generated bindings
         read. Only the final operations of accepting states write them,
         copying the accepting path's registers just before
-        [Sedlexing.mark]; working registers live above them.
+        [Sedlexing.mark]; working registers live above them. So the cells
+        of the marked rule survive a failed longer match, and
+        [Sedlexing.mark] and [Sedlexing.backtrack] save and restore nothing.
 
    Future work (see #175): TDFA(1) and register optimization as in
-   Trofimovich 2017 (sections 6 and 7), fallback registers instead of the
-   cell snapshot in [Sedlexing.mark], DFA minimization.
+   Trofimovich 2017 (sections 6 and 7), DFA minimization.
 *)
 
 module Cset = Cset

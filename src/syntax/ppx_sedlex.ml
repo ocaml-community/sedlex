@@ -290,8 +290,8 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
 (* [gen_state (lexbuf_name, lexbuf) auto i {trans; accept}] generates the
    function [__sedlex_state_N] for DFA state [i]. The function:
    1. If the state is accepting ([accept = Some { rule; final_ops }]), executes
-      [final_ops] then calls [mark] to save the current position and a
-      snapshot of the memory cells.
+      [final_ops] then calls [mark] to save the current position. The cells
+      read by the rule's action are only written by [final_ops].
    2. Reads the next code point, maps it through the partition function to
       get an equivalence class index, then pattern-matches on that index.
    3. Each transition arm executes its tag operations then calls the target

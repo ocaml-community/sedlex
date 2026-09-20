@@ -90,11 +90,9 @@ type lexbuf = {
        token-relative offsets on read by [__private__mem_pos].
      - discriminator values: stored as [-(v + 2)], always <= -2,
        disjoint from positions and the unset sentinel (-1).
-     [mark] snapshots this array into [__private__mem_saved];
-     [backtrack] restores it, so that sub-match positions reflect
-     the last accepting state rather than a later speculative state. *)
+     [mark] and [backtrack] leave the cells alone: those read after a match
+     are only written on entering an accepting state, just before [mark]. *)
   mutable __private__mem : int array;
-  mutable __private__mem_saved : int array;
 }
 
 let chunk_size = 512
@@ -126,7 +124,6 @@ let empty_lexbuf bytes_per_char =
     filename = "";
     finished = false;
     __private__mem = [||];
-    __private__mem_saved = [||];
   }
 
 let dummy_uchar = Uchar.of_int 0
@@ -211,10 +208,6 @@ let refill lexbuf =
     for i = 0 to Array.length lexbuf.__private__mem - 1 do
       if lexbuf.__private__mem.(i) >= 0 then
         lexbuf.__private__mem.(i) <- lexbuf.__private__mem.(i) - s
-    done;
-    for i = 0 to Array.length lexbuf.__private__mem_saved - 1 do
-      if lexbuf.__private__mem_saved.(i) >= 0 then
-        lexbuf.__private__mem_saved.(i) <- lexbuf.__private__mem_saved.(i) - s
     done
   end;
   let n = lexbuf.refill lexbuf.buf lexbuf.pos chunk_size in
@@ -245,11 +238,7 @@ let mark lexbuf i =
   lexbuf.marked_bol <- lexbuf.curr_bol;
   lexbuf.marked_bytes_bol <- lexbuf.curr_bytes_bol;
   lexbuf.marked_line <- lexbuf.curr_line;
-  lexbuf.marked_val <- i;
-  (* Snapshot tagged DFA memory cells so backtrack can restore them. *)
-  let n = Array.length lexbuf.__private__mem in
-  if n > 0 then
-    Array.blit lexbuf.__private__mem 0 lexbuf.__private__mem_saved 0 n
+  lexbuf.marked_val <- i
 
 let start lexbuf =
   lexbuf.start_pos <- lexbuf.pos;
@@ -265,11 +254,6 @@ let backtrack lexbuf =
   lexbuf.curr_bol <- lexbuf.marked_bol;
   lexbuf.curr_bytes_bol <- lexbuf.marked_bytes_bol;
   lexbuf.curr_line <- lexbuf.marked_line;
-  (* Restore tagged DFA memory cells to the snapshot taken at the last
-     accepting state, so sub-match positions are correct after backtracking. *)
-  let n = Array.length lexbuf.__private__mem in
-  if n > 0 then
-    Array.blit lexbuf.__private__mem_saved 0 lexbuf.__private__mem 0 n;
   lexbuf.marked_val
 
 let rollback lexbuf =
@@ -287,16 +271,11 @@ let rollback lexbuf =
    cells (>= 0) when compacting the buffer. *)
 
 let __private__init_mem lexbuf n =
-  (* Reuse existing arrays if large enough; otherwise allocate fresh ones.
-     Both mem and mem_saved are reset to -1 (unset). *)
-  if Array.length lexbuf.__private__mem < n then begin
-    lexbuf.__private__mem <- Array.make n (-1);
-    lexbuf.__private__mem_saved <- Array.make n (-1)
-  end
-  else begin
-    Array.fill lexbuf.__private__mem 0 n (-1);
-    Array.fill lexbuf.__private__mem_saved 0 n (-1)
-  end
+  (* Reuse the existing array if large enough; otherwise allocate a fresh
+     one. The cells are reset to -1 (unset). *)
+  if Array.length lexbuf.__private__mem < n then
+    lexbuf.__private__mem <- Array.make n (-1)
+  else Array.fill lexbuf.__private__mem 0 n (-1)
 
 let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
 
