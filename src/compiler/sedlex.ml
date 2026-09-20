@@ -26,10 +26,9 @@
 
    3. Determinization (compile)
       Subset construction for tagged NFAs (Laurikari, "NFAs with Tagged
-      Transitions", 2000). In the terms of Trofimovich, "Tagged
-      Deterministic Finite Automata with Lookahead" (2017), a TDFA(0): the
-      tag operations of an epsilon closure sit on the transition entering
-      the state.
+      Transitions", 2000), with the one-symbol lookahead of Trofimovich,
+      "Tagged Deterministic Finite Automata with Lookahead" (2017): a
+      TDFA(1).
 
       - A DFA state is an ordered list of configurations (NFA node, tag ->
         register map). One map per path, rather than one shared vector,
@@ -39,20 +38,27 @@
       - Order is priority. The epsilon closure is a DFS along [eps] lists
         and the first path to reach a node wins: leftmost-greedy
         disambiguation among the parses of the longest match.
+      - Lookahead: the tag writes met in a state's closure are delayed. A
+        configuration performs them when it takes a character transition;
+        one that cannot consume the next character never does. So the end
+        of [Plus digit as n] is written once, on leaving the loop.
+      - Transition operations execute before their character is consumed,
+        final operations on entering the state.
       - Each tag write of a transition gets a fresh register. States are
-        looked up modulo register renaming; reaching an existing state
-        emits the moves realigning the registers. The operations of a
+        looked up modulo register renaming, with equal delayed writes;
+        reaching an existing state emits the moves realigning the
+        registers. The operations of a
         transition form a parallel move, which the code generator
         implements by let-binding the sources it overwrites.
       - Canonical cells (cell = tag id) are what the generated bindings
         read. Only the final operations of accepting states write them,
-        copying the accepting path's registers just before
-        [Sedlexing.mark]; working registers live above them. So the cells
-        of the marked rule survive a failed longer match, and
+        from the accepting path's registers and delayed writes, just
+        before [Sedlexing.mark]; working registers live above them. So the
+        cells of the marked rule survive a failed longer match, and
         [Sedlexing.mark] and [Sedlexing.backtrack] save and restore nothing.
 
-   Future work (see #175): TDFA(1) and register optimization as in
-   Trofimovich 2017 (sections 6 and 7), DFA minimization.
+   Future work (see #175): register optimization as in Trofimovich 2017
+   (section 7), DFA minimization.
 *)
 
 module Cset = Cset
@@ -216,7 +222,7 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; init_tags : tag_op list; num_tags : int }
+type compiled = { dfa : dfa; num_tags : int }
 
 let op_dest = function
   | Copy { dst; _ } | Set_position { dst } | Set_value { dst; _ } -> dst
@@ -240,8 +246,9 @@ let op_of_write (dst : cell) : write -> tag_op = function
    in a write of that transition. Same tag and same write: same register. *)
 type addr = Cell of cell | Pending of write
 
-(* One NFA path: the node it reached and where each tag it wrote lives. *)
-type 'a config = { node : node; tags : 'a TagMap.t }
+(* One NFA path: the node it reached, where each tag it wrote lives, and the
+   closure's writes, [delayed] until it takes a character transition. *)
+type 'a config = { node : node; tags : 'a TagMap.t; delayed : write TagMap.t }
 
 (* A DFA state: configurations in priority order. A [candidate] comes out
    of [eps_closure]; a [stored] state has every tag in a cell. *)
@@ -254,26 +261,25 @@ type stored = cell state
 let is_relevant (node : node) : bool = node.trans <> [] || node.eps = []
 
 (* DFS along [eps] lists; the first path to reach a node wins, which is the
-   leftmost-greedy policy. Tag writes on the way become [Pending]. *)
+   leftmost-greedy policy. Tag writes on the way are [delayed]. *)
 let eps_closure (seeds : addr config list) : candidate =
   let visited = Hashtbl.create 16 in
   let acc = ref [] in
-  let rec visit node tags =
+  let rec visit node tags delayed =
     if not (Hashtbl.mem visited node.id) then (
       Hashtbl.add visited node.id ();
-      let tags =
+      let delayed =
         match node.tag with
-          | None -> tags
-          | Some (Set_position { dst }) ->
-              TagMap.add dst (Pending Position) tags
+          | None -> delayed
+          | Some (Set_position { dst }) -> TagMap.add dst Position delayed
           | Some (Set_value { dst; value }) ->
-              TagMap.add dst (Pending (Value value)) tags
+              TagMap.add dst (Value value) delayed
           | Some (Copy _) -> assert false (* never carried by NFA nodes *)
       in
-      if is_relevant node then acc := { node; tags } :: !acc;
-      List.iter (fun n -> visit n tags) node.eps)
+      if is_relevant node then acc := { node; tags; delayed } :: !acc;
+      List.iter (fun n -> visit n tags delayed) node.eps)
   in
-  List.iter (fun c -> visit c.node c.tags) seeds;
+  List.iter (fun c -> visit c.node c.tags c.delayed) seeds;
   List.rev !acc
 
 (* Splits the moves into pairwise-disjoint character sets. Moves come in
@@ -348,7 +354,7 @@ module State_key : sig
 
   module Tbl : Hashtbl.S with type key = t
 end = struct
-  type t = (int * (int * int) list) list
+  type t = (int * (int * int) list * (int * write) list) list
 
   let of_candidate configs =
     let tbl = Hashtbl.create 8 in
@@ -363,7 +369,8 @@ end = struct
     List.map
       (fun c ->
         ( c.node.id,
-          List.map (fun (t, a) -> (t, canon t a)) (TagMap.bindings c.tags) ))
+          List.map (fun (t, a) -> (t, canon t a)) (TagMap.bindings c.tags),
+          TagMap.bindings c.delayed ))
       configs
 
   module Tbl = Hashtbl.Make (struct
@@ -453,16 +460,21 @@ let register_moves (candidate : candidate) (existing : stored) : tag_op list =
     candidate existing;
   List.map snd (CellMap.bindings !moves)
 
-(* Copies the accepting configuration's registers into the canonical cells.
-   Working sources, canonical destinations: the copies cannot interfere. *)
+(* Materializes the accepting configuration into the canonical cells: copies
+   of its registers, plus its delayed writes. *)
 let final_ops_of (regs : Registers.t) (accepting : cell config) : tag_op list =
+  let copies =
+    TagMap.fold
+      (fun tag cell acc ->
+        if cell = tag || TagMap.mem tag accepting.delayed then acc
+        else (
+          assert (Registers.is_working regs cell);
+          Copy { dst = tag; src = cell } :: acc))
+      accepting.tags []
+  in
   TagMap.fold
-    (fun tag cell acc ->
-      if cell = tag then acc
-      else (
-        assert (Registers.is_working regs cell);
-        Copy { dst = tag; src = cell } :: acc))
-    accepting.tags []
+    (fun tag w acc -> op_of_write tag w :: acc)
+    accepting.delayed copies
 
 (* The accepting rule is the lowest-numbered one whose final node is in the
    state (first-match semantics), with its final operations. *)
@@ -508,8 +520,17 @@ and transitions (ctx : ctx) (configs : stored) :
     List.concat
       (List.map
          (fun c ->
-           let tags = TagMap.map (fun cell -> Cell cell) c.tags in
-           List.map (fun (cset, node) -> (cset, { node; tags })) c.node.trans)
+           (* Taking a character transition performs the delayed writes. *)
+           let tags =
+             TagMap.fold
+               (fun tag w tags -> TagMap.add tag (Pending w) tags)
+               c.delayed
+               (TagMap.map (fun cell -> Cell cell) c.tags)
+           in
+           List.map
+             (fun (cset, node) ->
+               (cset, { node; tags; delayed = TagMap.empty }))
+             c.node.trans)
          configs)
   in
   let pieces =
@@ -537,14 +558,15 @@ let compile (rs : regexp array) : compiled =
   in
   let seeds =
     List.map
-      (fun r -> { node = r.entry; tags = TagMap.empty })
+      (fun r -> { node = r.entry; tags = TagMap.empty; delayed = TagMap.empty })
       (Array.to_list rules)
   in
-  let num0, init_tags = find_or_add_state ctx (eps_closure seeds) in
+  let num0, ops = find_or_add_state ctx (eps_closure seeds) in
   assert (num0 = 0);
+  (* The writes of the initial closure are delayed like any other. *)
+  assert (ops = []);
   {
     dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
-    init_tags;
     num_tags = Registers.count ctx.regs;
   }
 
@@ -577,7 +599,6 @@ type compiled_binding = {
 
 type compiled_ir = {
   dfa : dfa;
-  init_tags : tag_op list;
   num_tags : int;
   bindings : compiled_binding list array;
 }
@@ -753,12 +774,7 @@ let compile_ir (rules : Ir.t array) =
   let regexps = Array.map fst lowered in
   let bindings = Array.map snd lowered in
   let compiled = compile regexps in
-  {
-    dfa = compiled.dfa;
-    init_tags = compiled.init_tags;
-    num_tags = compiled.num_tags;
-    bindings;
-  }
+  { dfa = compiled.dfa; num_tags = compiled.num_tags; bindings }
 
 let cset_to_label cset =
   let escape_dot c =

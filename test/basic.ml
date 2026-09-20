@@ -1371,13 +1371,15 @@ let%expect_test "as_bindings_num_mem_cells" =
     | _ -> assert false);
   [%expect {| mem_cells=0 |}];
   (* Or-pattern with different offsets: positions are known, so only the
-     discriminator needs cells (its canonical cell plus working registers) *)
+     discriminator needs a cell. Its write is delayed until the branch
+     reaches its final node, where the final operations set the canonical
+     cell directly: no working register *)
   let buf = Sedlexing.Utf8.from_string "abcdef" in
   (match%sedlex buf with
     | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=2 |}]
+  [%expect {| mem_cells=1 |}]
 
 let%expect_test "as_bindings_multi_rule_mem_cells" =
   (* All rules in a match%sedlex share one pool of memory cells.
