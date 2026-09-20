@@ -1631,54 +1631,49 @@ let%expect_test "eof_zero_width_tie_within_rule" =
     | _ -> print_endline "nomatch");
   [%expect {| x="a" |}]
 
-(* KNOWN BUG (eof self-loop): the test below is disabled until the bug is
-   fixed. Its timeout relies on threads and Unix, which do not work on
-   Windows in this setup. Uncomment it once the runtime no longer spins.
-
-(* KNOWN BUG (eof self-loop): [eof] is reported without advancing, so an
-   accepting state with an [eof] transition back to itself spins forever at end
-   of input. Expected: every case matches rule0 and terminates.
-
-   A spinning case cannot be interrupted, so each case runs on its own thread
-   and the test moves on once a deadline passes; a runaway thread keeps
-   spinning until the process exits. The terminating case therefore runs
-   first, before any runaway thread competes for the scheduler. *)
+(* Regression (eof self-loop): end of input is read once. [eof] used to be
+   reported again and again without advancing, so an accepting state with an
+   [eof] transition back to itself spun forever at end of input, and
+   [eof, eof] matched. *)
 let%expect_test "eof_self_loop_terminates" =
-  let with_timeout f =
-    let result = Atomic.make None in
-    ignore
-      (Thread.create
-         (fun () ->
-           let r = try f () with e -> Printexc.to_string e in
-           Atomic.set result (Some r))
-         ());
-    let deadline = Unix.gettimeofday () +. 0.5 in
-    while Atomic.get result = None && Unix.gettimeofday () < deadline do
-      Thread.delay 0.01
-    done;
-    print_endline (Option.value (Atomic.get result) ~default:"TIMEOUT")
+  let run lex inputs =
+    List.iter
+      (fun s ->
+        let buf = Sedlexing.Latin1.from_string s in
+        let r = lex buf in
+        Printf.printf "%-4S -> %S %s\n" s (Sedlexing.Latin1.lexeme buf) r)
+      inputs
   in
-  (* eof, eof matches today because the runtime reports eof repeatedly *)
-  let buf = Sedlexing.Latin1.from_string "" in
-  with_timeout (fun () ->
-      match%sedlex buf with eof, eof -> "rule0" | _ -> "none");
-  [%expect {| rule0 |}];
-  let buf = Sedlexing.Latin1.from_string "" in
-  with_timeout (fun () ->
-      match%sedlex buf with Plus eof -> "rule0" | _ -> "none");
-  [%expect {| TIMEOUT |}];
-  let lex buf =
-    match%sedlex buf with Star ('a' | eof) -> "rule0" | _ -> "none"
-  in
-  with_timeout (fun () -> lex (Sedlexing.Latin1.from_string "aa"));
-  [%expect {| TIMEOUT |}];
-  with_timeout (fun () -> lex (Sedlexing.Latin1.from_string ""));
-  [%expect {| TIMEOUT |}];
-  let buf = Sedlexing.Latin1.from_string "a" in
-  with_timeout (fun () ->
-      match%sedlex buf with Star 'a', Star eof -> "rule0" | _ -> "none");
-  [%expect {| TIMEOUT |}]
-*)
+  run
+    (fun buf -> match%sedlex buf with Plus eof -> "rule0" | _ -> "none")
+    [""; "a"];
+  [%expect {|
+    ""   -> "" rule0
+    "a"  -> "" none
+    |}];
+  run
+    (fun buf ->
+      match%sedlex buf with Star ('a' | eof) -> "rule0" | _ -> "none")
+    ["aa"; ""; "ab"];
+  [%expect
+    {|
+    "aa" -> "aa" rule0
+    ""   -> "" rule0
+    "ab" -> "a" rule0
+    |}];
+  run
+    (fun buf ->
+      match%sedlex buf with Star 'a', Star eof -> "rule0" | _ -> "none")
+    ["a"; ""];
+  [%expect {|
+    "a"  -> "a" rule0
+    ""   -> "" rule0
+    |}];
+  (* the second eof has nothing left to read *)
+  run
+    (fun buf -> match%sedlex buf with eof, eof -> "rule0" | _ -> "none")
+    [""];
+  [%expect {| ""   -> "" none |}]
 
 (* Regression (#199, capture before a repetition loop): the mirror of
    [loop_before_capture]. The capture's end tag used to keep firing inside the
