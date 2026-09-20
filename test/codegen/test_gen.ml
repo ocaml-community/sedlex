@@ -1246,6 +1246,54 @@ let%expect_test "optim: dead tag elimination" =
     | _ -> ()
     |}]
 
+(* End of input never shares a transition with characters: [eof | 'b'] is
+   one character set in the NFA and two transitions in the DFA. *)
+let%expect_test "end of input gets its own transition" =
+  (match%sedlex_test buf with
+    | (Plus 'a' as x), (eof | 'b') -> ignore x
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a' {t1}"];
+      state1 [label="1"];
+      state1 -> state2 [label="EOF"];
+      state1 -> state1 [label="'a' {t1}"];
+      state1 -> state2 [label="'b'"];
+      state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__copy_mem buf 0 1; 0)
+      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 2 -> (Sedlexing.__private__copy_mem buf 0 1; 0)
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 2;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let x =
+          let __s = 0 in
+          let __e = Sedlexing.__private__mem_pos buf 0 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore x
+    | _ -> ()
+    |}]
+
 (* Optimization 7: Self-loop tag delay (Set_prev)
    Tags on a self-loop that also appear on all entering transitions
    should be delayed to exit transitions as Set_prev.
