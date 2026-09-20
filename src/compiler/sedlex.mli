@@ -131,6 +131,9 @@ type compiled = {
   num_tags : int;
       (** Total number of memory cells needed at runtime. When [num_tags = 0],
           no memory is allocated (pattern has no [as] bindings). *)
+  cell_of_tag : int array;
+      (** The memory cell holding each logical tag once a rule has matched. The
+          bindings of {!compiled_ir} are already expressed in cells. *)
 }
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using
