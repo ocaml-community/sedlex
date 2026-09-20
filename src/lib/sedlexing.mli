@@ -252,6 +252,10 @@ val __private__init_mem : lexbuf -> int -> unit
     operations on DFA transitions. *)
 val __private__set_mem_pos : lexbuf -> int -> unit
 
+(** [__private__set_mem_prev_pos lexbuf i] records in cell [i] the position
+    before the code point just read: the current position minus one. *)
+val __private__set_mem_prev_pos : lexbuf -> int -> unit
+
 (** [__private__set_mem_value lexbuf i v] stores integer [v] in cell [i],
     encoded as [-(v + 2)] so it is disjoint from positions and the unset
     sentinel. Used by [Set_value] tag operations for or-pattern discriminators.
