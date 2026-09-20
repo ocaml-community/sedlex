@@ -391,21 +391,20 @@ let gen_recflag (auto : Sedlex.dfa) =
      bindings) [init_mem], then calls state 0.
    - Wraps the result in a [match] on the returned rule index, dispatching
      to user-provided right-hand-side expressions, with [error] as default. *)
-let gen_definition ((_, lexbuf) as lexbuf_with_name)
-    (compiled : Sedlex.compiled) l error =
+let gen_definition ((_, lexbuf) as lexbuf_with_name) ~(dfa : Sedlex.dfa)
+    ~num_tags l error =
   let loc = default_loc in
-  let auto = compiled.dfa in
+  let auto = dfa in
   let cases =
     List.mapi (fun i (_, e) -> case ~lhs:(pint ~loc i) ~guard:None ~rhs:e) l
   in
   let states = Array.mapi (gen_state lexbuf_with_name auto) auto in
   let states = List.flatten (Array.to_list states) in
   let start_expr =
-    if compiled.num_tags > 0 then (
+    if num_tags > 0 then (
       let init_mem =
         [%expr
-          Sedlexing.__private__init_mem [%e lexbuf]
-            [%e eint ~loc compiled.num_tags]]
+          Sedlexing.__private__init_mem [%e lexbuf] [%e eint ~loc num_tags]]
       in
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
@@ -848,10 +847,9 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
         ((), action))
       cases_with_ir
   in
-  let compiled_basic : Sedlex.compiled =
-    { dfa = compiled.dfa; num_tags = compiled.num_tags }
-  in
-  (gen_definition lexbuf compiled_basic cases error, compiled.dfa)
+  ( gen_definition lexbuf ~dfa:compiled.dfa ~num_tags:compiled.num_tags cases
+      error,
+    compiled.dfa )
 
 let handle_sedlex_match match_expr =
   handle_sedlex_match_ ~env:builtin_regexps ~map_rhs:Fun.id match_expr

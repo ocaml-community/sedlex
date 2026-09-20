@@ -222,7 +222,7 @@ type dfa_state = {
 }
 
 type dfa = dfa_state array
-type compiled = { dfa : dfa; num_tags : int }
+type compiled = { dfa : dfa; num_tags : int; cell_of_tag : int array }
 
 let op_dest = function
   | Copy { dst; _ } | Set_position { dst } | Set_value { dst; _ } -> dst
@@ -568,6 +568,7 @@ let compile (rs : regexp array) : compiled =
   {
     dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
     num_tags = Registers.count ctx.regs;
+    cell_of_tag = Array.init !cur_tag (fun tag -> tag);
   }
 
 (* High-level compilation from IR.
@@ -774,7 +775,25 @@ let compile_ir (rules : Ir.t array) =
   let regexps = Array.map fst lowered in
   let bindings = Array.map snd lowered in
   let compiled = compile regexps in
-  { dfa = compiled.dfa; num_tags = compiled.num_tags; bindings }
+  (* Bindings name tags; the generated code reads cells. *)
+  let cell tag = compiled.cell_of_tag.(tag) in
+  let pos = function
+    | Tag { tag; offset } -> Tag { tag = cell tag; offset }
+    | (Start_plus _ | End_minus _) as p -> p
+  in
+  let binding (b : compiled_binding) =
+    {
+      b with
+      start_pos = pos b.start_pos;
+      end_pos = pos b.end_pos;
+      disc = List.map (fun (tag, value) -> (cell tag, value)) b.disc;
+    }
+  in
+  {
+    dfa = compiled.dfa;
+    num_tags = compiled.num_tags;
+    bindings = Array.map (List.map binding) bindings;
+  }
 
 let cset_to_label cset =
   let escape_dot c =
