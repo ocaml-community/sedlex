@@ -278,7 +278,8 @@ let eps_closure (seeds : addr config list) : candidate =
 
 (* Splits the moves into pairwise-disjoint character sets. Moves come in
    priority order and a configuration is appended last to each piece it
-   overlaps, so seeds stay in priority order. *)
+   overlaps, so seeds stay in priority order. End of input gets pieces of
+   its own: unlike a character, reading it does not advance. *)
 let split_moves (moves : (Cset.t * addr config) list) :
     (Cset.t * addr config list) list =
   let add_move pieces (cset, cfg) =
@@ -300,7 +301,12 @@ let split_moves (moves : (Cset.t * addr config) list) :
     in
     insert cset pieces
   in
-  List.fold_left add_move [] moves
+  let apart (cset, seeds) =
+    let chars = Cset.difference cset Cset.eof in
+    if Cset.is_empty chars || not (Cset.mem (-1) cset) then [(cset, seeds)]
+    else [(Cset.eof, seeds); (chars, seeds)]
+  in
+  List.concat (List.map apart (List.fold_left add_move [] moves))
 
 (* Mutable state of the construction *)
 
