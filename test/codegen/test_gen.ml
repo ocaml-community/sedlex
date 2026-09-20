@@ -183,30 +183,30 @@ let%expect_test "as binding: simple, no static elimination" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t2}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t2}"];
-      state1 -> state2 [label="'b' {t3}"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t2}"];
       state2 [label="2"];
-      state2 -> state2 [label="'b' {t3}"];
-      state2 -> state3 [label="'c'"];
+      state2 -> state2 [label="'b'"];
+      state2 -> state3 [label="'c' {t3}"];
       state3 [label="3\n[rule 0]\n{t1<-t3,t0<-t2}", shape=doublecircle];
       state3 -> state3 [label="'c'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 2; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 2; __sedlex_state_1 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 3; __sedlex_state_2 buf)
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 2; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 3; __sedlex_state_2 buf)
-      | 1 -> __sedlex_state_3 buf
+      | 0 -> __sedlex_state_2 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_3 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       Sedlexing.__private__copy_mem buf 1 3;
@@ -332,10 +332,10 @@ let%expect_test "as binding: multiple bindings, no static elimination" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state2 [label="'-'"];
-      state1 -> state1 [label="'a' {t1}"];
+      state1 -> state2 [label="'-' {t1}"];
+      state1 -> state1 [label="'a'"];
       state2 [label="2"];
       state2 -> state3 [label="'b'"];
       state3 [label="3\n[rule 0]\n{t0<-t1}", shape=doublecircle];
@@ -344,12 +344,12 @@ let%expect_test "as binding: multiple bindings, no static elimination" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_2 buf
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
+      | 1 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
@@ -398,51 +398,51 @@ let%expect_test
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t3}"];
-      state0 -> state3 [label="'b' {t5}"];
+      state0 -> state1 [label="'a'"];
+      state0 -> state3 [label="'b'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t3}"];
-      state1 -> state2 [label="'b' {d4=0}"];
-      state2 [label="2\n[rule 0]\n{t2<-t4,t0<-t3}", shape=doublecircle];
-      state2 -> state2 [label="'b' {d4=0}"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t3}"];
+      state2 [label="2\n[rule 0]\n{d2=0,t0<-t3}", shape=doublecircle];
+      state2 -> state2 [label="'b'"];
       state3 [label="3"];
-      state3 -> state4 [label="'a' {d6=1}"];
-      state3 -> state3 [label="'b' {t5}"];
-      state4 [label="4\n[rule 0]\n{t2<-t6,t1<-t5}", shape=doublecircle];
-      state4 -> state4 [label="'a' {d6=1}"];
+      state3 -> state4 [label="'a' {t4}"];
+      state3 -> state3 [label="'b'"];
+      state4 [label="4\n[rule 0]\n{d2=1,t1<-t4}", shape=doublecircle];
+      state4 -> state4 [label="'a'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 3; __sedlex_state_1 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 5; __sedlex_state_3 buf)
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> __sedlex_state_3 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 3; __sedlex_state_1 buf)
-      | 1 -> (Sedlexing.__private__set_mem_value buf 4 0; __sedlex_state_2 buf)
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
-      Sedlexing.__private__copy_mem buf 2 4;
+      Sedlexing.__private__set_mem_value buf 2 0;
       Sedlexing.__private__copy_mem buf 0 3;
       Sedlexing.mark buf 0;
       (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-       | 0 -> (Sedlexing.__private__set_mem_value buf 4 0; __sedlex_state_2 buf)
+       | 0 -> __sedlex_state_2 buf
        | _ -> Sedlexing.backtrack buf)
     and __sedlex_state_3 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 6 1; __sedlex_state_4 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 5; __sedlex_state_3 buf)
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 4; __sedlex_state_4 buf)
+      | 1 -> __sedlex_state_3 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_4 buf =
-      Sedlexing.__private__copy_mem buf 2 6;
-      Sedlexing.__private__copy_mem buf 1 5;
+      Sedlexing.__private__set_mem_value buf 2 1;
+      Sedlexing.__private__copy_mem buf 1 4;
       Sedlexing.mark buf 0;
       (match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-       | 0 -> (Sedlexing.__private__set_mem_value buf 6 1; __sedlex_state_4 buf)
+       | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 7;
+          Sedlexing.__private__init_mem buf 5;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -485,9 +485,10 @@ let%expect_test "as binding: shared prefix or-pattern" =
       state4 [label="4"];
       state4 -> state5 [label="'e'"];
       state5 [label="5"];
-      state5 -> state6 [label="'f' {d1=0}"];
-      state5 -> state6 [label="'y' {d1=1}"];
-      state6 [label="6\n[rule 0]\n{t0<-t1}", shape=doublecircle];
+      state5 -> state6 [label="'f'"];
+      state5 -> state7 [label="'y'"];
+      state6 [label="6\n[rule 0]\n{d0=0}", shape=doublecircle];
+      state7 [label="7\n[rule 0]\n{d0=1}", shape=doublecircle];
     }
     CODE:
     let rec __sedlex_state_0 buf =
@@ -512,17 +513,11 @@ let%expect_test "as binding: shared prefix or-pattern" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_5 buf =
       match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
-      | 0 ->
-          (Sedlexing.__private__set_mem_value buf 1 0;
-           Sedlexing.__private__copy_mem buf 0 1;
-           0)
-      | 1 ->
-          (Sedlexing.__private__set_mem_value buf 1 1;
-           Sedlexing.__private__copy_mem buf 0 1;
-           0)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
+      | 1 -> (Sedlexing.__private__set_mem_value buf 0 1; 0)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__init_mem buf 1;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -561,11 +556,12 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
       state2 [label="2"];
       state2 -> state3 [label="'c'"];
       state3 [label="3"];
-      state3 -> state4 [label="'d' {d1=0}"];
-      state3 -> state5 [label="'e' {d2=1}"];
-      state4 [label="4\n[rule 0]\n{t0<-t1}", shape=doublecircle];
-      state4 -> state5 [label="'f' {d2=0}"];
-      state5 [label="5\n[rule 0]\n{t0<-t2}", shape=doublecircle];
+      state3 -> state4 [label="'d'"];
+      state3 -> state6 [label="'e'"];
+      state4 [label="4\n[rule 0]\n{d0=0}", shape=doublecircle];
+      state4 -> state5 [label="'f'"];
+      state5 [label="5\n[rule 0]\n{d0=0}", shape=doublecircle];
+      state6 [label="6\n[rule 0]\n{d0=1}", shape=doublecircle];
     }
     CODE:
     let rec __sedlex_state_0 buf =
@@ -582,23 +578,17 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 1 0; __sedlex_state_4 buf)
-      | 1 ->
-          (Sedlexing.__private__set_mem_value buf 2 1;
-           Sedlexing.__private__copy_mem buf 0 2;
-           0)
+      | 0 -> __sedlex_state_4 buf
+      | 1 -> (Sedlexing.__private__set_mem_value buf 0 1; 0)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_4 buf =
-      Sedlexing.__private__copy_mem buf 0 1;
+      Sedlexing.__private__set_mem_value buf 0 0;
       Sedlexing.mark buf 0;
       (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
-       | 0 ->
-           (Sedlexing.__private__set_mem_value buf 2 0;
-            Sedlexing.__private__copy_mem buf 0 2;
-            0)
+       | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 3;
+          Sedlexing.__private__init_mem buf 1;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -691,11 +681,11 @@ let%expect_test "as binding: multi-rule, no static elimination" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state0 -> state3 [label="'c'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state2 -> state2 [label="'b'"];
       state3 [label="3"];
@@ -705,13 +695,13 @@ let%expect_test "as binding: multi-rule, no static elimination" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | 1 -> __sedlex_state_3 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       Sedlexing.__private__copy_mem buf 0 1;
@@ -796,11 +786,11 @@ let%expect_test "as binding: wrapping alternation, no static elimination" =
       state0 -> state1 [label="'x'"];
       state1 [label="1"];
       state1 -> state2 [label="'a'"];
-      state1 -> state3 [label="'c' {t1}"];
+      state1 -> state3 [label="'c'"];
       state2 [label="2"];
-      state2 -> state3 [label="'b' {t1}"];
+      state2 -> state3 [label="'b'"];
       state3 [label="3"];
-      state3 -> state4 [label="'z'"];
+      state3 -> state4 [label="'z' {t1}"];
       state4 [label="4\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state4 -> state4 [label="'z'"];
     }
@@ -812,15 +802,15 @@ let%expect_test "as binding: wrapping alternation, no static elimination" =
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
       | 0 -> __sedlex_state_2 buf
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_3 buf)
+      | 1 -> __sedlex_state_3 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_3 buf)
+      | 0 -> __sedlex_state_3 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_4 buf
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_4 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_4 buf =
       Sedlexing.__private__copy_mem buf 0 1;
@@ -868,10 +858,10 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2"];
       state2 -> state3 [label="'c'"];
       state3 [label="3\n[rule 0]\n{t0<-t1}", shape=doublecircle];
@@ -880,12 +870,12 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
@@ -1038,22 +1028,22 @@ let%expect_test "optim: intra-rule tag coalescing" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state2 -> state2 [label="'b'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       Sedlexing.__private__copy_mem buf 0 1;
@@ -1102,40 +1092,40 @@ let%expect_test "optim: cross-rule cell sharing" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t4}"];
-      state0 -> state4 [label="'d' {t6}"];
+      state0 -> state1 [label="'a'"];
+      state0 -> state4 [label="'d'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t4}"];
-      state1 -> state2 [label="'b' {t5}"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t4}"];
       state2 [label="2"];
-      state2 -> state2 [label="'b' {t5}"];
-      state2 -> state3 [label="'c'"];
+      state2 -> state2 [label="'b'"];
+      state2 -> state3 [label="'c' {t5}"];
       state3 [label="3\n[rule 0]\n{t1<-t5,t0<-t4}", shape=doublecircle];
       state3 -> state3 [label="'c'"];
       state4 [label="4"];
-      state4 -> state4 [label="'d' {t6}"];
-      state4 -> state5 [label="'e' {t7}"];
+      state4 -> state4 [label="'d'"];
+      state4 -> state5 [label="'e' {t6}"];
       state5 [label="5"];
-      state5 -> state5 [label="'e' {t7}"];
-      state5 -> state6 [label="'f'"];
+      state5 -> state5 [label="'e'"];
+      state5 -> state6 [label="'f' {t7}"];
       state6 [label="6\n[rule 1]\n{t3<-t7,t2<-t6}", shape=doublecircle];
       state6 -> state6 [label="'f'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 4; __sedlex_state_1 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 6; __sedlex_state_4 buf)
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> __sedlex_state_4 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 4; __sedlex_state_1 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 5; __sedlex_state_2 buf)
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 4; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 5; __sedlex_state_2 buf)
-      | 1 -> __sedlex_state_3 buf
+      | 0 -> __sedlex_state_2 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 5; __sedlex_state_3 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       Sedlexing.__private__copy_mem buf 1 5;
@@ -1146,13 +1136,13 @@ let%expect_test "optim: cross-rule cell sharing" =
        | _ -> Sedlexing.backtrack buf)
     and __sedlex_state_4 buf =
       match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 6; __sedlex_state_4 buf)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 7; __sedlex_state_5 buf)
+      | 0 -> __sedlex_state_4 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 6; __sedlex_state_5 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_5 buf =
       match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 7; __sedlex_state_5 buf)
-      | 1 -> __sedlex_state_6 buf
+      | 0 -> __sedlex_state_5 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 7; __sedlex_state_6 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_6 buf =
       Sedlexing.__private__copy_mem buf 3 7;
@@ -1185,10 +1175,9 @@ let%expect_test "optim: cross-rule cell sharing" =
    a final state should be removed.
    Rule 0 has a binding on Plus 'b'; rule 1 does not.
    Both share the Plus 'a', Plus 'b' prefix in the DFA.
-   Current: init_mem 2 (1 tag: canonical cell plus working register), the
-   tag set on shared prefix transitions even when only rule 1 is reachable
-   via 'd'.
-   Goal: no tags on transitions leading exclusively to rule 1. *)
+   Current: init_mem 2. The tag is set once, on the transition entering the
+   'b's, shared by both rules; nothing on the transitions only rule 1 takes.
+   Goal: reached here; in general it needs a liveness analysis. *)
 let%expect_test "optim: dead tag elimination" =
   (match%sedlex_test buf with
     | Plus 'a', (Plus 'b' as x), 'c' -> ignore x
@@ -1205,10 +1194,10 @@ let%expect_test "optim: dead tag elimination" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2"];
       state2 -> state2 [label="'b'"];
       state2 -> state3 [label="'c'"];
@@ -1219,12 +1208,12 @@ let%expect_test "optim: dead tag elimination" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
@@ -1263,23 +1252,29 @@ let%expect_test "end of input gets its own transition" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state2 [label="EOF"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state2 [label="EOF {t1}"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__copy_mem buf 0 1; 0)
-      | 1 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 2 -> (Sedlexing.__private__copy_mem buf 0 1; 0)
+      | 0 ->
+          (Sedlexing.__private__set_mem_pos buf 1;
+           Sedlexing.__private__copy_mem buf 0 1;
+           0)
+      | 1 -> __sedlex_state_1 buf
+      | 2 ->
+          (Sedlexing.__private__set_mem_prev_pos buf 1;
+           Sedlexing.__private__copy_mem buf 0 1;
+           0)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
           Sedlexing.__private__init_mem buf 2;
@@ -1297,9 +1292,9 @@ let%expect_test "end of input gets its own transition" =
 (* Optimization 7: Self-loop tag delay (Set_prev)
    Tags on a self-loop that also appear on all entering transitions
    should be delayed to exit transitions as Set_prev.
-   Current: init_mem 2 (canonical cell plus working register), set_mem on
-   every 'a' iteration (O(n)).
-   Goal: no set_mem on the self-loop, set_mem_prev on exit (O(1)). *)
+   Current: init_mem 2; no write on the self-loop, the tag is set once on
+   the transition leaving it (set_mem_prev_pos).
+   Goal: reached (O(1) instead of O(n) writes). *)
 let%expect_test "optim: self-loop tag delay" =
   (match%sedlex_test buf with (Plus 'a' as x), Plus 'b' -> ignore x | _ -> ());
   [%expect
@@ -1313,22 +1308,22 @@ let%expect_test "optim: self-loop tag delay" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state2 -> state2 [label="'b'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       Sedlexing.__private__copy_mem buf 0 1;
@@ -1429,10 +1424,10 @@ let%expect_test "optim: set_prev with backtracking" =
       _start -> state0;
 
       state0 [label="0"];
-      state0 -> state1 [label="'a' {t1}"];
+      state0 -> state1 [label="'a'"];
       state1 [label="1"];
-      state1 -> state1 [label="'a' {t1}"];
-      state1 -> state2 [label="'b'"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b' {t1}"];
       state2 [label="2\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state2 -> state3 [label="'a'"];
       state2 -> state2 [label="'b'"];
@@ -1441,12 +1436,12 @@ let%expect_test "optim: set_prev with backtracking" =
     CODE:
     let rec __sedlex_state_0 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
+      | 0 -> __sedlex_state_1 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_1 buf)
-      | 1 -> __sedlex_state_2 buf
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       Sedlexing.__private__copy_mem buf 0 1;
@@ -1552,13 +1547,13 @@ let%expect_test "Rep variable-length prefix forces a tag" =
       state0 [label="0"];
       state0 -> state1 [label="'0'-'9'"];
       state1 [label="1"];
-      state1 -> state2 [label="'0'-'9' {t1}"];
+      state1 -> state2 [label="'0'-'9'"];
       state2 [label="2"];
-      state2 -> state3 [label="'0'-'9' {t2}"];
-      state2 -> state4 [label="'a'-'z' {t2<-t1}"];
+      state2 -> state3 [label="'0'-'9'"];
+      state2 -> state4 [label="'a'-'z' {t1}"];
       state3 [label="3"];
-      state3 -> state4 [label="'a'-'z'"];
-      state4 [label="4\n[rule 0]\n{t0<-t2}", shape=doublecircle];
+      state3 -> state4 [label="'a'-'z' {t1}"];
+      state4 [label="4\n[rule 0]\n{t0<-t1}", shape=doublecircle];
       state4 -> state4 [label="'a'-'z'"];
     }
     CODE:
@@ -1568,25 +1563,25 @@ let%expect_test "Rep variable-length prefix forces a tag" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_1 buf =
       match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 1; __sedlex_state_2 buf)
+      | 0 -> __sedlex_state_2 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_pos buf 2; __sedlex_state_3 buf)
-      | 1 -> (Sedlexing.__private__copy_mem buf 2 1; __sedlex_state_4 buf)
+      | 0 -> __sedlex_state_3 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_4 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_4 buf
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_4 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_4 buf =
-      Sedlexing.__private__copy_mem buf 0 2;
+      Sedlexing.__private__copy_mem buf 0 1;
       Sedlexing.mark buf 0;
       (match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
        | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 3;
+          Sedlexing.__private__init_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1623,22 +1618,24 @@ let%expect_test "as binding: or-chain then nested or on right" =
       state2 [label="2"];
       state2 -> state3 [label="'e'"];
       state3 [label="3"];
-      state3 -> state4 [label="'f' {d2=0}"];
-      state4 [label="4\n[rule 0]\n{t1<-t2}", shape=doublecircle];
+      state3 -> state4 [label="'f'"];
+      state4 [label="4\n[rule 0]\n{d1=0}", shape=doublecircle];
       state5 [label="5"];
       state5 -> state6 [label="'d'"];
       state5 -> state11 [label="'e'"];
       state6 [label="6"];
       state6 -> state7 [label="'e'"];
       state7 [label="7"];
-      state7 -> state8 [label="'f' {d3=0}"];
+      state7 -> state8 [label="'f'"];
       state8 [label="8"];
-      state8 -> state9 [label="'g'"];
+      state8 -> state9 [label="'g' {d2=0}"];
       state9 [label="9"];
-      state9 -> state10 [label="'h' {d4=2}"];
-      state10 [label="10\n[rule 0]\n{t1<-t4,t0<-t3}", shape=doublecircle];
+      state9 -> state10 [label="'h'"];
+      state10 [label="10\n[rule 0]\n{d1=2,t0<-t2}", shape=doublecircle];
       state11 [label="11"];
-      state11 -> state8 [label="'f' {d3=1}"];
+      state11 -> state12 [label="'f'"];
+      state12 [label="12"];
+      state12 -> state9 [label="'g' {d2=1}"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
@@ -1656,10 +1653,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_3 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 ->
-          (Sedlexing.__private__set_mem_value buf 2 0;
-           Sedlexing.__private__copy_mem buf 1 2;
-           0)
+      | 0 -> (Sedlexing.__private__set_mem_value buf 1 0; 0)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_5 buf =
       match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
@@ -1672,26 +1666,29 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_7 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 3 0; __sedlex_state_8 buf)
+      | 0 -> __sedlex_state_8 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_8 buf =
       match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
-      | 0 -> __sedlex_state_9 buf
+      | 0 -> (Sedlexing.__private__set_mem_value buf 2 0; __sedlex_state_9 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_9 buf =
       match __sedlex_partition_7 (Sedlexing.__private__next_int buf) with
       | 0 ->
-          (Sedlexing.__private__set_mem_value buf 4 2;
-           Sedlexing.__private__copy_mem buf 1 4;
-           Sedlexing.__private__copy_mem buf 0 3;
+          (Sedlexing.__private__set_mem_value buf 1 2;
+           Sedlexing.__private__copy_mem buf 0 2;
            0)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_11 buf =
       match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_value buf 3 1; __sedlex_state_8 buf)
+      | 0 -> __sedlex_state_12 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_12 buf =
+      match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_value buf 2 1; __sedlex_state_9 buf)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 5;
+          Sedlexing.__private__init_mem buf 3;
           __sedlex_state_0 buf
     with
     | 0 ->

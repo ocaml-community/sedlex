@@ -106,9 +106,8 @@ type accept = {
           the first-match semantics of [match%sedlex]. *)
   final_ops : tag_op list;
       (** Tag operations to execute when entering the state, just before
-          [Sedlexing.mark]. They materialize the accepting path's registers into
-          the cells read by the binding extraction code; the list is empty until
-          the compiler allocates working registers. *)
+          [Sedlexing.mark]: they materialize the accepting configuration into
+          the cells read by the binding extraction code. *)
 }
 
 type dfa_state = {
@@ -116,7 +115,8 @@ type dfa_state = {
       (** Each transition: (character set, target state, tag operations to
           execute when this transition fires). The operations form a parallel
           move: a [Copy] reads its source as it was before any operation of the
-          same list executed, and no two operations write the same cell. A
+          same list executed, and no two operations write the same cell. They
+          execute {e before} the character of the transition is consumed. A
           character set is either [Cset.eof] or does not contain end of input.
       *)
   accept : accept option;  (** [None] for non-accepting states. *)
@@ -128,18 +128,14 @@ type dfa = dfa_state array
 (** Result of [compile]. *)
 type compiled = {
   dfa : dfa;
-  init_tags : tag_op list;
-      (** Tag operations to execute before entering the DFA (from epsilon
-          closure of the initial NFA nodes). *)
   num_tags : int;
       (** Total number of memory cells needed at runtime. When [num_tags = 0],
           no memory is allocated (pattern has no [as] bindings). *)
 }
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using
-    subset construction. Returns the DFA, initial tag operations, and the total
-    number of memory cells needed for [as] bindings. State 0 is always the
-    initial state. *)
+    subset construction. Returns the DFA and the total number of memory cells
+    needed for [as] bindings. State 0 is always the initial state. *)
 val compile : regexp array -> compiled
 
 (** {2 High-level compilation from IR}
@@ -171,7 +167,6 @@ type compiled_binding = {
 (** Result of [compile_ir]. *)
 type compiled_ir = {
   dfa : dfa;
-  init_tags : tag_op list;
   num_tags : int;
   bindings : compiled_binding list array;
       (** [bindings.(i)] is the list of binding info for rule [i]. *)
