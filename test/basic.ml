@@ -1439,8 +1439,8 @@ let%expect_test "as_bindings_multi_rule_mem_cells" =
     | ('<' as _y) | ('>' as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
   [%expect {| mem_cells=0 |}];
-  (* Two rules that each need a tag: the pool holds both, whichever rule
-     matches (a tag costs its canonical cell plus a working register) *)
+  (* Two rules that each need a tag: a token matches only one of them, so
+     the two tags share one cell *)
   let lex buf =
     match%sedlex buf with
       | Plus 'a', (Plus 'b' as _x) ->
@@ -1450,9 +1450,9 @@ let%expect_test "as_bindings_multi_rule_mem_cells" =
       | _ -> assert false
   in
   lex (Sedlexing.Utf8.from_string "ab");
-  [%expect {| mem_cells=4 |}];
+  [%expect {| mem_cells=1 |}];
   lex (Sedlexing.Utf8.from_string "cd");
-  [%expect {| mem_cells=4 |}]
+  [%expect {| mem_cells=1 |}]
 
 let%expect_test "as_bindings_nested_sedlex" =
   (* Regression: a nested match%sedlex in a case RHS must not reset the
@@ -1494,7 +1494,7 @@ let%expect_test "as_bindings_nested_sedlex" =
     | Plus 'a', (Plus 'b' .. 'z' as _x) ->
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=2 |}]
+  [%expect {| mem_cells=1 |}]
 
 (* ------------------------------------------------------------------------ *)
 (* Regression tests. They were first pinned to the behavior of the time and
