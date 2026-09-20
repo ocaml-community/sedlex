@@ -116,7 +116,9 @@ type dfa_state = {
       (** Each transition: (character set, target state, tag operations to
           execute when this transition fires). The operations form a parallel
           move: a [Copy] reads its source as it was before any operation of the
-          same list executed, and no two operations write the same cell. *)
+          same list executed, and no two operations write the same cell. A
+          character set is either [Cset.eof] or does not contain end of input.
+      *)
   accept : accept option;  (** [None] for non-accepting states. *)
 }
 
