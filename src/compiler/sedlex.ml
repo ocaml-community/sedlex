@@ -51,11 +51,17 @@
         transition form a parallel move, which the code generator
         implements by let-binding the sources it overwrites.
       - Canonical cells (cell = tag id) are what the generated bindings
-        read. Only the final operations of accepting states write them,
-        from the accepting path's registers and delayed writes, just
-        before [Sedlexing.mark]; working registers live above them. So the
-        cells of the marked rule survive a failed longer match, and
-        [Sedlexing.mark] and [Sedlexing.backtrack] save and restore nothing.
+        read. The final operations of accepting states fill them from the
+        accepting path's registers and delayed writes, just before
+        [Sedlexing.mark]; working registers live above them.
+      - A tag is conflicted when some state holds two registers for it.
+        The registers of the other tags are renamed into their canonical
+        cell at the end: their writes go there directly and need no final
+        copy. Excluded are the tags that a transition could write between
+        the mark of their rule and a failure, or that an accepting path
+        sets while another path holds them. So the cells of the marked
+        rule survive a failed longer match, and [Sedlexing.mark] and
+        [Sedlexing.backtrack] save and restore nothing.
 
    Future work (see #175): register optimization as in Trofimovich 2017
    (section 7), DFA minimization.
@@ -229,7 +235,9 @@ let op_dest = function
 
 (* Determinization (tagged subset construction, see the overview above) *)
 
-(* A memory cell, by index. *)
+(* Logical tags and memory cells, by index. A canonical cell has the number
+   of its tag. *)
+type tag = int
 type cell = int
 
 module TagMap = Map.Make (Int)
@@ -323,26 +331,91 @@ module Registers : sig
 
   val create : num_logical:int -> t
 
-  (* A fresh working register. *)
-  val alloc : t -> cell
+  (* A working register for [tag]: one it already used that is not in
+     [avoid], else a fresh one. Registers are never shared between tags. *)
+  val alloc : t -> tag:tag -> avoid:cell list -> cell
 
   (* As opposed to a canonical cell. *)
   val is_working : t -> cell -> bool
 
-  (* Canonical and working cells. *)
-  val count : t -> int
+  (* The tag a working register was allocated for. *)
+  val tag_of : t -> cell -> tag
+
+  (* Records the tags for which [candidate] holds two distinct registers:
+     two live paths disagree about their value. *)
+  val note_conflicts : t -> candidate -> unit
+
+  (* Keeps [tag] out of its canonical cell even if it is conflict-free. *)
+  val keep_working : t -> tag -> unit
+
+  (* The rename pass, once all states are built: the registers of a
+     conflict-free tag that is not kept working collapse into its canonical
+     cell, the others are compacted above the canonical cells. Returns the
+     renaming and the cell count. *)
+  val collapse_conflict_free : t -> cell array * int
 end = struct
-  type t = { num_logical : int; mutable next_cell : int }
+  type t = {
+    num_logical : int;
+    mutable next_cell : int;
+    pools : (tag, cell list) Hashtbl.t; (* Registers allocated so far. *)
+    owner : (cell, tag) Hashtbl.t;
+    conflicted : (tag, unit) Hashtbl.t;
+    kept : (tag, unit) Hashtbl.t;
+  }
 
-  let create ~num_logical = { num_logical; next_cell = num_logical }
+  let create ~num_logical =
+    {
+      num_logical;
+      next_cell = num_logical;
+      pools = Hashtbl.create 8;
+      owner = Hashtbl.create 8;
+      conflicted = Hashtbl.create 8;
+      kept = Hashtbl.create 8;
+    }
 
-  let alloc t =
-    let c = t.next_cell in
-    t.next_cell <- c + 1;
-    c
+  let alloc t ~tag ~avoid =
+    let pool =
+      match Hashtbl.find_opt t.pools tag with Some l -> l | None -> []
+    in
+    match List.find_opt (fun c -> not (List.mem c avoid)) pool with
+      | Some c -> c
+      | None ->
+          let c = t.next_cell in
+          t.next_cell <- c + 1;
+          Hashtbl.replace t.pools tag (c :: pool);
+          Hashtbl.add t.owner c tag;
+          c
 
   let is_working t c = c >= t.num_logical
-  let count t = t.next_cell
+  let tag_of t c = Hashtbl.find t.owner c
+  let keep_working t tag = Hashtbl.replace t.kept tag ()
+
+  let note_conflicts t (candidate : candidate) =
+    let seen = Hashtbl.create 8 in
+    List.iter
+      (fun c ->
+        TagMap.iter
+          (fun tag a ->
+            match Hashtbl.find_opt seen tag with
+              | None -> Hashtbl.add seen tag a
+              | Some a' -> if a <> a' then Hashtbl.replace t.conflicted tag ())
+          c.tags)
+      candidate
+
+  let collapse_conflict_free t =
+    let cell_map = Array.init t.next_cell (fun c -> c) in
+    Hashtbl.iter
+      (fun tag pool ->
+        if not (Hashtbl.mem t.conflicted tag || Hashtbl.mem t.kept tag) then
+          List.iter (fun c -> cell_map.(c) <- tag) pool)
+      t.pools;
+    let compact = ref t.num_logical in
+    for c = t.num_logical to t.next_cell - 1 do
+      if cell_map.(c) = c then (
+        cell_map.(c) <- !compact;
+        incr compact)
+    done;
+    (cell_map, !compact)
 end
 
 (* State identity modulo register renaming: registers are numbered by first
@@ -407,17 +480,30 @@ let add_state (tbl : state_table) (key : State_key.t) (configs : stored) : int =
 
 type ctx = { regs : Registers.t; rules : rule array; tbl : state_table }
 
-(* New state: each [Pending] write gets a fresh cell. Returns the stored
-   state and the Set operations of the transition reaching it. *)
+(* The cells [candidate] holds, which a new register must not reuse. *)
+let cells_in_use (candidate : candidate) : cell list =
+  List.concat
+    (List.map
+       (fun c ->
+         List.filter_map
+           (fun (_, a) -> match a with Cell c -> Some c | Pending _ -> None)
+           (TagMap.bindings c.tags))
+       candidate)
+
+(* New state: each [Pending] write gets a cell the candidate does not hold.
+   Returns the stored state and the Set operations of the transition
+   reaching it. *)
 let assign_cells (regs : Registers.t) (candidate : candidate) :
     stored * tag_op list =
+  let used = ref (cells_in_use candidate) in
   let assigned = Hashtbl.create 4 in
   let ops = ref [] in
   let cell_for_new tag w =
     match Hashtbl.find_opt assigned (tag, w) with
       | Some c -> c
       | None ->
-          let c = Registers.alloc regs in
+          let c = Registers.alloc regs ~tag ~avoid:!used in
+          used := c :: !used;
           Hashtbl.add assigned (tag, w) c;
           ops := op_of_write c w :: !ops;
           c
@@ -461,8 +547,16 @@ let register_moves (candidate : candidate) (existing : stored) : tag_op list =
   List.map snd (CellMap.bindings !moves)
 
 (* Materializes the accepting configuration into the canonical cells: copies
-   of its registers, plus its delayed writes. *)
-let final_ops_of (regs : Registers.t) (accepting : cell config) : tag_op list =
+   of its registers, plus its delayed writes. A delayed write goes straight
+   to the canonical cell, which must then not be the register where another
+   path of [configs] holds that tag: such tags keep working registers. *)
+let final_ops_of (regs : Registers.t) (configs : stored)
+    (accepting : cell config) : tag_op list =
+  TagMap.iter
+    (fun tag _ ->
+      if List.exists (fun c -> TagMap.mem tag c.tags) configs then
+        Registers.keep_working regs tag)
+    accepting.delayed;
   let copies =
     TagMap.fold
       (fun tag cell acc ->
@@ -486,7 +580,7 @@ let accept_of (ctx : ctx) (configs : stored) : accept option =
       let final = ctx.rules.(rule).final in
       match List.find_opt (fun c -> c.node == final) configs with
         | Some accepting ->
-            Some { rule; final_ops = final_ops_of ctx.regs accepting }
+            Some { rule; final_ops = final_ops_of ctx.regs configs accepting }
         | None -> first_accepting (rule + 1))
   in
   first_accepting 0
@@ -495,6 +589,7 @@ let accept_of (ctx : ctx) (configs : stored) : accept option =
    operations of the transition reaching it. *)
 let rec find_or_add_state (ctx : ctx) (candidate : candidate) :
     int * tag_op list =
+  Registers.note_conflicts ctx.regs candidate;
   let key = State_key.of_candidate candidate in
   match State_key.Tbl.find_opt ctx.tbl.by_key key with
     | Some num ->
@@ -546,6 +641,90 @@ and transitions (ctx : ctx) (configs : stored) :
       (cset, num, ops))
     pieces
 
+(* The tags carried by the nodes of [rule]'s NFA. *)
+let tags_of_rule (rule : rule) : tag list =
+  let visited = Hashtbl.create 16 in
+  let tags = ref [] in
+  let rec visit (node : node) =
+    if not (Hashtbl.mem visited node.id) then (
+      Hashtbl.add visited node.id ();
+      (match node.tag with
+        | Some op -> tags := op_dest op :: !tags
+        | None -> ());
+      List.iter visit node.eps;
+      List.iter (fun (_, n) -> visit n) node.trans)
+  in
+  visit rule.entry;
+  !tags
+
+(* A tag living in its canonical cell must not be written between the mark
+   of one of its rule's accepting states and a later failure: the rule's
+   action would read the wrong value. Tags set on a transition into a
+   non-accepting state reachable, through non-accepting states, from an
+   accepting state of their rule keep working registers. Copies stay within
+   one tag and are no-ops once it is collapsed. *)
+let note_clobbered (ctx : ctx) : unit =
+  let def num = Hashtbl.find ctx.tbl.defs num in
+  let accepts rule num =
+    match (def num).accept with Some a -> a.rule = rule | None -> false
+  in
+  Array.iteri
+    (fun rule r ->
+      let tags = tags_of_rule r in
+      let visited = Hashtbl.create 16 in
+      let rec walk num =
+        Array.iter
+          (fun (_, target, ops) ->
+            if (def target).accept = None then (
+              List.iter
+                (fun op ->
+                  match op with
+                    | Set_position { dst } | Set_value { dst; _ } ->
+                        let tag = Registers.tag_of ctx.regs dst in
+                        if List.mem tag tags then
+                          Registers.keep_working ctx.regs tag
+                    | Copy _ -> ())
+                ops;
+              if not (Hashtbl.mem visited target) then (
+                Hashtbl.add visited target ();
+                walk target)))
+          (def num).trans
+      in
+      if tags <> [] then
+        for num = 0 to ctx.tbl.n_states - 1 do
+          if accepts rule num then walk num
+        done)
+    ctx.rules
+
+(* Applies the renaming to an operation list, dropping the copies it makes
+   trivial. It must keep the list a parallel move. *)
+let rename_ops (cell_map : cell array) (ops : tag_op list) : tag_op list =
+  let ops =
+    List.filter_map
+      (fun op ->
+        match op with
+          | Set_position { dst } -> Some (Set_position { dst = cell_map.(dst) })
+          | Set_value { dst; value } ->
+              Some (Set_value { dst = cell_map.(dst); value })
+          | Copy { dst; src } ->
+              let dst = cell_map.(dst) and src = cell_map.(src) in
+              if dst = src then None else Some (Copy { dst; src }))
+      ops
+  in
+  let dsts = List.map op_dest ops in
+  assert (List.length (List.sort_uniq compare dsts) = List.length dsts);
+  ops
+
+let rename_state (cell_map : cell array) (s : dfa_state) : dfa_state =
+  {
+    trans =
+      Array.map (fun (c, t, ops) -> (c, t, rename_ops cell_map ops)) s.trans;
+    accept =
+      Option.map
+        (fun a -> { a with final_ops = rename_ops cell_map a.final_ops })
+        s.accept;
+  }
+
 (* See the implementation overview at the top of this file. *)
 let compile (rs : regexp array) : compiled =
   let rules = Array.map compile_re rs in
@@ -565,10 +744,13 @@ let compile (rs : regexp array) : compiled =
   assert (num0 = 0);
   (* The writes of the initial closure are delayed like any other. *)
   assert (ops = []);
-  {
-    dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
-    num_tags = Registers.count ctx.regs;
-  }
+  note_clobbered ctx;
+  let cell_map, num_tags = Registers.collapse_conflict_free ctx.regs in
+  let dfa =
+    Array.init ctx.tbl.n_states (fun i ->
+        rename_state cell_map (Hashtbl.find ctx.tbl.defs i))
+  in
+  { dfa; num_tags }
 
 (* High-level compilation from IR.
 

@@ -1839,6 +1839,26 @@ let%expect_test "fallback_keeps_submatches" =
     "abzcbwc" -> "abzcbwc" x="a" y="w"
     |}]
 
+(* A path still in x reaches the final node with the end of x not recorded
+   yet, while a path already in y holds its own value for it. *)
+let%expect_test "submatch_set_on_accept_while_held" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  List.iter
+    (fun s ->
+      let buf = Sedlexing.Latin1.from_string s in
+      match%sedlex buf with
+        | (Star 'a' .. 'c' as x), (Star ('a' .. 'b', 'c' .. 'd') as y) ->
+            Printf.printf "%-8S -> x=%s y=%s\n" s (sub x) (sub y)
+        | _ -> print_endline "nomatch")
+    ["cbdbc"; "cbd"; "acbc"; "bc"];
+  [%expect
+    {|
+    "cbdbc"  -> x="c" y="bdbc"
+    "cbd"    -> x="c" y="bd"
+    "acbc"   -> x="acbc" y=""
+    "bc"     -> x="bc" y=""
+    |}]
+
 (* Transition operations record the position before the character read, but
    reading end of input does not advance: sub-matches that end where eof, or
    either eof or a character, is read must get their end right. *)
