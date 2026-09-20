@@ -217,13 +217,22 @@ let partition (name, p) =
 
 let state_fun state = Printf.sprintf "__sedlex_state_%i" state
 
-(* [gen_tag_ops lexbuf ops cont] wraps [cont] in the code performing the tag
-   operations [ops], which form a parallel move: every [Copy] must read its
-   source as it was before any operation of the list executed. Sources that
+(* What [Set_position] records in the generated code. Transition operations
+   execute before their character is consumed, but the code runs them after
+   reading it. *)
+type position =
+  | Current
+      (** final operations, and end-of-input transitions: reading end of input
+          does not advance *)
+  | Previous  (** character transitions: one code point back *)
+
+(* [gen_tag_ops ~position lexbuf ops cont] wraps [cont] in the code performing
+   the tag operations [ops], which form a parallel move: every [Copy] must
+   read its source as it was before any operation of the list executed. Sources that
    the list also writes are first saved in let-bound locals; everything else
    compiles to direct [__private__set_mem_pos] / [__private__set_mem_value] /
    [__private__copy_mem] calls in list order. *)
-let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
+let gen_tag_ops ~position lexbuf (ops : Sedlex.tag_op list) cont =
   let loc = default_loc in
   let dests = List.map Sedlex.op_dest ops in
   let clobbered =
@@ -240,10 +249,17 @@ let gen_tag_ops lexbuf (ops : Sedlex.tag_op list) cont =
     List.fold_right
       (fun (op : Sedlex.tag_op) acc ->
         match op with
-          | Set_position { dst } ->
-              [%expr
-                Sedlexing.__private__set_mem_pos [%e lexbuf] [%e eint ~loc dst];
-                [%e acc]]
+          | Set_position { dst } -> (
+              let dst = eint ~loc dst in
+              match position with
+                | Current ->
+                    [%expr
+                      Sedlexing.__private__set_mem_pos [%e lexbuf] [%e dst];
+                      [%e acc]]
+                | Previous ->
+                    [%expr
+                      Sedlexing.__private__set_mem_prev_pos [%e lexbuf] [%e dst];
+                      [%e acc]])
           | Set_value { dst; value } ->
               [%expr
                 Sedlexing.__private__set_mem_value [%e lexbuf]
@@ -280,7 +296,8 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
   if Array.length trans = 0 then (
     match accept with
       | Some { Sedlex.rule; final_ops } ->
-          gen_tag_ops lexbuf final_ops (eint ~loc:default_loc rule)
+          gen_tag_ops ~position:Current lexbuf final_ops
+            (eint ~loc:default_loc rule)
       | None ->
           (* A non-accepting sink would need a transition on an empty
              character set, which [ir_of_pattern] rejects. *)
@@ -304,8 +321,17 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
   let partition = Array.map (fun (cs, _, _) -> cs) trans in
   let cases =
     Array.mapi
-      (fun i (_, j, tags) ->
-        let rhs = gen_tag_ops lexbuf tags (call_state lexbuf auto j) in
+      (fun i (cs, j, tags) ->
+        let position =
+          if Cset.mem (-1) cs then (
+            (* End of input never shares a transition with characters. *)
+            assert (Cset.is_empty (Cset.difference cs Cset.eof));
+            Current)
+          else Previous
+        in
+        let rhs =
+          gen_tag_ops ~position lexbuf tags (call_state lexbuf auto j)
+        in
         case ~lhs:(pint ~loc i) ~guard:None ~rhs)
       trans
   in
@@ -335,7 +361,7 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     | Some _ when Array.length trans = 0 -> []
     | Some { Sedlex.rule; final_ops } ->
         ret
-          (gen_tag_ops lexbuf final_ops
+          (gen_tag_ops ~position:Current lexbuf final_ops
              [%expr
                Sedlexing.mark [%e lexbuf] [%e eint ~loc rule];
                [%e body ()]])
@@ -362,7 +388,7 @@ let gen_recflag (auto : Sedlex.dfa) =
    complete lexer expression for one [match%sedlex] block:
    - Defines all [__sedlex_state_N] functions via [let rec ... in].
    - Emits a start sequence: [start lexbuf], then (if the pattern has [as]
-     bindings) [init_mem] + initial tag operations, then calls state 0.
+     bindings) [init_mem], then calls state 0.
    - Wraps the result in a [match] on the returned rule index, dispatching
      to user-provided right-hand-side expressions, with [error] as default. *)
 let gen_definition ((_, lexbuf) as lexbuf_with_name)
@@ -381,12 +407,9 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
           Sedlexing.__private__init_mem [%e lexbuf]
             [%e eint ~loc compiled.num_tags]]
       in
-      let set_init_tags =
-        gen_tag_ops lexbuf compiled.init_tags (call_state lexbuf auto 0)
-      in
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
-        (pexp_sequence ~loc init_mem set_init_tags))
+        (pexp_sequence ~loc init_mem (call_state lexbuf auto 0)))
     else
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
@@ -826,11 +849,7 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
       cases_with_ir
   in
   let compiled_basic : Sedlex.compiled =
-    {
-      dfa = compiled.dfa;
-      init_tags = compiled.init_tags;
-      num_tags = compiled.num_tags;
-    }
+    { dfa = compiled.dfa; num_tags = compiled.num_tags }
   in
   (gen_definition lexbuf compiled_basic cases error, compiled.dfa)
 

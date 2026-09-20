@@ -1371,13 +1371,15 @@ let%expect_test "as_bindings_num_mem_cells" =
     | _ -> assert false);
   [%expect {| mem_cells=0 |}];
   (* Or-pattern with different offsets: positions are known, so only the
-     discriminator needs cells (its canonical cell plus working registers) *)
+     discriminator needs a cell. Its write is delayed until the branch
+     reaches its final node, where the final operations set the canonical
+     cell directly: no working register *)
   let buf = Sedlexing.Utf8.from_string "abcdef" in
   (match%sedlex buf with
     | ("abc" as _x), "def" | "a", ("bcd" as _x), "ey" ->
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=2 |}]
+  [%expect {| mem_cells=1 |}]
 
 let%expect_test "as_bindings_multi_rule_mem_cells" =
   (* All rules in a match%sedlex share one pool of memory cells.
@@ -1835,6 +1837,43 @@ let%expect_test "fallback_keeps_submatches" =
     {|
     "abzcbwX" -> "abzc" x="a" y="z"
     "abzcbwc" -> "abzcbwc" x="a" y="w"
+    |}]
+
+(* Transition operations record the position before the character read, but
+   reading end of input does not advance: sub-matches that end where eof, or
+   either eof or a character, is read must get their end right. *)
+let%expect_test "submatch_end_before_eof_or_char" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        let buf = Sedlexing.Latin1.from_string s in
+        let r = lex buf in
+        Printf.printf "%-6S -> %S %s\n" s (Sedlexing.Latin1.lexeme buf) r)
+      inputs
+  in
+  (* eof or 'b' *)
+  run ["aa"; "aab"; "a"; "ab"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'a' as x), (eof | 'b') -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aa"   -> "aa" x="aa"
+    "aab"  -> "aab" x="aa"
+    "a"    -> "a" x="a"
+    "ab"   -> "ab" x="a"
+    |}];
+  (* eof after an optional tail *)
+  run ["aa"; "aac"; "aacc"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'a' as x), Star 'c', eof -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aa"   -> "aa" x="aa"
+    "aac"  -> "aac" x="aa"
+    "aacc" -> "aacc" x="aa"
     |}]
 
 (* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
