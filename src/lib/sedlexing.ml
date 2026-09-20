@@ -279,6 +279,9 @@ let __private__init_mem lexbuf n =
 
 let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
 
+let __private__set_mem_prev_pos lexbuf i =
+  lexbuf.__private__mem.(i) <- lexbuf.pos - 1
+
 let __private__set_mem_value lexbuf i v =
   assert (v >= 0);
   lexbuf.__private__mem.(i) <- -(v + 2)
