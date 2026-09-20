@@ -229,7 +229,9 @@ let op_dest = function
 
 (* Determinization (tagged subset construction, see the overview above) *)
 
-(* A memory cell, by index. *)
+(* Logical tags and memory cells, by index. A canonical cell has the number
+   of its tag. *)
+type tag = int
 type cell = int
 
 module TagMap = Map.Make (Int)
@@ -323,8 +325,9 @@ module Registers : sig
 
   val create : num_logical:int -> t
 
-  (* A fresh working register. *)
-  val alloc : t -> cell
+  (* A working register for [tag]: one it already used that is not in
+     [avoid], else a fresh one. Registers are never shared between tags. *)
+  val alloc : t -> tag:tag -> avoid:cell list -> cell
 
   (* As opposed to a canonical cell. *)
   val is_working : t -> cell -> bool
@@ -332,14 +335,26 @@ module Registers : sig
   (* Canonical and working cells. *)
   val count : t -> int
 end = struct
-  type t = { num_logical : int; mutable next_cell : int }
+  type t = {
+    num_logical : int;
+    mutable next_cell : int;
+    pools : (tag, cell list) Hashtbl.t; (* Registers allocated so far. *)
+  }
 
-  let create ~num_logical = { num_logical; next_cell = num_logical }
+  let create ~num_logical =
+    { num_logical; next_cell = num_logical; pools = Hashtbl.create 8 }
 
-  let alloc t =
-    let c = t.next_cell in
-    t.next_cell <- c + 1;
-    c
+  let alloc t ~tag ~avoid =
+    let pool =
+      match Hashtbl.find_opt t.pools tag with Some l -> l | None -> []
+    in
+    match List.find_opt (fun c -> not (List.mem c avoid)) pool with
+      | Some c -> c
+      | None ->
+          let c = t.next_cell in
+          t.next_cell <- c + 1;
+          Hashtbl.replace t.pools tag (c :: pool);
+          c
 
   let is_working t c = c >= t.num_logical
   let count t = t.next_cell
@@ -407,17 +422,30 @@ let add_state (tbl : state_table) (key : State_key.t) (configs : stored) : int =
 
 type ctx = { regs : Registers.t; rules : rule array; tbl : state_table }
 
-(* New state: each [Pending] write gets a fresh cell. Returns the stored
-   state and the Set operations of the transition reaching it. *)
+(* The cells [candidate] holds, which a new register must not reuse. *)
+let cells_in_use (candidate : candidate) : cell list =
+  List.concat
+    (List.map
+       (fun c ->
+         List.filter_map
+           (fun (_, a) -> match a with Cell c -> Some c | Pending _ -> None)
+           (TagMap.bindings c.tags))
+       candidate)
+
+(* New state: each [Pending] write gets a cell the candidate does not hold.
+   Returns the stored state and the Set operations of the transition
+   reaching it. *)
 let assign_cells (regs : Registers.t) (candidate : candidate) :
     stored * tag_op list =
+  let used = ref (cells_in_use candidate) in
   let assigned = Hashtbl.create 4 in
   let ops = ref [] in
   let cell_for_new tag w =
     match Hashtbl.find_opt assigned (tag, w) with
       | Some c -> c
       | None ->
-          let c = Registers.alloc regs in
+          let c = Registers.alloc regs ~tag ~avoid:!used in
+          used := c :: !used;
           Hashtbl.add assigned (tag, w) c;
           ops := op_of_write c w :: !ops;
           c
