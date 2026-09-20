@@ -849,8 +849,10 @@ let%expect_test "as binding: wrapping alternation, no static elimination" =
 (* Optimization 1: Element-length (Offset_from_tag)
    When neither prefix nor suffix length is known but the element itself
    has a fixed codepoint length, only 1 tag should be needed instead of 2.
-   Current: init_mem 1 (1 tag, end = tag + 1).
-   Goal: init_mem 1 — already optimal. *)
+   Current: init_mem 2 (1 tag, end = tag + 1; every tag costs its canonical
+   cell plus a working register, copied on accept).
+   Goal: init_mem 1 (an unambiguous tag written directly to its canonical
+   cell). *)
 let%expect_test "optim: element-length (Offset_from_tag)" =
   (match%sedlex_test buf with
     | Plus 'a', ('b' as x), Plus 'c' -> ignore x
@@ -1018,8 +1020,9 @@ let%expect_test "optim: discriminator elision" =
 (* Optimization 4: Intra-rule tag coalescing
    Tags with identical occurrence signatures should share one memory cell.
    Here x_end and y_start fire on the same transitions.
-   Current: init_mem 1 (x_start=0, x_end=y_start via Tag offset, y_end=lexeme_length).
-   Goal: init_mem 1 — already optimal. *)
+   Current: init_mem 2 (1 tag: x_start=0, x_end=y_start via Tag offset,
+   y_end=lexeme_length; canonical cell plus working register).
+   Goal: init_mem 1 (the tag written directly to its canonical cell). *)
 let%expect_test "optim: intra-rule tag coalescing" =
   (match%sedlex_test buf with
     | (Plus 'a' as x), (Plus 'b' as y) -> ignore (x, y)
@@ -1079,8 +1082,10 @@ let%expect_test "optim: intra-rule tag coalescing" =
    Non-interfering rules should reuse the same memory cells.
    Rule 0 and rule 1 never co-exist in the same DFA state (beyond state 0),
    so their tags can share cells.
-   Current: init_mem 4 (2 per rule: start + end tags for variable-length binding).
-   Goal: init_mem 2 (cells shared across non-interfering rules). *)
+   Current: init_mem 8 (2 tags per rule, start + end of the variable-length
+   binding, each with a canonical cell and a working register).
+   Goal: init_mem 2 (tags written directly to their canonical cells, and
+   cells shared across non-interfering rules). *)
 let%expect_test "optim: cross-rule cell sharing" =
   (match%sedlex_test buf with
     | Plus 'a', (Plus 'b' as x), Plus 'c' -> ignore x
@@ -1180,8 +1185,9 @@ let%expect_test "optim: cross-rule cell sharing" =
    a final state should be removed.
    Rule 0 has a binding on Plus 'b'; rule 1 does not.
    Both share the Plus 'a', Plus 'b' prefix in the DFA.
-   Current: init_mem 1, tag t0 set on shared prefix transitions
-   even when only rule 1 is reachable via 'd'.
+   Current: init_mem 2 (1 tag: canonical cell plus working register), the
+   tag set on shared prefix transitions even when only rule 1 is reachable
+   via 'd'.
    Goal: no tags on transitions leading exclusively to rule 1. *)
 let%expect_test "optim: dead tag elimination" =
   (match%sedlex_test buf with
@@ -1243,7 +1249,8 @@ let%expect_test "optim: dead tag elimination" =
 (* Optimization 7: Self-loop tag delay (Set_prev)
    Tags on a self-loop that also appear on all entering transitions
    should be delayed to exit transitions as Set_prev.
-   Current: init_mem 1, set_mem t0 on every 'a' iteration (O(n)).
+   Current: init_mem 2 (canonical cell plus working register), set_mem on
+   every 'a' iteration (O(n)).
    Goal: no set_mem on the self-loop, set_mem_prev on exit (O(1)). *)
 let%expect_test "optim: self-loop tag delay" =
   (match%sedlex_test buf with (Plus 'a' as x), Plus 'b' -> ignore x | _ -> ());
@@ -1357,7 +1364,8 @@ let%expect_test "optim: tag remapping after coalescing" =
    Opt at the end means the DFA can accept at two states (with or without
    the optional 'a'). When self-loop tag delay is implemented, the delayed
    tags (Set_prev) must survive mark/backtrack correctly.
-   Current: init_mem 1 (x: start=0, end=tag0; y: start=tag0, end=lexeme_length). *)
+   Current: init_mem 2 (1 tag, canonical cell plus working register; x:
+   start=0, end=tag0; y: start=tag0, end=lexeme_length). *)
 let%expect_test "optim: set_prev with backtracking" =
   (match%sedlex_test buf with
     | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) -> ignore (x, y)
