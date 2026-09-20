@@ -1839,6 +1839,50 @@ let%expect_test "fallback_keeps_submatches" =
     "abzcbwc" -> "abzcbwc" x="a" y="w"
     |}]
 
+(* Tags of different rules share memory cells when their lifetimes allow.
+   Falling back from rule 1 to rule 0 must still give rule 0's sub-match. *)
+let%expect_test "submatches_with_shared_cells" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  List.iter
+    (fun s ->
+      let buf = Sedlexing.Latin1.from_string s in
+      let r =
+        match%sedlex buf with
+          | (Plus 'a' as x), Plus 'b' -> "rule 0 x=" ^ sub x
+          | Plus 'a', Plus 'b', (Plus 'c' as y), 'd' -> "rule 1 y=" ^ sub y
+          | (Plus 'e' as z), 'f' -> "rule 2 z=" ^ sub z
+          | _ -> "nomatch"
+      in
+      Printf.printf "%-9S -> %S %s\n" s (Sedlexing.Latin1.lexeme buf) r)
+    ["aabb"; "aabbccd"; "aabbccX"; "eef"];
+  [%expect
+    {|
+    "aabb"    -> "aabb" rule 0 x="aa"
+    "aabbccd" -> "aabbccd" rule 1 y="cc"
+    "aabbccX" -> "aabb" rule 0 x="aa"
+    "eef"     -> "eef" rule 2 z="ee"
+    |}]
+
+(* A path still in x reaches the final node with the end of x not recorded
+   yet, while a path already in y holds its own value for it. *)
+let%expect_test "submatch_set_on_accept_while_held" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  List.iter
+    (fun s ->
+      let buf = Sedlexing.Latin1.from_string s in
+      match%sedlex buf with
+        | (Star 'a' .. 'c' as x), (Star ('a' .. 'b', 'c' .. 'd') as y) ->
+            Printf.printf "%-8S -> x=%s y=%s\n" s (sub x) (sub y)
+        | _ -> print_endline "nomatch")
+    ["cbdbc"; "cbd"; "acbc"; "bc"];
+  [%expect
+    {|
+    "cbdbc"  -> x="c" y="bdbc"
+    "cbd"    -> x="c" y="bd"
+    "acbc"   -> x="acbc" y=""
+    "bc"     -> x="bc" y=""
+    |}]
+
 (* Transition operations record the position before the character read, but
    reading end of input does not advance: sub-matches that end where eof, or
    either eof or a character, is read must get their end right. *)
