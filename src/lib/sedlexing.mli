@@ -213,16 +213,13 @@ val start : lexbuf -> unit
 val next : lexbuf -> Uchar.t option
 
 (** [mark lexbuf i] stores the integer [i] in the internal slot. The backtrack
-    position is set to the current position. If the lexbuf has tagged DFA memory
-    cells (from [as] bindings), the current cell values are snapshotted so they
-    can be restored by [backtrack]. *)
+    position is set to the current position. *)
 val mark : lexbuf -> int -> unit
 
 (** [backtrack lexbuf] returns the value stored in the internal slot of the
     buffer, and performs backtracking (the current position is set to the value
-    of the backtrack position). If the lexbuf has tagged DFA memory cells, they
-    are restored to the values saved by the last [mark] call, so that sub-match
-    positions reflect the last accepting state. *)
+    of the backtrack position). Memory cells are left alone: those a rule's
+    action reads are only written just before [mark]. *)
 val backtrack : lexbuf -> int
 
 (** [__private__next_int lexbuf] extracts the next code point from the lexer

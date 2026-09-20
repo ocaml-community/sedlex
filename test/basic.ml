@@ -1789,6 +1789,54 @@ let%expect_test "rep_nullable_body" =
         | _ -> "nomatch");
   [%expect {| "bb" -> x="" |}]
 
+(* Falling back after a longer match failed must give the sub-matches of
+   the last accepting state, though [Sedlexing.backtrack] restores no cell.
+   Each pattern accepts, goes on with a longer alternative that records the
+   same sub-match again, then fails (first input) or succeeds (second). *)
+let%expect_test "fallback_keeps_submatches" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        let buf = Sedlexing.Latin1.from_string s in
+        let r = lex buf in
+        Printf.printf "%-9S -> %S %s\n" s (Sedlexing.Latin1.lexeme buf) r)
+      inputs
+  in
+  run ["azdcwX"; "azdcwd"; "adX"] (fun buf ->
+      match%sedlex buf with
+        | ("a" | "azdc"), (Star ('z' | 'w') as x), 'd' -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "azdcwX"  -> "azd" x="z"
+    "azdcwd"  -> "azdcwd" x="w"
+    "adX"     -> "ad" x=""
+    |}];
+  (* same with an or-pattern: the longer branch must not leak into the
+     discriminator either *)
+  run ["azdcwX"; "azdcwwe"] (fun buf ->
+      match%sedlex buf with
+        | "a", (Star 'z' as x), 'd' | "azdc", (Plus 'w' as x), 'e' ->
+            "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "azdcwX"  -> "azd" x="z"
+    "azdcwwe" -> "azdcwwe" x="ww"
+    |}];
+  (* two sub-matches, only the second one recorded again *)
+  run ["abzcbwX"; "abzcbwc"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'a' as x), ("b" | "bzcb"), (Star ('z' | 'w') as y), 'c' ->
+            "x=" ^ sub x ^ " y=" ^ sub y
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "abzcbwX" -> "abzc" x="a" y="z"
+    "abzcbwc" -> "abzcbwc" x="a" y="w"
+    |}]
+
 (* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
    accept it: it normalizes to the bare Chars node. *)
 let%expect_test "rep_1_1_char_ops" =
