@@ -1839,6 +1839,43 @@ let%expect_test "fallback_keeps_submatches" =
     "abzcbwc" -> "abzcbwc" x="a" y="w"
     |}]
 
+(* Transition operations record the position before the character read, but
+   reading end of input does not advance: sub-matches that end where eof, or
+   either eof or a character, is read must get their end right. *)
+let%expect_test "submatch_end_before_eof_or_char" =
+  let sub x = Printf.sprintf "%S" (Sedlexing.Latin1.of_submatch x) in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        let buf = Sedlexing.Latin1.from_string s in
+        let r = lex buf in
+        Printf.printf "%-6S -> %S %s\n" s (Sedlexing.Latin1.lexeme buf) r)
+      inputs
+  in
+  (* eof or 'b' *)
+  run ["aa"; "aab"; "a"; "ab"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'a' as x), (eof | 'b') -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aa"   -> "aa" x="aa"
+    "aab"  -> "aab" x="aa"
+    "a"    -> "a" x="a"
+    "ab"   -> "ab" x="a"
+    |}];
+  (* eof after an optional tail *)
+  run ["aa"; "aac"; "aacc"] (fun buf ->
+      match%sedlex buf with
+        | (Plus 'a' as x), Star 'c', eof -> "x=" ^ sub x
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aa"   -> "aa" x="aa"
+    "aac"  -> "aac" x="aa"
+    "aacc" -> "aacc" x="aa"
+    |}]
+
 (* Rep (_, 1 .. 1) is a single-character regexp, so Compl/Sub/Intersect
    accept it: it normalizes to the bare Chars node. *)
 let%expect_test "rep_1_1_char_ops" =
