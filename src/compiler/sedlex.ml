@@ -50,15 +50,19 @@
         registers. The operations of a
         transition form a parallel move, which the code generator
         implements by let-binding the sources it overwrites.
-      - Canonical cells (cell = tag id) are what the generated bindings
-        read. Only the final operations of accepting states write them,
-        from the accepting path's registers and delayed writes, just
-        before [Sedlexing.mark]; working registers live above them. So the
-        cells of the marked rule survive a failed longer match, and
+      - Each tag has a canonical cell, which the generated bindings read.
+        The final operations of accepting states fill it from the accepting
+        path's register or delayed write, just before [Sedlexing.mark].
+      - Register allocation then maps registers and canonical cells onto
+        memory cells: two of them can share one unless one is written while
+        the other is live, where a failure reads the canonical cells of the
+        rule marked last. Registers mostly end up in the canonical cell of
+        their tag, which removes the final copies, and rules share cells.
+        Writes to cells that are not live afterwards are dropped.
+        So the cells of the marked rule survive a failed longer match, and
         [Sedlexing.mark] and [Sedlexing.backtrack] save and restore nothing.
 
-   Future work (see #175): register optimization as in Trofimovich 2017
-   (section 7), DFA minimization.
+   Future work: DFA minimization.
 *)
 
 module Cset = Cset
@@ -229,11 +233,13 @@ let op_dest = function
 
 (* Determinization (tagged subset construction, see the overview above) *)
 
-(* A memory cell, by index. *)
+(* Logical tags and memory cells, by index. *)
+type tag = int
 type cell = int
 
 module TagMap = Map.Make (Int)
 module CellMap = Map.Make (Int)
+module IntSet = Set.Make (Int)
 
 (* What a transition writes: the current position or a discriminator. *)
 type write = Position | Value of int
@@ -323,8 +329,11 @@ module Registers : sig
 
   val create : num_logical:int -> t
 
-  (* A fresh working register. *)
-  val alloc : t -> cell
+  (* A fresh working register for [tag]. *)
+  val alloc : t -> tag:tag -> cell
+
+  (* The tag a cell holds: its own number for a canonical cell. *)
+  val tag_of : t -> cell -> tag
 
   (* As opposed to a canonical cell. *)
   val is_working : t -> cell -> bool
@@ -332,15 +341,22 @@ module Registers : sig
   (* Canonical and working cells. *)
   val count : t -> int
 end = struct
-  type t = { num_logical : int; mutable next_cell : int }
+  type t = {
+    num_logical : int;
+    mutable next_cell : int;
+    owner : (cell, tag) Hashtbl.t;
+  }
 
-  let create ~num_logical = { num_logical; next_cell = num_logical }
+  let create ~num_logical =
+    { num_logical; next_cell = num_logical; owner = Hashtbl.create 8 }
 
-  let alloc t =
+  let alloc t ~tag =
     let c = t.next_cell in
     t.next_cell <- c + 1;
+    Hashtbl.add t.owner c tag;
     c
 
+  let tag_of t c = if c < t.num_logical then c else Hashtbl.find t.owner c
   let is_working t c = c >= t.num_logical
   let count t = t.next_cell
 end
@@ -417,7 +433,7 @@ let assign_cells (regs : Registers.t) (candidate : candidate) :
     match Hashtbl.find_opt assigned (tag, w) with
       | Some c -> c
       | None ->
-          let c = Registers.alloc regs in
+          let c = Registers.alloc regs ~tag in
           Hashtbl.add assigned (tag, w) c;
           ops := op_of_write c w :: !ops;
           c
@@ -546,6 +562,253 @@ and transitions (ctx : ctx) (configs : stored) :
       (cset, num, ops))
     pieces
 
+(* === Register allocation ===
+
+   The construction gives every write a fresh register and copies the
+   accepting path's registers into canonical cells. This pass maps all of
+   them, canonical cells included, onto as few memory cells as it can, and
+   makes most copies trivial. Two cells can share a memory cell unless one
+   is written while the other is live. *)
+
+(* The tags carried by the nodes of [rule]'s NFA. *)
+let tags_of_rule (rule : rule) : tag list =
+  let visited = Hashtbl.create 16 in
+  let tags = ref [] in
+  let rec visit (node : node) =
+    if not (Hashtbl.mem visited node.id) then (
+      Hashtbl.add visited node.id ();
+      (match node.tag with
+        | Some op -> tags := op_dest op :: !tags
+        | None -> ());
+      List.iter visit node.eps;
+      List.iter (fun (_, n) -> visit n) node.trans)
+  in
+  visit rule.entry;
+  !tags
+
+let defs (ops : tag_op list) : IntSet.t = IntSet.of_list (List.map op_dest ops)
+
+let uses (ops : tag_op list) : IntSet.t =
+  List.fold_left
+    (fun acc op ->
+      match op with Copy { src; _ } -> IntSet.add src acc | _ -> acc)
+    IntSet.empty ops
+
+(* Iterates [step], which reports whether it changed anything. *)
+let rec fixpoint (step : unit -> bool) : unit = if step () then fixpoint step
+
+(* [marks.(s)]: the rules that may be marked when the match fails in state
+   [s], i.e. those with an accepting state from which [s] is reachable
+   through non-accepting states. *)
+let marks (dfa : dfa) : IntSet.t array =
+  let marks =
+    Array.map
+      (fun st ->
+        match st.accept with
+          | Some a -> IntSet.singleton a.rule
+          | None -> IntSet.empty)
+      dfa
+  in
+  fixpoint (fun () ->
+      let changed = ref false in
+      Array.iteri
+        (fun s st ->
+          Array.iter
+            (fun (_, t, _) ->
+              if dfa.(t).accept = None then (
+                let m = IntSet.union marks.(t) marks.(s) in
+                if not (IntSet.equal m marks.(t)) then (
+                  marks.(t) <- m;
+                  changed := true)))
+            st.trans)
+        dfa;
+      !changed);
+  marks
+
+(* Liveness. [mid.(s)] is what is live in state [s] once its final
+   operations and its mark are done: what a failure there reads, the
+   canonical cells of the rules that may be marked, plus what each outgoing
+   transition needs. [live_in] is what is live on entering a state. An
+   operation list is a parallel move: it reads before it writes. *)
+type liveness = { mid : IntSet.t array; live_in : int -> IntSet.t }
+
+let liveness (dfa : dfa) (rules : rule array) : liveness =
+  let canonical = Array.map (fun r -> IntSet.of_list (tags_of_rule r)) rules in
+  let mid =
+    Array.map
+      (fun m ->
+        IntSet.fold (fun r acc -> IntSet.union canonical.(r) acc) m IntSet.empty)
+      (marks dfa)
+  in
+  let before ops after =
+    IntSet.union (uses ops) (IntSet.diff after (defs ops))
+  in
+  let live_in s =
+    match dfa.(s).accept with
+      | None -> mid.(s)
+      | Some a -> before a.final_ops mid.(s)
+  in
+  fixpoint (fun () ->
+      let changed = ref false in
+      Array.iteri
+        (fun s st ->
+          let live =
+            Array.fold_left
+              (fun acc (_, t, ops) -> IntSet.union acc (before ops (live_in t)))
+              mid.(s) st.trans
+          in
+          if not (IntSet.equal live mid.(s)) then (
+            mid.(s) <- live;
+            changed := true))
+        dfa;
+      !changed);
+  { mid; live_in }
+
+(* Drops the writes to cells that are not live afterwards, e.g. those of a
+   rule that a higher-priority one always beats. Repeats until none is left:
+   dropping a copy may make its source dead. *)
+let rec drop_dead_writes (rules : rule array) (dfa : dfa) : dfa =
+  let live = liveness dfa rules in
+  let dropped = ref false in
+  let keep after =
+    List.filter (fun op ->
+        let live = IntSet.mem (op_dest op) after in
+        if not live then dropped := true;
+        live)
+  in
+  let dfa =
+    Array.mapi
+      (fun s st ->
+        {
+          trans =
+            Array.map
+              (fun (c, t, ops) -> (c, t, keep (live.live_in t) ops))
+              st.trans;
+          accept =
+            Option.map
+              (fun a -> { a with final_ops = keep live.mid.(s) a.final_ops })
+              st.accept;
+        })
+      dfa
+  in
+  if !dropped then drop_dead_writes rules dfa else dfa
+
+(* [interference dfa live n] tells, for each of the [n] cells, the cells it
+   cannot share a memory cell with: a written cell and everything live after
+   the write, except the source it is a copy of; and the cells written by
+   one operation list. *)
+let interference (dfa : dfa) (live : liveness) (n : int) : IntSet.t array =
+  let adj = Array.make n IntSet.empty in
+  let edge a b =
+    if a <> b then (
+      adj.(a) <- IntSet.add b adj.(a);
+      adj.(b) <- IntSet.add a adj.(b))
+  in
+  let note ops after =
+    let written = defs ops in
+    List.iter
+      (fun op ->
+        let dst = op_dest op in
+        let src = match op with Copy { src; _ } -> src | _ -> -1 in
+        IntSet.iter (fun x -> if x <> src then edge dst x) after;
+        IntSet.iter (edge dst) written)
+      ops
+  in
+  Array.iteri
+    (fun s st ->
+      (match st.accept with
+        | Some a -> note a.final_ops live.mid.(s)
+        | None -> ());
+      Array.iter (fun (_, t, ops) -> note ops (live.live_in t)) st.trans)
+    dfa;
+  adj
+
+(* [allocate ctx dfa] returns the memory cell of each cell and the number of
+   memory cells. Cells that do not interfere are first merged where it
+   removes an operation: a register with the canonical cell of its tag
+   (writes then go straight to the cell the bindings read), and the two
+   sides of a copy. Classes are then colored greedily, canonical ones
+   first. *)
+let allocate (ctx : ctx) (dfa : dfa) : cell array * int =
+  let n = Registers.count ctx.regs in
+  let adj = interference dfa (liveness dfa ctx.rules) n in
+  let root = Array.init n (fun c -> c) in
+  let members = Array.init n (fun c -> [c]) in
+  let interfere a b =
+    List.exists
+      (fun x -> List.exists (fun y -> IntSet.mem y adj.(x)) members.(b))
+      members.(a)
+  in
+  let merge a b =
+    let a = root.(a) and b = root.(b) in
+    if a <> b && not (interfere a b) then (
+      let a, b = (min a b, max a b) in
+      List.iter (fun x -> root.(x) <- a) members.(b);
+      members.(a) <- members.(a) @ members.(b);
+      members.(b) <- [])
+  in
+  for c = 0 to n - 1 do
+    merge c (Registers.tag_of ctx.regs c)
+  done;
+  let merge_copies =
+    List.iter (function Copy { dst; src } -> merge dst src | _ -> ())
+  in
+  Array.iter
+    (fun st ->
+      Array.iter (fun (_, _, ops) -> merge_copies ops) st.trans;
+      Option.iter (fun a -> merge_copies a.final_ops) st.accept)
+    dfa;
+  (* Roots in increasing order: a class with a canonical cell has it as its
+     root, so canonical classes come first. *)
+  let color = Array.make n (-1) in
+  let count = ref 0 in
+  for c = 0 to n - 1 do
+    if root.(c) = c then (
+      let taken =
+        List.fold_left
+          (fun acc x ->
+            IntSet.fold
+              (fun y acc ->
+                let k = color.(root.(y)) in
+                if k >= 0 then IntSet.add k acc else acc)
+              adj.(x) acc)
+          IntSet.empty members.(c)
+      in
+      let rec first k = if IntSet.mem k taken then first (k + 1) else k in
+      color.(c) <- first 0;
+      count := max !count (color.(c) + 1))
+  done;
+  (Array.map (fun r -> color.(r)) root, !count)
+
+(* Applies the allocation to an operation list, dropping the copies it makes
+   trivial. It must keep the list a parallel move. *)
+let rename_ops (cell_map : cell array) (ops : tag_op list) : tag_op list =
+  let ops =
+    List.filter_map
+      (fun op ->
+        match op with
+          | Set_position { dst } -> Some (Set_position { dst = cell_map.(dst) })
+          | Set_value { dst; value } ->
+              Some (Set_value { dst = cell_map.(dst); value })
+          | Copy { dst; src } ->
+              let dst = cell_map.(dst) and src = cell_map.(src) in
+              if dst = src then None else Some (Copy { dst; src }))
+      ops
+  in
+  let dsts = List.map op_dest ops in
+  assert (List.length (List.sort_uniq compare dsts) = List.length dsts);
+  ops
+
+let rename_state (cell_map : cell array) (s : dfa_state) : dfa_state =
+  {
+    trans =
+      Array.map (fun (c, t, ops) -> (c, t, rename_ops cell_map ops)) s.trans;
+    accept =
+      Option.map
+        (fun a -> { a with final_ops = rename_ops cell_map a.final_ops })
+        s.accept;
+  }
+
 (* See the implementation overview at the top of this file. *)
 let compile (rs : regexp array) : compiled =
   let rules = Array.map compile_re rs in
@@ -565,10 +828,13 @@ let compile (rs : regexp array) : compiled =
   assert (num0 = 0);
   (* The writes of the initial closure are delayed like any other. *)
   assert (ops = []);
+  let dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs) in
+  let dfa = drop_dead_writes ctx.rules dfa in
+  let cell_map, num_tags = allocate ctx dfa in
   {
-    dfa = Array.init ctx.tbl.n_states (Hashtbl.find ctx.tbl.defs);
-    num_tags = Registers.count ctx.regs;
-    cell_of_tag = Array.init !cur_tag (fun tag -> tag);
+    dfa = Array.map (rename_state cell_map) dfa;
+    num_tags;
+    cell_of_tag = Array.init !cur_tag (fun tag -> cell_map.(tag));
   }
 
 (* High-level compilation from IR.
