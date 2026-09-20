@@ -60,18 +60,18 @@ let%expect_test "realistic: multi-token lexer" =
       state9 -> state10 [label="';'"];
       state10 [label="10\n[rule 2]", shape=doublecircle];
       state11 [label="11"];
-      state11 -> state12 [label="'=' {t2}"];
+      state11 -> state12 [label="'=' {t1}"];
       state11 -> state11 [label="'A'-'Z'"];
       state12 [label="12"];
       state12 -> state13 [label="'0'-'9'"];
-      state13 [label="13\n[rule 1]\n{t1<-t2}", shape=doublecircle];
+      state13 [label="13\n[rule 1]", shape=doublecircle];
       state13 -> state13 [label="'0'-'9'"];
       state14 [label="14\n[rule 4]", shape=doublecircle];
-      state14 -> state15 [label="'.' {t3}"];
+      state14 -> state15 [label="'.' {t0}"];
       state14 -> state14 [label="'a'-'z'"];
       state15 [label="15"];
       state15 -> state16 [label="'a'-'z'"];
-      state16 [label="16\n[rule 0]\n{t0<-t3}", shape=doublecircle];
+      state16 [label="16\n[rule 0]", shape=doublecircle];
       state16 -> state16 [label="'a'-'z'"];
     }
     CODE:
@@ -121,7 +121,7 @@ let%expect_test "realistic: multi-token lexer" =
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_11 buf =
       match __sedlex_partition_9 (Sedlexing.__private__next_int buf) with
-      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 2; __sedlex_state_12 buf)
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_12 buf)
       | 1 -> __sedlex_state_11 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_12 buf =
@@ -129,7 +129,6 @@ let%expect_test "realistic: multi-token lexer" =
       | 0 -> __sedlex_state_13 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_13 buf =
-      Sedlexing.__private__copy_mem buf 1 2;
       Sedlexing.mark buf 1;
       (match __sedlex_partition_6 (Sedlexing.__private__next_int buf) with
        | 0 -> __sedlex_state_13 buf
@@ -138,7 +137,7 @@ let%expect_test "realistic: multi-token lexer" =
       Sedlexing.mark buf 4;
       (match __sedlex_partition_10 (Sedlexing.__private__next_int buf) with
        | 0 ->
-           (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_15 buf)
+           (Sedlexing.__private__set_mem_prev_pos buf 0; __sedlex_state_15 buf)
        | 1 -> __sedlex_state_14 buf
        | _ -> Sedlexing.backtrack buf)
     and __sedlex_state_15 buf =
@@ -146,13 +145,12 @@ let%expect_test "realistic: multi-token lexer" =
       | 0 -> __sedlex_state_16 buf
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_16 buf =
-      Sedlexing.__private__copy_mem buf 0 3;
       Sedlexing.mark buf 0;
       (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
        | 0 -> __sedlex_state_16 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 4;
+          Sedlexing.__private__init_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
