@@ -1480,9 +1480,9 @@ let%expect_test "as_bindings_nested_sedlex" =
   [%expect {| mem_cells=0 |}]
 
 (* ------------------------------------------------------------------------ *)
-(* Regression tests pinned to the current behavior. A test marked KNOWN BUG
-   records what the generated code does today; the comment above each case
-   states the expected result, and the fix flips the expect block. *)
+(* Regression tests. They were first pinned to the behavior of the time and
+   flipped by the fixes; the comment above each case says what used to go
+   wrong. *)
 
 (* Regression (#199, repetition loop before a capture): the epsilon closure
    used to re-fire the capture's start tag on every iteration of a preceding
@@ -1552,10 +1552,10 @@ let%expect_test "capture_before_eof" =
   lex (Sedlexing.Latin1.from_string "xa");
   [%expect {| x="x" |}]
 
-(* KNOWN BUG (eof and rule priority): an earlier rule matching [s] must beat a
-   later rule matching [s, eof] — same lexeme length, so declaration order
-   breaks the tie — but eof's zero-width accept is reached last and overrides
-   the earlier mark. *)
+(* Regression (eof and rule priority): an earlier rule matching [s] must beat
+   a later rule matching [s, eof] — same lexeme length, so declaration order
+   breaks the tie. The zero-width accept of eof, reached last, used to
+   override the earlier mark. *)
 let%expect_test "eof_rule_priority" =
   let inputs = ["cc"; "c"; ""; "a"] in
   let run lex =
@@ -1574,8 +1574,8 @@ let%expect_test "eof_rule_priority" =
   run lex;
   [%expect
     {|
-    "cc" -> rule1
-    "c"  -> rule1
+    "cc" -> rule0
+    "c"  -> rule0
     ""   -> rule1
     "a"  -> rule1
     |}];

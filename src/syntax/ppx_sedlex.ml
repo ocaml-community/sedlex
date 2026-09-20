@@ -289,19 +289,18 @@ let gen_tag_ops ~position lexbuf (ops : Sedlex.tag_op list) cont =
 (* [call_state lexbuf auto state] generates the expression that transitions
    into DFA [state]. If the state has no outgoing transitions (a sink), it
    executes the state's final tag operations and returns the accepting rule
-   index directly; otherwise it emits a function call to the generated state
-   function. *)
+   index directly, or backtracks if the state accepts nothing; otherwise it
+   emits a function call to the generated state function. *)
 let call_state lexbuf (auto : Sedlex.dfa) state =
+  let loc = default_loc in
   let { Sedlex.trans; accept } = auto.(state) in
   if Array.length trans = 0 then (
     match accept with
       | Some { Sedlex.rule; final_ops } ->
-          gen_tag_ops ~position:Current lexbuf final_ops
-            (eint ~loc:default_loc rule)
+          gen_tag_ops ~position:Current lexbuf final_ops (eint ~loc rule)
       | None ->
-          (* A non-accepting sink would need a transition on an empty
-             character set, which [ir_of_pattern] rejects. *)
-          assert false)
+          (* Nothing can match from here, e.g. after [eof] in [eof, eof]. *)
+          [%expr Sedlexing.backtrack [%e lexbuf]])
   else appfun (state_fun state) [lexbuf]
 
 (* [gen_state (lexbuf_name, lexbuf) auto i {trans; accept}] generates the
@@ -314,7 +313,8 @@ let call_state lexbuf (auto : Sedlex.dfa) state =
    3. Each transition arm executes its tag operations then calls the target
       state function (or returns the rule index for sink states).
    4. The default arm calls [backtrack] to return the last accepted rule.
-   Returns [] for accepting states with no outgoing transitions (sinks). *)
+   Returns [] for states with no outgoing transitions (sinks), which
+   [call_state] inlines. *)
 let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     { Sedlex.trans; accept } =
   let loc = default_loc in
@@ -357,8 +357,8 @@ let gen_state (lexbuf_name, lexbuf) (auto : Sedlex.dfa) i
     ]
   in
   match accept with
+    | _ when Array.length trans = 0 -> []
     | None -> ret (body ())
-    | Some _ when Array.length trans = 0 -> []
     | Some { Sedlex.rule; final_ops } ->
         ret
           (gen_tag_ops ~position:Current lexbuf final_ops
