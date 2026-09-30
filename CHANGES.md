@@ -8,7 +8,8 @@
   under `Star`, `Plus`, `Opt`, `Rep`, `Compl`, `Sub` or `Intersect`. Submatches
   are chosen leftmost-greedy within the longest match, using a tagged DFA; a
   boundary at a fixed offset from the start or end of the lexeme costs nothing
-  at runtime (#177, #178, #204, #208, #209)
+  at runtime, and a nested capture shares the tags of the capture inside it
+  (#177, #178, #193, #204, #208, #209)
 - Nested `let .. in` definitions of `[%sedlex.regexp?]` (#176)
 - Unicode 18.0.0 (#205)
 - `Compl`, `Sub` and `Intersect` accept `Rep (c, 1 .. 1)` (#201)

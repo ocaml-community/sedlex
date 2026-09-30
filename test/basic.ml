@@ -1330,6 +1330,50 @@ let%expect_test "as_bindings" =
     | _ -> assert false);
   [%expect {| x=a y=ba |}]
 
+(* Nested captures: the outer binding reads the inner one's tags when its
+   boundaries are a fixed offset away, in every combination of which side
+   is anchored. *)
+let%expect_test "as_bindings_nested" =
+  let sub = Sedlexing.Latin1.of_submatch in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        Printf.printf "%-9S -> %s\n" s (lex (Sedlexing.Latin1.from_string s)))
+      inputs
+  in
+  run ["aa0x1fzz"; "a0xff0z"] (fun buf ->
+      match%sedlex buf with
+        | ( Plus 'a',
+            (("0x", (Plus ('0' .. '9' | 'a' .. 'f') as hex)) as full),
+            Plus 'z' ) ->
+            Printf.sprintf "hex=%S full=%S" (sub hex) (sub full)
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aa0x1fzz" -> hex="1f" full="0x1f"
+    "a0xff0z" -> hex="ff0" full="0xff0"
+    |}];
+  run ["axxyyz"; "axyz"] (fun buf ->
+      match%sedlex buf with
+        | Plus 'a', (((Plus 'x' as inner), Plus 'y', 'z') as outer) ->
+            Printf.sprintf "inner=%S outer=%S" (sub inner) (sub outer)
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "axxyyz"  -> inner="xx" outer="xxyyz"
+    "axyz"    -> inner="x" outer="xyz"
+    |}];
+  run ["axxyyzz"; "axyz"] (fun buf ->
+      match%sedlex buf with
+        | Plus 'a', ((Plus 'x', (Plus 'y' as inner)) as outer), Plus 'z' ->
+            Printf.sprintf "inner=%S outer=%S" (sub inner) (sub outer)
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "axxyyzz" -> inner="yy" outer="xxyy"
+    "axyz"    -> inner="y" outer="xy"
+    |}]
+
 let num_mem buf = Sedlexing.__private__num_mem_cells buf
 
 let%expect_test "as_bindings_num_mem_cells" =

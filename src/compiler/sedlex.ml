@@ -682,35 +682,45 @@ let add_discriminators (branches : (regexp * compiled_binding list) list) =
     in
     (fold_alt wrapped, List.concat_map snd wrapped))
 
-(* [lower ir ~left ~right] converts an IR pattern to a low-level regexp
-   and a list of compiled bindings. [left] and [right] are the known
-   position contexts at the start and end of this pattern element. *)
-let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
+(* Positions of a pattern's start and end that an enclosing capture may
+   reuse: they come from the tags of inner captures, shifted across
+   fixed-length neighbours. *)
+type anchors = pos_expr option * pos_expr option
+
+let no_anchors : anchors = (None, None)
+let first_known l = List.find_map Fun.id l
+let add_len a b = match (a, b) with Some a, Some b -> Some (a + b) | _ -> None
+
+(* [lower ir ~left ~right] converts an IR pattern to a low-level regexp, a
+   list of compiled bindings and the pattern's anchors. [left] and [right]
+   are the known position contexts at the start and end of this pattern
+   element. *)
+let rec lower ~left ~right (ir : Ir.t) :
+    regexp * compiled_binding list * anchors =
   match ir with
-    | Ir.Chars cset -> (chars cset, [])
-    | Ir.Eps -> (eps, [])
+    | Ir.Chars cset -> (chars cset, [], no_anchors)
+    | Ir.Eps -> (eps, [], no_anchors)
     | Ir.Star inner ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (rep r, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (rep r, [], no_anchors)
     | Ir.Plus inner ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (plus r, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (plus r, [], no_anchors)
     | Ir.Rep (inner, n, m) ->
-        let r, _ = lower ~left:None ~right:None inner in
-        (repeat r n m, [])
+        let r, _, _ = lower ~left:None ~right:None inner in
+        (repeat r n m, [], no_anchors)
     | Ir.Capture (name, inner) ->
-        (* Named capture — try to derive each boundary from [left]/[right]
-           context or [fixed_length]; allocate tags only for boundaries that
-           cannot be computed statically. Best case: 0 tags. Worst case: 2. *)
-        let r, tags = lower ~left ~right inner in
+        (* Named capture — derive each boundary from the [left]/[right]
+           context, [fixed_length] or an inner anchor; allocate tags only for
+           boundaries that cannot be computed otherwise. Best case: 0 tags.
+           Worst case: 2. *)
+        let r, tags, (start_anchor, end_anchor) = lower ~left ~right inner in
         let elem_len = Ir.fixed_length inner in
         let known_start =
-          match left with Some _ -> left | None -> retreat right elem_len
+          first_known [left; retreat right elem_len; start_anchor]
         in
         let known_end =
-          match right with
-            | Some _ -> right
-            | None -> advance known_start elem_len
+          first_known [right; advance known_start elem_len; end_anchor]
         in
         let st, et, r =
           match (known_start, known_end) with
@@ -734,50 +744,72 @@ let rec lower ~left ~right (ir : Ir.t) : regexp * compiled_binding list =
                         Tag { tag = end_tag; offset = 0 },
                         wrapped ))
         in
-        (r, { name; start_pos = st; end_pos = et; disc = [] } :: tags)
+        ( r,
+          { name; start_pos = st; end_pos = et; disc = [] } :: tags,
+          (Some st, Some et) )
     | Ir.Alt branches ->
-        let lowered = List.map (lower ~left ~right) branches in
-        add_discriminators lowered
+        let lowered =
+          List.map
+            (fun b ->
+              let r, tags, _ = lower ~left ~right b in
+              (r, tags))
+            branches
+        in
+        let r, tags = add_discriminators lowered in
+        (r, tags, no_anchors)
     | Ir.Seq elems ->
         (* Sequence — propagate left/right position contexts through elements.
            Right positions are computed right-to-left; left positions are
-           updated left-to-right after lowering each element. *)
+           updated left-to-right after lowering each element, falling back on
+           the element's end anchor when [advance] cannot tell. *)
+        let lengths = List.map Ir.fixed_length elems in
         let _, rights =
           List.fold_right
-            (fun e (acc, l) -> (retreat acc (Ir.fixed_length e), acc :: l))
-            elems (right, [])
-        in
-        (* Fallback for the left context: if [advance] returns [None]
-           (because the current left is unknown or the element has
-           variable length), but the element was a [Capture] whose
-           end position is a [Tag], we can use that tag as the [left]
-           anchor for the next element — it records a runtime position.
-           [Start_plus]/[End_minus] endpoints don't help here: they
-           are already factored into [advance], so if [advance] failed,
-           they have nothing more to offer. *)
-        let left_from_end_tag ir tags' =
-          match ir with
-            | Ir.Capture _ -> (
-                match tags' with
-                  | { end_pos = Tag _ as et; _ } :: _ -> Some et
-                  | _ -> None)
-            | _ -> None
+            (fun len (acc, l) -> (retreat acc len, acc :: l))
+            lengths (right, [])
         in
         (* [seq] is function composition and [eps] its identity, so the
            fold needs no special case for the first element. *)
-        let _, r_acc, tags_acc =
+        let _, r_acc, tags_acc, anchors =
           List.fold_left2
-            (fun (cur_left, r_acc, tags_acc) e right ->
-              let r', tags' = lower ~left:cur_left ~right e in
-              let new_left =
-                match advance cur_left (Ir.fixed_length e) with
-                  | Some _ as s -> s
-                  | None -> left_from_end_tag e tags'
+            (fun (cur_left, r_acc, tags_acc, anchors) e right ->
+              let r', tags', ((_, end_anchor) as a) =
+                lower ~left:cur_left ~right e
               in
-              (new_left, seq r_acc r', tags_acc @ tags'))
-            (left, eps, []) elems rights
+              let len = Ir.fixed_length e in
+              let new_left = first_known [advance cur_left len; end_anchor] in
+              (new_left, seq r_acc r', tags_acc @ tags', (a, len) :: anchors))
+            (left, eps, [], []) elems rights
         in
-        (r_acc, tags_acc)
+        (* The sequence's own anchors: an element's anchor shifted across the
+           fixed-length elements before it (for the start) or after it (for
+           the end). [anchors] lists the elements right-to-left. *)
+        let from_end =
+          let rec go after = function
+            | [] -> None
+            | ((sa, ea), len) :: rest -> (
+                match
+                  first_known [advance ea after; advance sa (add_len len after)]
+                with
+                  | Some _ as p -> p
+                  | None -> go (add_len len after) rest)
+          in
+          go (Some 0) anchors
+        in
+        let from_start =
+          let rec go before = function
+            | [] -> None
+            | ((sa, ea), len) :: rest -> (
+                match
+                  first_known
+                    [retreat sa before; retreat ea (add_len len before)]
+                with
+                  | Some _ as p -> p
+                  | None -> go (add_len len before) rest)
+          in
+          go (Some 0) (List.rev anchors)
+        in
+        (r_acc, tags_acc, (from_start, from_end))
 
 let compile_ir (rules : Ir.t array) =
   Array.iter (fun ir -> Ir.check_invariant ir) rules;
@@ -788,8 +820,8 @@ let compile_ir (rules : Ir.t array) =
         lower ~left:(Some (Start_plus 0)) ~right:(Some (End_minus 0)) ir)
       rules
   in
-  let regexps = Array.map fst lowered in
-  let bindings = Array.map snd lowered in
+  let regexps = Array.map (fun (r, _, _) -> r) lowered in
+  let bindings = Array.map (fun (_, tags, _) -> tags) lowered in
   let compiled = compile regexps in
   { dfa = compiled.dfa; num_tags = compiled.num_tags; bindings }
 

@@ -902,6 +902,239 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
     | _ -> ()
     |}]
 
+(* Optimization 1b: Nested captures reuse inner tags
+   A capture whose boundary is a fixed offset from an inner capture's
+   boundary reads the inner tag instead of getting one of its own.
+   Current: init_mem 4 (hex's 2 tags, each with a working register; full
+   starts 2 code points before hex and ends where hex ends).
+   Goal: already optimal for the tag count. *)
+let%expect_test "optim: nested capture reuses inner tags" =
+  (match%sedlex_test buf with
+    | ( Plus 'a',
+        (("0x", (Plus ('0' .. '9' | 'a' .. 'f') as hex)) as full),
+        Plus 'b' ) ->
+        ignore (hex, full)
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1"];
+      state1 -> state2 [label="'0'"];
+      state1 -> state1 [label="'a'"];
+      state2 [label="2"];
+      state2 -> state3 [label="'x'"];
+      state3 [label="3"];
+      state3 -> state4 [label="'0'-'9', 'a'-'f' {t2}"];
+      state4 [label="4"];
+      state4 -> state4 [label="'0'-'9', 'a', 'c'-'f'"];
+      state4 -> state5 [label="'b' {t3}"];
+      state5 [label="5\n[rule 0]\n{t1<-t3,t0<-t2}", shape=doublecircle];
+      state5 -> state4 [label="'0'-'9', 'a', 'c'-'f'"];
+      state5 -> state5 [label="'b' {t3}"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_2 buf
+      | 1 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_3 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_3 buf =
+      match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+      | 0 -> (Sedlexing.__private__set_mem_prev_pos buf 2; __sedlex_state_4 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_4 buf =
+      match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_4 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_5 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_5 buf =
+      Sedlexing.__private__copy_mem buf 1 3;
+      Sedlexing.__private__copy_mem buf 0 2;
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_4 buf
+       | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_5 buf)
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 4;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let full =
+          let __s = (Sedlexing.__private__mem_pos buf 0) + (-2) in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        let hex =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore (hex, full)
+    | _ -> ()
+    |}]
+
+(* The inner capture sits at the start of the outer one, whose end is a
+   fixed offset from the token end: no tag of its own either way. *)
+let%expect_test "optim: nested capture at the start of the outer one" =
+  (match%sedlex_test buf with
+    | Plus 'a', (((Plus 'x' as inner), Plus 'y', 'z') as outer) ->
+        ignore (inner, outer)
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'x' {t2}"];
+      state2 [label="2"];
+      state2 -> state2 [label="'x'"];
+      state2 -> state3 [label="'y' {t3}"];
+      state3 [label="3"];
+      state3 -> state3 [label="'y'"];
+      state3 -> state4 [label="'z'"];
+      state4 [label="4\n[rule 0]\n{t1<-t3,t0<-t2}", shape=doublecircle];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 2; __sedlex_state_2 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_2 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_3 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_3 buf =
+      match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_3 buf
+      | 1 ->
+          (Sedlexing.__private__copy_mem buf 1 3;
+           Sedlexing.__private__copy_mem buf 0 2;
+           0)
+      | _ -> Sedlexing.backtrack buf in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 4;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let outer =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.lexeme_length buf in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        let inner =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore (inner, outer)
+    | _ -> ()
+    |}]
+
+(* Counterpart: a variable-length element separates the outer start from
+   the inner capture, so the outer capture needs a start tag of its own. *)
+let%expect_test "optim: nested capture behind a variable-length element" =
+  (match%sedlex_test buf with
+    | Plus 'a', ((Plus 'x', (Plus 'y' as inner)) as outer), Plus 'z' ->
+        ignore (inner, outer)
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'x' {t3}"];
+      state2 [label="2"];
+      state2 -> state2 [label="'x'"];
+      state2 -> state3 [label="'y' {t4}"];
+      state3 [label="3"];
+      state3 -> state3 [label="'y'"];
+      state3 -> state4 [label="'z' {t5}"];
+      state4 [label="4\n[rule 0]\n{t2<-t3,t1<-t5,t0<-t4}", shape=doublecircle];
+      state4 -> state4 [label="'z'"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_2 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_2 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 4; __sedlex_state_3 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_3 buf =
+      match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_3 buf
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 5; __sedlex_state_4 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_4 buf =
+      Sedlexing.__private__copy_mem buf 2 3;
+      Sedlexing.__private__copy_mem buf 1 5;
+      Sedlexing.__private__copy_mem buf 0 4;
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_4 buf
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 6;
+          __sedlex_state_0 buf
+    with
+    | 0 ->
+        let outer =
+          let __s = Sedlexing.__private__mem_pos buf 2 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        let inner =
+          let __s = Sedlexing.__private__mem_pos buf 0 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore (inner, outer)
+    | _ -> ()
+    |}]
+
 (* Optimization 2: Or-pattern offset propagation
    When an or-pattern is at the top level of a rule, as-bindings
    covering the whole branch should get Start_plus 0 / End_minus 0
