@@ -535,6 +535,8 @@ let%expect_test "as binding: shared prefix or-pattern" =
     | _ -> ()
     |}]
 
+(* One discriminator cell for the three branches. The first and third bind
+   x at the same offsets and share value 0; only the second needs its own. *)
 let%expect_test "as binding: 3-way or reuses disc cell" =
   (match%sedlex_test buf with
     | ("ab" as x), "cd" | ("a" as x), "bce" | ("abc" as x), "df" -> ignore x
@@ -1175,13 +1177,15 @@ let%expect_test "optim: cross-rule cell sharing" =
    a final state should be removed.
    Rule 0 has a binding on Plus 'b'; rule 1 does not.
    Both share the Plus 'a', Plus 'b' prefix in the DFA.
-   Current: init_mem 2. The tag is set once, on the transition entering the
-   'b's, shared by both rules; nothing on the transitions only rule 1 takes.
+   Current: init_mem 4. The start tag is set once, on the transition entering
+   the 'b's, shared by both rules; the end tag is set on the 'c' transition
+   only rule 0 takes, and nothing is written on the 'd' transition only
+   rule 1 takes.
    Goal: reached here; in general it needs a liveness analysis. *)
 let%expect_test "optim: dead tag elimination" =
   (match%sedlex_test buf with
-    | Plus 'a', (Plus 'b' as x), 'c' -> ignore x
-    | Plus 'a', Plus 'b', 'd' -> ()
+    | Plus 'a', (Plus 'b' as x), Plus 'c' -> ignore x
+    | Plus 'a', Plus 'b', Plus 'd' -> ()
     | _ -> ());
   [%expect
     {|
@@ -1197,13 +1201,15 @@ let%expect_test "optim: dead tag elimination" =
       state0 -> state1 [label="'a'"];
       state1 [label="1"];
       state1 -> state1 [label="'a'"];
-      state1 -> state2 [label="'b' {t1}"];
+      state1 -> state2 [label="'b' {t2}"];
       state2 [label="2"];
       state2 -> state2 [label="'b'"];
-      state2 -> state3 [label="'c'"];
+      state2 -> state3 [label="'c' {t3}"];
       state2 -> state4 [label="'d'"];
-      state3 [label="3\n[rule 0]\n{t0<-t1}", shape=doublecircle];
+      state3 [label="3\n[rule 0]\n{t1<-t3,t0<-t2}", shape=doublecircle];
+      state3 -> state3 [label="'c'"];
       state4 [label="4\n[rule 1]", shape=doublecircle];
+      state4 -> state4 [label="'d'"];
     }
     CODE:
     let rec __sedlex_state_0 buf =
@@ -1213,22 +1219,34 @@ let%expect_test "optim: dead tag elimination" =
     and __sedlex_state_1 buf =
       match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
       | 0 -> __sedlex_state_1 buf
-      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_2 buf)
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 2; __sedlex_state_2 buf)
       | _ -> Sedlexing.backtrack buf
     and __sedlex_state_2 buf =
       match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
       | 0 -> __sedlex_state_2 buf
-      | 1 -> (Sedlexing.__private__copy_mem buf 0 1; 0)
-      | 2 -> 1
-      | _ -> Sedlexing.backtrack buf in
+      | 1 -> (Sedlexing.__private__set_mem_prev_pos buf 3; __sedlex_state_3 buf)
+      | 2 -> __sedlex_state_4 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_3 buf =
+      Sedlexing.__private__copy_mem buf 1 3;
+      Sedlexing.__private__copy_mem buf 0 2;
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_3 buf
+       | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_4 buf =
+      Sedlexing.mark buf 1;
+      (match __sedlex_partition_5 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_4 buf
+       | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__init_mem buf 4;
           __sedlex_state_0 buf
     with
     | 0 ->
         let x =
           let __s = Sedlexing.__private__mem_pos buf 0 in
-          let __e = (Sedlexing.lexeme_length buf) - 1 in
+          let __e = Sedlexing.__private__mem_pos buf 1 in
           { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
         ignore x
     | 1 -> ()
@@ -1344,12 +1362,12 @@ let%expect_test "optim: self-loop tag delay" =
     | _ -> ()
     |}]
 
-(* Optimization 8: Tag remapping
-   After coalescing and dead-tag elimination, the PPX should remap
-   Tag references through the compiler's tag_map.
+(* Optimization 8: Static offsets around a variable-length capture
+   Fixed-length neighbours give every binding a static offset, even the
+   variable-length one in the middle.
    Current: 0 tags (all offsets known: x=0..1, y=1..end-1, z=end-1..end).
    Goal: already optimal. *)
-let%expect_test "optim: tag remapping after coalescing" =
+let%expect_test "optim: static offsets around a variable-length capture" =
   (match%sedlex_test buf with
     | ('a' as x), (Plus 'b' as y), ('c' as z) -> ignore (x, y, z)
     | _ -> ());
@@ -1403,13 +1421,14 @@ let%expect_test "optim: tag remapping after coalescing" =
     | _ -> ()
     |}]
 
-(* Optimization 9: Set_prev with backtracking
+(* Optimization 9: Delayed tag with backtracking
    Opt at the end means the DFA can accept at two states (with or without
-   the optional 'a'). When self-loop tag delay is implemented, the delayed
-   tags (Set_prev) must survive mark/backtrack correctly.
+   the optional 'a'). The tag delayed out of the 'a' loop is materialized
+   into its canonical cell at each accept, so backtracking to the earlier
+   one sees the right value (the runtime check is in test/basic.ml).
    Current: init_mem 2 (1 tag, canonical cell plus working register; x:
    start=0, end=tag0; y: start=tag0, end=lexeme_length). *)
-let%expect_test "optim: set_prev with backtracking" =
+let%expect_test "optim: delayed tag with backtracking" =
   (match%sedlex_test buf with
     | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) -> ignore (x, y)
     | _ -> ());
@@ -1737,8 +1756,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
     |}]
 
 (* ------------------------------------------------------------------------ *)
-(* Known bugs pinned at the generated-code level. The comment states the goal;
-   the fix flips the expect block. *)
+(* Edge cases pinned at the generated-code level. *)
 
 (* Nullable-only rule. When every rule matches the empty string, state 0 is an
    accepting sink: no state function is generated for it, and the block returns

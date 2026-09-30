@@ -385,22 +385,21 @@ let%expect_test "error: as in regexp definition" =
     |}]
 
 (* ------------------------------------------------------------------------ *)
-(* Edge cases pinned to the current behavior. A test marked KNOWN BUG records
-   what the PPX does today; its comment states the expected result. *)
+(* Edge cases pinned to the current behavior. *)
 
 (* Rep (c, 1 .. 1) is a single-character regexp (it normalizes to c), so
    Compl, Sub and Intersect accept it. *)
-let%expect_test "error: Rep 1..1 under Compl" =
+let%expect_test "no error: Rep 1..1 under Compl" =
   [%compile_error
     [%sedlex match buf with Compl (Rep ('a', 1 .. 1)) -> () | _ -> ()]];
   [%expect {| NO ERROR |}]
 
-let%expect_test "error: Rep 1..1 under Sub" =
+let%expect_test "no error: Rep 1..1 under Sub" =
   [%compile_error
     [%sedlex match buf with Sub (any, Rep ('a', 1 .. 1)) -> () | _ -> ()]];
   [%expect {| NO ERROR |}]
 
-let%expect_test "error: Rep 1..1 under Intersect" =
+let%expect_test "no error: Rep 1..1 under Intersect" =
   [%compile_error
     [%sedlex
       match buf with Intersect ('a' .. 'c', Rep ('a', 1 .. 1)) -> () | _ -> ()]];
