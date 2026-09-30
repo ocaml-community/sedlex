@@ -1,3 +1,9 @@
+# unreleased
+
+## Performance
+- Capture register writes that no path reads are removed from the generated
+  code (#216)
+
 # 3.8 (2026-10-01)
 
 ## New features

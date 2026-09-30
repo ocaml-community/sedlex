@@ -587,6 +587,108 @@ let compile (rs : regexp array) : compiled =
     num_tags = Registers.count ctx.regs;
   }
 
+(* Liveness analysis. A register is live on entering a state if some path
+   from it reads it before writing it: as the source of a Copy whose
+   destination is live, or of a final operation writing a root. Backward
+   fixpoint over a monotone equation; returns the live set per state. *)
+let liveness ~is_root (dfa : dfa) : bool array array =
+  let n = Array.length is_root in
+  let reads_of live = function
+    | Copy { dst; src } when live.(dst) -> Some src
+    | Copy _ | Set_position _ | Set_value _ -> None
+  in
+  let live = Array.map (fun _ -> Array.make n false) dfa in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    Array.iteri
+      (fun i st ->
+        let l = live.(i) in
+        let mark c =
+          if not l.(c) then (
+            l.(c) <- true;
+            changed := true)
+        in
+        (match st.accept with
+          | Some { final_ops; _ } ->
+              List.iter
+                (fun op -> Option.iter mark (reads_of is_root op))
+                final_ops
+          | None -> ());
+        Array.iter
+          (fun (_, t, ops) ->
+            let after = live.(t) in
+            let written = Array.make n false in
+            List.iter (fun op -> written.(op_dest op) <- true) ops;
+            for c = 0 to n - 1 do
+              if after.(c) && not written.(c) then mark c
+            done;
+            List.iter (fun op -> Option.iter mark (reads_of after op)) ops)
+          st.trans)
+      dfa
+  done;
+  live
+
+(* [map_ops ~trans ~final dfa] rewrites the operations of every transition
+   (given its target state) and of every accept. *)
+let map_ops ~trans ~final (dfa : dfa) : dfa =
+  Array.map
+    (fun st ->
+      {
+        trans = Array.map (fun (cs, t, ops) -> (cs, t, trans t ops)) st.trans;
+        accept =
+          Option.map
+            (fun a -> { a with final_ops = final a.final_ops })
+            st.accept;
+      })
+    dfa
+
+(* Renumber the cells still mentioned, and the roots, densely in their
+   order. Returns the old-to-new cell mapping (-1 for a dropped cell). *)
+let renumber ~is_root (dfa : dfa) : compiled * int array =
+  let used = Array.copy is_root in
+  let use op =
+    used.(op_dest op) <- true;
+    match op with Copy { src; _ } -> used.(src) <- true | _ -> ()
+  in
+  Array.iter
+    (fun st ->
+      Array.iter (fun (_, _, ops) -> List.iter use ops) st.trans;
+      Option.iter (fun a -> List.iter use a.final_ops) st.accept)
+    dfa;
+  let mapping = Array.make (Array.length used) (-1) in
+  let next = ref 0 in
+  Array.iteri
+    (fun c u ->
+      if u then (
+        mapping.(c) <- !next;
+        incr next))
+    used;
+  let remap = function
+    | Set_position { dst } -> Set_position { dst = mapping.(dst) }
+    | Set_value { dst; value } -> Set_value { dst = mapping.(dst); value }
+    | Copy { dst; src } -> Copy { dst = mapping.(dst); src = mapping.(src) }
+  in
+  let dfa =
+    map_ops ~trans:(fun _ -> List.map remap) ~final:(List.map remap) dfa
+  in
+  ({ dfa; num_tags = !next }, mapping)
+
+(* Dead register elimination. [roots] are the cells the actions read.
+   Writes to dead registers go, as do final operations writing no root, and
+   the cells left are renumbered. *)
+let remove_dead ~roots (compiled : compiled) : compiled * int array =
+  let is_root = Array.make compiled.num_tags false in
+  List.iter (fun c -> is_root.(c) <- true) roots;
+  let live = liveness ~is_root compiled.dfa in
+  let dfa =
+    map_ops
+      ~trans:(fun t ops -> List.filter (fun op -> live.(t).(op_dest op)) ops)
+      ~final:(List.filter (fun op -> is_root.(op_dest op)))
+      compiled.dfa
+  in
+  renumber ~is_root dfa
+
 (* High-level compilation from IR.
 
    [compile_ir] lowers [Ir.t] patterns into low-level regexps with tag
@@ -791,6 +893,28 @@ let compile_ir (rules : Ir.t array) =
   let regexps = Array.map fst lowered in
   let bindings = Array.map snd lowered in
   let compiled = compile regexps in
+  let cells_of (b : compiled_binding) =
+    let of_pos = function
+      | Tag { tag; _ } -> [tag]
+      | Start_plus _ | End_minus _ -> []
+    in
+    of_pos b.start_pos @ of_pos b.end_pos @ List.map fst b.disc
+  in
+  let roots = List.concat_map cells_of (List.concat (Array.to_list bindings)) in
+  let compiled, mapping = remove_dead ~roots compiled in
+  let remap_pos = function
+    | Tag { tag; offset } -> Tag { tag = mapping.(tag); offset }
+    | (Start_plus _ | End_minus _) as p -> p
+  in
+  let remap_binding (b : compiled_binding) =
+    {
+      b with
+      start_pos = remap_pos b.start_pos;
+      end_pos = remap_pos b.end_pos;
+      disc = List.map (fun (cell, v) -> (mapping.(cell), v)) b.disc;
+    }
+  in
+  let bindings = Array.map (List.map remap_binding) bindings in
   { dfa = compiled.dfa; num_tags = compiled.num_tags; bindings }
 
 let cset_to_label cset =

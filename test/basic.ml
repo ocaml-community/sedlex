@@ -1454,6 +1454,29 @@ let%expect_test "as_bindings_multi_rule_mem_cells" =
   lex (Sedlexing.Utf8.from_string "cd");
   [%expect {| mem_cells=4 |}]
 
+(* Dead register elimination must keep the writes a path reads: here x's
+   end is read only when rule 1 wins with a 'c' tail. *)
+let%expect_test "as_bindings_dead_registers" =
+  let sub = Sedlexing.Latin1.of_submatch in
+  let run inputs lex =
+    List.iter
+      (fun s ->
+        Printf.printf "%-6S -> %s\n" s (lex (Sedlexing.Latin1.from_string s)))
+      inputs
+  in
+  run ["aabb"; "aacc"; "ac"] (fun buf ->
+      match%sedlex buf with
+        | Plus 'a', Plus 'b' -> Printf.sprintf "rule0 cells=%d" (num_mem buf)
+        | (Plus 'a' as x), (Plus 'b' | Plus 'c') ->
+            Printf.sprintf "x=%S cells=%d" (sub x) (num_mem buf)
+        | _ -> "nomatch");
+  [%expect
+    {|
+    "aabb" -> rule0 cells=2
+    "aacc" -> x="aa" cells=2
+    "ac"   -> x="a" cells=2
+    |}]
+
 let%expect_test "as_bindings_nested_sedlex" =
   (* Regression: a nested match%sedlex in a case RHS must not reset the
      outer match's tag counter, which would cause ensure_mem/set_mem to be
