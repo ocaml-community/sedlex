@@ -1,20 +1,32 @@
 # unreleased
-- Add support for unicode `18.0.0`
-- Support nested `let..in` for `[%sedlex.regexp?]` definitions
-- Add support for named captured group (#177, #178)
-- Accept `Rep (c, 1 .. 1)` as the argument of `Compl`, `Sub` and `Intersect` (#201)
-- Report empty character sets (`Chars ""`, `Compl any`, `Sub`/`Intersect` of
-  coinciding classes) as a compile error instead of crashing the ppx or
-  generating a rule that never matches (#201)
-- Fix generated code for rule sets where every rule is nullable (#201)
-- Fix captures followed by `eof`: eof is zero-width, so the capture no longer
-  loses its last character or raises (#201)
-- Fix rule priority with `eof`: a rule matching `s, eof` no longer beats an
+
+## New features
+- Named capture groups: `(r as x)` binds `x` in the action to a
+  `Sedlexing.submatch`, extracted with `Sedlexing.Utf8.of_submatch`,
+  `Latin1.of_submatch`, `Utf16.of_submatch` or `lexeme_of_submatch`. Both
+  branches of an or-pattern must bind the same names, and `as` is not allowed
+  under `Star`, `Plus`, `Opt`, `Rep`, `Compl`, `Sub` or `Intersect`. Submatches
+  are chosen leftmost-greedy within the longest match, using a tagged DFA; a
+  boundary at a fixed offset from the start or end of the lexeme costs nothing
+  at runtime (#177, #178, #204, #208, #209)
+- Nested `let .. in` definitions of `[%sedlex.regexp?]` (#176)
+- Unicode 18.0.0 (#205)
+- `Compl`, `Sub` and `Intersect` accept `Rep (c, 1 .. 1)` (#201)
+- Clearer errors for a bare `Star`, `Plus`, `Opt`, `Utf8`, `Latin1` or `Ascii`
+  and for unknown operators (#196)
+
+## Bug fixes
+- Rule priority with `eof`: a rule matching `s, eof` no longer beats an
   earlier rule matching `s` (#211)
-- End of input is read once: `Plus eof` or `Star ('a' | eof)` no longer loop
+- End of input is read once: `Plus eof` and `Star ('a' | eof)` no longer loop
   forever at end of input, and `eof, eof` no longer matches (#211)
-- Rewrite determinization as a Laurikari tagged DFA, fixing incorrect
-  submatch positions when a repetition loop overlaps a capture (#204)
+- Empty character sets (`Chars ""`, `Compl any`, `Sub` or `Intersect` of
+  coinciding classes) are a compile error instead of crashing the ppx or
+  producing a rule that never matches (#201)
+- Rule sets where every rule is nullable, such as a lone `""`, no longer
+  generate invalid code (#201)
+- UTF-8 decoding: the surrogate range rejected by `Utf8.Helper.check_three`
+  ended at U+DF00 instead of U+DFFF (#184)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
