@@ -1253,6 +1253,141 @@ let%expect_test "optim: dead tag elimination" =
     | _ -> ()
     |}]
 
+(* Optimization 10: Dead register elimination
+   A write whose value no path reads is dropped, and the register with it.
+   Rule 0 wins every 'b' continuation, so x's end is only read on the 'c'
+   one: the write on the 'b' transition goes, and one register serves.
+   Current: init_mem 2 (the canonical cell and one working register).
+   Goal: reached. *)
+let%expect_test "optim: dead register elimination" =
+  (match%sedlex_test buf with
+    | Plus 'a', Plus 'b' -> ()
+    | (Plus 'a' as x), (Plus 'b' | Plus 'c') -> ignore x
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state1 [label="1"];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b'"];
+      state1 -> state3 [label="'c' {t1}"];
+      state2 [label="2\n[rule 0]", shape=doublecircle];
+      state2 -> state2 [label="'b'"];
+      state3 [label="3\n[rule 1]\n{t0<-t1}", shape=doublecircle];
+      state3 -> state3 [label="'c'"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> __sedlex_state_2 buf
+      | 2 -> (Sedlexing.__private__set_mem_prev_pos buf 1; __sedlex_state_3 buf)
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_2 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_3 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_2 buf
+       | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_3 buf =
+      Sedlexing.__private__copy_mem buf 0 1;
+      Sedlexing.mark buf 1;
+      (match __sedlex_partition_4 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_3 buf
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 2;
+          __sedlex_state_0 buf
+    with
+    | 0 -> ()
+    | 1 ->
+        let x =
+          let __s = 0 in
+          let __e = Sedlexing.__private__mem_pos buf 0 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore x
+    | _ -> ()
+    |}]
+
+(* A rule shadowed by an earlier one never accepts: none of its writes is
+   read, so none is emitted. Its canonical cell stays, since the (dead)
+   action still names it. *)
+let%expect_test "optim: dead registers of a shadowed rule" =
+  (match%sedlex_test buf with
+    | Plus ('a' | 'b') -> ()
+    | (Plus 'a' as x), Plus 'b' -> ignore x
+    | _ -> ());
+  [%expect
+    {|
+    DOT:
+    digraph {
+      rankdir=LR;
+      node [shape=circle];
+
+      _start [shape=point];
+      _start -> state0;
+
+      state0 [label="0"];
+      state0 -> state1 [label="'a'"];
+      state0 -> state3 [label="'b'"];
+      state1 [label="1\n[rule 0]", shape=doublecircle];
+      state1 -> state1 [label="'a'"];
+      state1 -> state2 [label="'b'"];
+      state2 [label="2\n[rule 0]", shape=doublecircle];
+      state2 -> state3 [label="'a'"];
+      state2 -> state2 [label="'b'"];
+      state3 [label="3\n[rule 0]", shape=doublecircle];
+      state3 -> state3 [label="'a'-'b'"];
+    }
+    CODE:
+    let rec __sedlex_state_0 buf =
+      match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+      | 0 -> __sedlex_state_1 buf
+      | 1 -> __sedlex_state_3 buf
+      | _ -> Sedlexing.backtrack buf
+    and __sedlex_state_1 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_1 buf
+       | 1 -> __sedlex_state_2 buf
+       | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_2 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_1 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_3 buf
+       | 1 -> __sedlex_state_2 buf
+       | _ -> Sedlexing.backtrack buf)
+    and __sedlex_state_3 buf =
+      Sedlexing.mark buf 0;
+      (match __sedlex_partition_2 (Sedlexing.__private__next_int buf) with
+       | 0 -> __sedlex_state_3 buf
+       | _ -> Sedlexing.backtrack buf) in
+    match Sedlexing.start buf;
+          Sedlexing.__private__init_mem buf 1;
+          __sedlex_state_0 buf
+    with
+    | 0 -> ()
+    | 1 ->
+        let x =
+          let __s = 0 in
+          let __e = Sedlexing.__private__mem_pos buf 0 in
+          { Sedlexing.lexbuf = buf; pos = __s; len = (__e - __s) } in
+        ignore x
+    | _ -> ()
+    |}]
+
 (* End of input never shares a transition with characters: [eof | 'b'] is
    one character set in the NFA and two transitions in the DFA. *)
 let%expect_test "end of input gets its own transition" =
