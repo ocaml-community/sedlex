@@ -1222,7 +1222,8 @@ let%expect_test "as_bindings" =
         Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
   [%expect {| x=bcd |}];
-  (* Test 10b: 3-way or-pattern reuses single disc cell *)
+  (* Test 10b: 3-way or-pattern reuses a single disc cell; the first and
+     third branches bind x at the same offsets and share a disc value *)
   let buf = Sedlexing.Utf8.from_string "abcd" in
   (match%sedlex buf with
     | ("ab" as x), "cd" | ("a" as x), "bce" | ("abc" as x), "df" ->
@@ -1303,7 +1304,7 @@ let%expect_test "as_bindings" =
           (Sedlexing.Utf8.of_submatch y)
     | _ -> assert false);
   [%expect {| x=d y=gh |}];
-  (* Test 11: Set_prev with backtracking (Opt at end) *)
+  (* Test 11: delayed tag with backtracking (Opt at end) *)
   let buf = Sedlexing.Utf8.from_string "aabba" in
   (match%sedlex buf with
     | (Plus 'a' as x), ((Plus 'b', Opt 'a') as y) ->
@@ -1437,15 +1438,30 @@ let%expect_test "as_bindings_multi_rule_mem_cells" =
         Printf.printf "mem_cells=%d\n" (num_mem buf)
     | ('<' as _y) | ('>' as _y) -> Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=0 |}]
+  [%expect {| mem_cells=0 |}];
+  (* Two rules that each need a tag: the pool holds both, whichever rule
+     matches (a tag costs its canonical cell plus a working register) *)
+  let lex buf =
+    match%sedlex buf with
+      | Plus 'a', (Plus 'b' as _x) ->
+          Printf.printf "mem_cells=%d\n" (num_mem buf)
+      | Plus 'c', (Plus 'd' as _y) ->
+          Printf.printf "mem_cells=%d\n" (num_mem buf)
+      | _ -> assert false
+  in
+  lex (Sedlexing.Utf8.from_string "ab");
+  [%expect {| mem_cells=4 |}];
+  lex (Sedlexing.Utf8.from_string "cd");
+  [%expect {| mem_cells=4 |}]
 
 let%expect_test "as_bindings_nested_sedlex" =
   (* Regression: a nested match%sedlex in a case RHS must not reset the
      outer match's tag counter, which would cause init_mem/set_mem to be
-     dropped and as-bindings to read uninitialized memory cells. *)
+     dropped and as-bindings to read uninitialized memory cells. The outer
+     bindings need a tag (variable-length prefix). *)
   let buf = Sedlexing.Utf8.from_string "abc" in
   (match%sedlex buf with
-    | 'a', ('b' as x), 'c' ->
+    | Plus 'a', ('b' as x), Plus 'c' ->
         Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
     | Star any -> (
         (* Nested match%sedlex in a case RHS *)
@@ -1463,10 +1479,10 @@ let%expect_test "as_bindings_nested_sedlex" =
         match%sedlex buf with
           | '0' .. '9' -> Printf.printf "digit\n"
           | _ -> Printf.printf "other\n")
-    | Plus 'a' .. 'z' as x ->
+    | Plus 'a', (Plus 'b' .. 'z' as x) ->
         Printf.printf "x=%s\n" (Sedlexing.Utf8.of_submatch x)
     | _ -> assert false);
-  [%expect {| x=abc |}];
+  [%expect {| x=bc |}];
   (* Verify the outer match still allocates memory cells *)
   let buf = Sedlexing.Utf8.from_string "abc" in
   (match%sedlex buf with
@@ -1475,9 +1491,10 @@ let%expect_test "as_bindings_nested_sedlex" =
         match%sedlex buf with
           | '0' .. '9' -> Printf.printf "digit\n"
           | _ -> Printf.printf "other\n")
-    | Plus 'a' .. 'z' as _x -> Printf.printf "mem_cells=%d\n" (num_mem buf)
+    | Plus 'a', (Plus 'b' .. 'z' as _x) ->
+        Printf.printf "mem_cells=%d\n" (num_mem buf)
     | _ -> assert false);
-  [%expect {| mem_cells=0 |}]
+  [%expect {| mem_cells=2 |}]
 
 (* ------------------------------------------------------------------------ *)
 (* Regression tests. They were first pinned to the behavior of the time and
@@ -1599,9 +1616,10 @@ let%expect_test "eof_rule_priority" =
    through the zero-width [eof] arm, after the state reached by the last real
    character has already marked an equal-length parse of the same rule with a
    shorter capture. The eof arm's parse outranks it (its Star is still open in
-   that state), so its mark must win. Today it does because [mark] keeps the
-   last mark; a rule-priority fix for [eof_rule_priority] that breaks
-   equal-length ties by "first mark wins" would regress this test. *)
+   that state, so it precedes the accepting configuration), and the eof
+   transition is kept and returns directly over the mark. A tie-break that
+   let the state's own accept win over every eof parse would regress this
+   test. *)
 let%expect_test "eof_zero_width_tie_within_rule" =
   let sub = Sedlexing.Latin1.of_submatch in
   (* expected x="aaa" and x="a" *)
