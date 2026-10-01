@@ -1,4 +1,4 @@
-# unreleased
+# 3.8 (2026-10-01)
 
 ## New features
 - Named capture groups: `(r as x)` binds `x` in the action to a
