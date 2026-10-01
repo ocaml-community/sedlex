@@ -245,10 +245,12 @@ let%expect_test "eof is read once" =
 (* ================================================================== *)
 
 let%expect_test "qcheck: single rule" =
-  qcheck (G.map2 (fun r s -> ([| r |], s)) gen_ir gen_input);
+  qcheck (G.map2 (fun r s -> ([| r |], s)) (gen_ir ~eof:true) gen_input);
   [%expect {| |}]
 
 let%expect_test "qcheck: two rules" =
   qcheck ~count:1000
-    (G.map3 (fun a b s -> ([| a; b |], s)) gen_ir gen_ir gen_input);
+    (G.map3
+       (fun a b s -> ([| a; b |], s))
+       (gen_ir ~eof:true) (gen_ir ~eof:true) gen_input);
   [%expect {| |}]

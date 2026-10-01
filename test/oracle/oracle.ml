@@ -325,29 +325,38 @@ module G = QCheck2.Gen
 
 let gen_char = G.char_range 'a' 'd'
 
-let gen_cset =
-  G.oneof
+(* [~eof:false] keeps end of input out of the character sets. *)
+let gen_cset ~eof =
+  let chars =
     [
       G.map (fun c -> Cset.singleton (Char.code c)) gen_char;
-      G.return Cset.eof;
-      G.map
-        (fun c -> Cset.union Cset.eof (Cset.singleton (Char.code c)))
-        gen_char;
       G.map2
         (fun a b ->
           let a = Char.code a and b = Char.code b in
           Cset.interval (min a b) (max a b))
         gen_char gen_char;
     ]
+  in
+  let eofs =
+    if eof then
+      [
+        G.return Cset.eof;
+        G.map
+          (fun c -> Cset.union Cset.eof (Cset.singleton (Char.code c)))
+          gen_char;
+      ]
+    else []
+  in
+  G.oneof (chars @ eofs)
 
 (* Capture-free regexp of bounded depth. *)
-let rec gen_simple depth =
-  if depth = 0 then G.map Ir.chars gen_cset
+let rec gen_simple ~eof depth =
+  if depth = 0 then G.map Ir.chars (gen_cset ~eof)
   else (
-    let sub = gen_simple (depth - 1) in
+    let sub = gen_simple ~eof (depth - 1) in
     G.oneof_weighted
       [
-        (3, G.map Ir.chars gen_cset);
+        (3, G.map Ir.chars (gen_cset ~eof));
         (2, G.map2 seq sub sub);
         (2, G.map2 alt sub sub);
         (1, G.map star sub);
@@ -365,13 +374,13 @@ let names = [| "x"; "y"; "z"; "w" |]
 (* A rule: a sequence of up to 4 elements with at least one capture. Captures
    sit at the top level of the sequence (the Ir smart constructors reject them
    under repetition), each binding a distinct name. *)
-let gen_rule =
+let gen_rule ~eof =
   G.bind (G.int_range 1 4) (fun n ->
       G.bind
         (G.int_range 0 (n - 1))
         (fun cap_at ->
           let gen_elem i =
-            let simple = G.bind (G.int_range 0 2) gen_simple in
+            let simple = G.bind (G.int_range 0 2) (gen_simple ~eof) in
             if i = cap_at then G.map (capture names.(i)) simple
             else
               G.oneof_weighted
@@ -383,17 +392,17 @@ let gen_rule =
           build 1 (gen_elem 0)))
 
 (* An or-pattern rule: both branches bind the same name (discriminators). *)
-let gen_or_rule =
-  let branch = G.bind (G.int_range 0 2) gen_simple in
+let gen_or_rule ~eof =
+  let branch = G.bind (G.int_range 0 2) (gen_simple ~eof) in
   G.map2 (fun a b -> alt (capture "x" a) (capture "x" b)) branch branch
 
-let gen_ir = G.oneof_weighted [(4, gen_rule); (1, gen_or_rule)]
+let gen_ir ~eof = G.oneof_weighted [(4, gen_rule ~eof); (1, gen_or_rule ~eof)]
 let gen_input = G.string_size ~gen:gen_char (G.int_range 0 5)
 
-(* Deterministic property runner: fixed seed, no shrinking. Failing cases are
-   printed through [oracle] so expect blocks capture them; an empty expect
-   block means reference and DFA agree on every generated case. *)
-let qcheck ?(count = 2000) ?(max_print = 5) gen =
+(* Deterministic property runner: fixed seed, no shrinking. Cases failing
+   [check] are printed through [oracle] so expect blocks capture them; an
+   empty expect block means agreement on every generated case. *)
+let sweep ?(count = 2000) ?(max_print = 5) ~check ~oracle gen =
   let rand = Random.State.make [| 0x5ed1ec5 |] in
   let failures = ref 0 in
   for _ = 1 to count do
@@ -409,3 +418,5 @@ let qcheck ?(count = 2000) ?(max_print = 5) gen =
   if !failures > 0 then
     Printf.printf "%d/%d cases failed (printed at most %d)\n" !failures count
       max_print
+
+let qcheck ?count ?max_print gen = sweep ?count ?max_print ~check ~oracle gen
