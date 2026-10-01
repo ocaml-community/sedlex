@@ -27,4 +27,5 @@ extension.")
    (ppxlib (>= 0.26.0))
    gen
    (ppx_expect :with-test)
+   (qcheck-core :with-test)
    (menhir :with-test)))

@@ -1,0 +1,8 @@
+(library
+ (name oracle_test)
+ (libraries sedlex.compiler qcheck-core)
+ (inline_tests)
+ (enabled_if
+  (>= %{ocaml_version} 4.14))
+ (preprocess
+  (pps ppx_expect)))
