@@ -792,8 +792,9 @@ let ir_of_pattern env =
    4. Applies [map_rhs] to each case's right-hand side.
    5. Wraps each RHS with [gen_binding_code] for [as] binding extraction.
    6. Generates the full lexer code via [gen_definition].
-   Returns [(generated_expr, dfa)] for use by the main mapper and tests. *)
-let handle_sedlex_match_ ~env ~map_rhs match_expr =
+   Returns [(generated_expr, dfa)] for use by the main mapper and tests.
+   With [shortest], the lexer stops at the first accepting state. *)
+let handle_sedlex_match_ ?(shortest = false) ~env ~map_rhs match_expr =
   let lexbuf =
     match match_expr with
       | { pexp_desc = Pexp_match (lexbuf, _); _ } -> (
@@ -831,7 +832,7 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
       cases
   in
   let compiled =
-    Sedlex.compile_ir
+    Sedlex.compile_ir ~shortest
       (Array.of_list (List.map (fun (ir, _, _) -> ir) cases_with_ir))
   in
   (* map_rhs is called after compile_ir so that nested match%sedlex blocks
@@ -853,8 +854,8 @@ let handle_sedlex_match_ ~env ~map_rhs match_expr =
   in
   (gen_definition lexbuf compiled_basic cases error, compiled.dfa)
 
-let handle_sedlex_match match_expr =
-  handle_sedlex_match_ ~env:builtin_regexps ~map_rhs:Fun.id match_expr
+let handle_sedlex_match ?shortest match_expr =
+  handle_sedlex_match_ ?shortest ~env:builtin_regexps ~map_rhs:Fun.id match_expr
 
 let previous = ref []
 let regexps = ref []
@@ -898,6 +899,25 @@ let mapper =
         | [%expr [%sedlex [%e? { pexp_desc = Pexp_match _; _ } as match_expr]]]
           ->
             fst (handle_sedlex_match_ ~env ~map_rhs:this#expression match_expr)
+        (* match%sedlex.shortest <lexbuf> with ... *)
+        | {
+         pexp_desc =
+           Pexp_extension
+             ( { txt = "sedlex.shortest"; _ },
+               PStr
+                 [
+                   {
+                     pstr_desc =
+                       Pstr_eval
+                         (({ pexp_desc = Pexp_match _; _ } as match_expr), _);
+                     _;
+                   };
+                 ] );
+         _;
+        } ->
+            fst
+              (handle_sedlex_match_ ~shortest:true ~env ~map_rhs:this#expression
+                 match_expr)
         (* let <name> = <rhs> in <body>  —  intercept when <rhs> is a regexp *)
         | [%expr
             let [%p? { ppat_desc = Ppat_var { txt = name; _ }; _ }] =
@@ -911,6 +931,11 @@ let mapper =
         | [%expr [%sedlex [%e? _]]] ->
             err e.pexp_loc
               "the %%sedlex extension is only recognized on match expressions"
+        | { pexp_desc = Pexp_extension ({ txt = "sedlex.shortest"; _ }, _); _ }
+          ->
+            err e.pexp_loc
+              "the %%sedlex.shortest extension is only recognized on match \
+               expressions"
         | _ -> super#expression e
 
     val toplevel = true

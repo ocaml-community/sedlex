@@ -136,8 +136,10 @@ type compiled = {
 
 (** [compile rules] determinizes the NFA for an array of regexp rules using
     subset construction. Returns the DFA and the total number of memory cells
-    needed for [as] bindings. State 0 is always the initial state. *)
-val compile : regexp array -> compiled
+    needed for [as] bindings. State 0 is always the initial state. With
+    [shortest], accepting states have no transitions: the lexer returns at the
+    first match instead of the longest one. *)
+val compile : ?shortest:bool -> regexp array -> compiled
 
 (** {2 High-level compilation from IR}
 
@@ -175,7 +177,7 @@ type compiled_ir = {
 
 (** [compile_ir rules] compiles an array of IR patterns into a tagged DFA.
     Raises [Assert_failure] if invariant checking fails. *)
-val compile_ir : Ir.t array -> compiled_ir
+val compile_ir : ?shortest:bool -> Ir.t array -> compiled_ir
 
 (** [dfa_to_dot dfa] returns a Graphviz DOT representation of the DFA, including
     state labels, accepting state markers, transition character sets, and tag

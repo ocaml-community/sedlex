@@ -22,9 +22,12 @@ val reset_state : unit -> unit
 
 (** [handle_sedlex_match match_expr] compiles a [match%sedlex lexbuf with ...]
     expression into generated DFA code using the built-in regexp environment.
-    Returns the generated expression and the DFA automaton. *)
+    Returns the generated expression and the DFA automaton. With [shortest], the
+    lexer returns at the first match instead of the longest one. *)
 val handle_sedlex_match :
-  Ppxlib.Parsetree.expression -> Ppxlib.Parsetree.expression * Sedlex.dfa
+  ?shortest:bool ->
+  Ppxlib.Parsetree.expression ->
+  Ppxlib.Parsetree.expression * Sedlex.dfa
 
 (** [map_expression expr] applies the sedlex mapper to [expr], processing any
     [[%sedlex]] or [[%sedlex.regexp?]] extensions it contains. *)
