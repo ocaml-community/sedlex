@@ -169,7 +169,11 @@ val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
 (** A submatch captures a sub-pattern matched by an [as] binding. It carries the
     lexbuf and the position/length of the submatch (in code points, relative to
     the start of the current token). Use the extraction functions below to
-    obtain the matched content in the desired encoding. *)
+    obtain the matched content in the desired encoding.
+
+    A submatch is a view into the lexbuf, valid only until the lexbuf moves on.
+    Extracting it later returns another token's code points or raises
+    [Invalid_argument]. Extract inside the action and keep the result. *)
 type submatch = { lexbuf : lexbuf; pos : int; len : int }
 
 (** [Sedlexing.lexeme_of_submatch s] returns the submatch as an array of Unicode

@@ -173,6 +173,17 @@ extraction functions to obtain the matched content:
 - `Sedlexing.Latin1.of_submatch s` returns the sub-match as a Latin-1 string.
 - `Sedlexing.lexeme_of_submatch s` returns the sub-match as a `Uchar.t array`.
 
+A submatch is a view into the lexbuf, valid only until the lexbuf moves on.
+Extracting it later returns another token's content or raises
+`Invalid_argument`. Extract inside the action and keep the result:
+
+```ocaml
+let token buf =
+  match%sedlex buf with
+  | (Plus ('a'..'z') as key), ':' -> KEY (Sedlexing.Utf8.of_submatch key)
+  | _ -> ...
+```
+
 Or-patterns work as expected — both sides must bind the same names:
 
 ```ocaml
