@@ -171,6 +171,7 @@ extraction functions to obtain the matched content:
 
 - `Sedlexing.Utf8.of_submatch s` returns the sub-match as a UTF-8 string.
 - `Sedlexing.Latin1.of_submatch s` returns the sub-match as a Latin-1 string.
+- `Sedlexing.Utf16.of_submatch s bo bom` returns the sub-match as a UTF-16 string.
 - `Sedlexing.lexeme_of_submatch s` returns the sub-match as a `Uchar.t array`.
 
 A submatch is a view into the lexbuf, valid only until the lexbuf moves on.
@@ -193,8 +194,14 @@ match%sedlex buf with
 | _ -> ...
 ```
 
+When a lexeme can be split several ways, sub-matches are chosen
+leftmost-greedy within the longest match: the left alternative of `|` wins,
+and `Star`, `Plus`, `Opt` and `Rep` take as much as they can. In
+`(Star 'a' as x), Star 'a'`, `x` captures every `a`.
+
 **Restriction:** `as` bindings are not allowed inside repetition operators
-(`Star`, `Plus`, `Opt`, `Rep`) or set operators (`Compl`, `Sub`, `Intersect`).
+(`Star`, `Plus`, `Opt`, `Rep`), set operators (`Compl`, `Sub`, `Intersect`) or
+`[%sedlex.regexp? ...]` definitions.
 
 ### Encoding
 
