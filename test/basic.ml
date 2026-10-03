@@ -2261,3 +2261,44 @@ let%expect_test "sub_lexeme_later_tokens" =
     all widths: 858 tokens, 0 errors
     latin1: 858 tokens, 0 errors
     |}]
+
+(* The memory cells are not cleared between tokens: each action must only
+   see the cells written by its own match, whatever earlier tokens and other
+   rules sharing the lexbuf left behind. *)
+let%expect_test "stale_cells_between_tokens" =
+  let sub = Sedlexing.Utf8.of_submatch in
+  let rec other buf =
+    match%sedlex buf with
+      | (Plus 'x' as a), (Plus 'y' as b), (Plus 'z' as c), Plus 'x' ->
+          Printf.printf "other: a=%S b=%S c=%S\n" (sub a) (sub b) (sub c);
+          token buf
+      | _ -> token buf
+  and token buf =
+    match%sedlex buf with
+      | (Plus 'a' as k), '=', (Plus 'b' as v)
+      | (Plus 'b' as v), ':', (Plus 'a' as k) ->
+          Printf.printf "pair: k=%S v=%S\n" (sub k) (sub v);
+          other buf
+      | Plus 'a', (Plus 'c' as v) | (Plus 'c' as v), Plus 'b' ->
+          Printf.printf "single: v=%S\n" (sub v);
+          other buf
+      | ' ' -> other buf
+      | eof -> ()
+      | _ -> assert false
+  in
+  token
+    (Sedlexing.Utf8.from_string
+       "aaa=b bb:a a=bbb xxyzzzx b:aa acc cb aaaac xyyzx ccccbb");
+  [%expect
+    {|
+    pair: k="aaa" v="b"
+    pair: k="a" v="bb"
+    pair: k="a" v="bbb"
+    other: a="xx" b="y" c="zzz"
+    pair: k="aa" v="b"
+    single: v="cc"
+    single: v="c"
+    single: v="c"
+    other: a="x" b="yy" c="z"
+    single: v="cccc"
+    |}]

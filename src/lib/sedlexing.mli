@@ -241,16 +241,17 @@ val __private__next_int : lexbuf -> int
 
     The following functions manage an internal array of memory cells used to
     record sub-match positions during DFA execution. Cells store either
-    positions (>= 0) or encoded integer values (<= -2). The sentinel -1 means
-    "unset". Positions are automatically adjusted when the internal buffer is
-    compacted, and converted to token-relative offsets on read by
-    {!__private__mem_pos}.
+    positions (>= 0) or encoded integer values (<= -2). Positions are
+    automatically adjusted when the internal buffer is compacted, and converted
+    to token-relative offsets on read by {!__private__mem_pos}. The cells are
+    not cleared between tokens: only those written during the current match are
+    meaningful.
 
     This is a private API used by generated code and may change at any time. *)
 
 (** [__private__init_mem lexbuf n] ensures at least [n] memory cells are
-    available, resetting all cells to -1 (unset). Called once at the start of
-    each [match%sedlex] block that uses [as] bindings. *)
+    available. Called once at the start of each [match%sedlex] block that uses
+    [as] bindings. *)
 val __private__init_mem : lexbuf -> int -> unit
 
 (** [__private__set_mem_pos lexbuf i] records the current position in cell [i],
@@ -263,9 +264,8 @@ val __private__set_mem_pos : lexbuf -> int -> unit
 val __private__set_mem_prev_pos : lexbuf -> int -> unit
 
 (** [__private__set_mem_value lexbuf i v] stores integer [v] in cell [i],
-    encoded as [-(v + 2)] so it is disjoint from positions and the unset
-    sentinel. Used by [Set_value] tag operations for or-pattern discriminators.
-*)
+    encoded as [-(v + 2)] so it is disjoint from positions. Used by [Set_value]
+    tag operations for or-pattern discriminators. *)
 val __private__set_mem_value : lexbuf -> int -> int -> unit
 
 (** [__private__copy_mem lexbuf dst src] copies the contents of cell [src] into

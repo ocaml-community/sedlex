@@ -36,6 +36,8 @@
 ## Performance
 - Faster `lexeme`, `sub_lexeme` and `of_submatch` in `Sedlexing.Latin1`,
   `Sedlexing.Utf8` and `Sedlexing.Utf16` (#219)
+- The memory cells of `as` bindings are no longer cleared at the start of
+  every token
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
