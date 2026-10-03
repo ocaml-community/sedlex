@@ -151,7 +151,9 @@ type lexbuf = {
        [refill] when the buffer is compacted, and converted to
        token-relative offsets on read by [__private__mem_pos].
      - discriminator values: stored as [-(v + 2)], always <= -2,
-       disjoint from positions and the unset sentinel (-1).
+       disjoint from positions.
+     The cells are not cleared between tokens: an action only reads cells
+     written on the path of its match.
      [mark] and [backtrack] leave the cells alone: those read after a match
      are only written on entering an accepting state, just before [mark]. *)
   mutable __private__mem : int array;
@@ -265,8 +267,8 @@ let refill lexbuf =
     lexbuf.start_bytes_pos <- 0;
     (* Adjust tagged DFA memory cells: position cells (>= 0) are
        buffer-relative uchar indices and must be shifted by [s] after
-       compaction. Value cells (<= -2) and unset cells (-1) are left
-       unchanged. *)
+       compaction. Value cells (<= -2) are left unchanged. Cells left over
+       from an earlier token may be shifted too, which is harmless. *)
     for i = 0 to Array.length lexbuf.__private__mem - 1 do
       if lexbuf.__private__mem.(i) >= 0 then
         lexbuf.__private__mem.(i) <- lexbuf.__private__mem.(i) - s
@@ -328,16 +330,14 @@ let rollback lexbuf =
 (* Tagged DFA memory cells for `as` bindings.
    Positions are stored as buffer-relative uchar indices (>= 0), converted
    to token-relative offsets on read by [__private__mem_pos]. Discriminator
-   values are stored as -(v + 2), always <= -2. The sentinel -1 means
-   "unset". This range convention lets [refill] adjust only position
-   cells (>= 0) when compacting the buffer. *)
+   values are stored as -(v + 2), always <= -2. This range convention lets
+   [refill] adjust only position cells (>= 0) when compacting the buffer. *)
 
+(* Only grows the array. The cells keep the contents of the previous token:
+   clearing them at each token costs more than the tag operations. *)
 let __private__init_mem lexbuf n =
-  (* Reuse the existing array if large enough; otherwise allocate a fresh
-     one. The cells are reset to -1 (unset). *)
   if Array.length lexbuf.__private__mem < n then
     lexbuf.__private__mem <- Array.make n (-1)
-  else Array.fill lexbuf.__private__mem 0 n (-1)
 
 let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
 
