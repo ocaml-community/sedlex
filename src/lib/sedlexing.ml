@@ -27,10 +27,10 @@ end
 module Bytes = struct
   include Bytes
 
-  (* [set_utf_8_uchar] as in the standard library since OCaml 4.14, redefined
-     here so that it is inlined: it writes the encoding of a code point at an
-     index and returns its length, or 0 without writing anything when it does
-     not fit. *)
+  (* [set_utf_8_uchar], [set_utf_16be_uchar] and [set_utf_16le_uchar] as in
+     the standard library since OCaml 4.14, redefined here so that they are
+     inlined: they write the encoding of a code point at an index and return
+     its length, or 0 without writing anything when it does not fit. *)
 
   let[@inline] unsafe_set_uint8 b i x = unsafe_set b i (Char.unsafe_chr x)
 
@@ -65,6 +65,34 @@ module Bytes = struct
       unsafe_set_uint8 b (i + 3) (0x80 lor (c land 0x3F));
       4
     end
+
+  (* [hi] and [lo] are the offsets of the high and low bytes of a 16-bit
+     unit, which give the byte order. *)
+  let[@inline] unsafe_set_uint16 ~hi ~lo b i x =
+    unsafe_set_uint8 b (i + hi) (x lsr 8);
+    unsafe_set_uint8 b (i + lo) (x land 0xFF)
+
+  let[@inline] set_utf_16_uchar ~hi ~lo b i u =
+    let c = Uchar.to_int u in
+    let room = length b - i in
+    if i < 0 || room <= 0 then raise (Invalid_argument "index out of bounds")
+    else if c < 0x10000 then
+      if room < 2 then 0
+      else begin
+        unsafe_set_uint16 ~hi ~lo b i c;
+        2
+      end
+    else if room < 4 then 0
+    else begin
+      (* a surrogate pair *)
+      let c = c - 0x10000 in
+      unsafe_set_uint16 ~hi ~lo b i (0xD800 lor (c lsr 10));
+      unsafe_set_uint16 ~hi ~lo b (i + 2) (0xDC00 lor (c land 0x3FF));
+      4
+    end
+
+  let[@inline] set_utf_16be_uchar b i u = set_utf_16_uchar ~hi:0 ~lo:1 b i u
+  let[@inline] set_utf_16le_uchar b i u = set_utf_16_uchar ~hi:1 ~lo:0 b i u
 end
 
 (* shadow polymorphic equal *)
@@ -747,18 +775,6 @@ module Utf16 = struct
           let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
           Uchar.of_int (0x10000 + upper10 + lower10))
         else raise MalFormed
-
-    let to_buffer bo a apos len bom b =
-      let store =
-        match bo with
-          | Big_endian -> Buffer.add_utf_16be_uchar b
-          | Little_endian -> Buffer.add_utf_16le_uchar b
-      in
-      if bom then store (Uchar.of_int 0xfeff);
-      (* first, store the BOM *)
-      for i = apos to apos + len - 1 do
-        store a.(i)
-      done
   end
 
   let from_channel ic opt_bo =
@@ -792,13 +808,39 @@ module Utf16 = struct
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
+  (* As for UTF-8: the size first, then the result written in place. The
+     encoding loop is written once for each byte order, so that the encoder
+     is inlined in it. *)
   let sub_lexeme lb pos len bo bom =
-    let a = lb.buf in
-    let off = sub_lexeme_offset "Sedlexing.Utf16.sub_lexeme" lb a pos len in
-    let buf = Buffer.create ((len * 4) + 2) in
-    (* +2 for the BOM *)
-    Helper.to_buffer bo a off len bom buf;
-    Buffer.contents buf
+    let buf = lb.buf in
+    let off = sub_lexeme_offset "Sedlexing.Utf16.sub_lexeme" lb buf pos len in
+    let size = ref (if bom then 2 else 0) in
+    for i = off to off + len - 1 do
+      size := !size + Uchar.utf_16_byte_length (Array.unsafe_get buf i)
+    done;
+    let s = Bytes.create !size in
+    let written =
+      match bo with
+        | Big_endian ->
+            let j =
+              ref (if bom then Bytes.set_utf_16be_uchar s 0 Uchar.bom else 0)
+            in
+            for i = off to off + len - 1 do
+              j := !j + Bytes.set_utf_16be_uchar s !j (Array.unsafe_get buf i)
+            done;
+            !j
+        | Little_endian ->
+            let j =
+              ref (if bom then Bytes.set_utf_16le_uchar s 0 Uchar.bom else 0)
+            in
+            for i = off to off + len - 1 do
+              j := !j + Bytes.set_utf_16le_uchar s !j (Array.unsafe_get buf i)
+            done;
+            !j
+    in
+    (* the buffer was modified since the size was computed *)
+    if written <> !size then invalid_arg "Sedlexing.Utf16.sub_lexeme";
+    Bytes.unsafe_to_string s
 
   let lexeme lb bo bom = sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom
   let of_submatch s bo bom = sub_lexeme s.lexbuf s.pos s.len bo bom
