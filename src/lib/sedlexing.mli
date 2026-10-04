@@ -163,7 +163,9 @@ val lexeme : lexbuf -> Uchar.t array
 val lexeme_char : lexbuf -> int -> Uchar.t
 
 (** [Sedlexing.sub_lexeme lexbuf pos len] returns a substring of the string
-    matched by the regular expression as an array of Unicode code points. *)
+    matched by the regular expression as an array of Unicode code points.
+    @raise Invalid_argument
+      if [pos] and [len] do not designate a range of the matched string. *)
 val sub_lexeme : lexbuf -> int -> int -> Uchar.t array
 
 (** A submatch captures a sub-pattern matched by an [as] binding. It carries the
