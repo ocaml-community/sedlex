@@ -388,7 +388,7 @@ let gen_recflag (auto : Sedlex.dfa) =
    complete lexer expression for one [match%sedlex] block:
    - Defines all [__sedlex_state_N] functions via [let rec ... in].
    - Emits a start sequence: [start lexbuf], then (if the pattern has [as]
-     bindings) [init_mem], then calls state 0.
+     bindings) [ensure_mem], then calls state 0.
    - Wraps the result in a [match] on the returned rule index, dispatching
      to user-provided right-hand-side expressions, with [error] as default. *)
 let gen_definition ((_, lexbuf) as lexbuf_with_name)
@@ -402,14 +402,14 @@ let gen_definition ((_, lexbuf) as lexbuf_with_name)
   let states = List.flatten (Array.to_list states) in
   let start_expr =
     if compiled.num_tags > 0 then (
-      let init_mem =
+      let ensure_mem =
         [%expr
-          Sedlexing.__private__init_mem [%e lexbuf]
+          Sedlexing.__private__ensure_mem [%e lexbuf]
             [%e eint ~loc compiled.num_tags]]
       in
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
-        (pexp_sequence ~loc init_mem (call_state lexbuf auto 0)))
+        (pexp_sequence ~loc ensure_mem (call_state lexbuf auto 0)))
     else
       pexp_sequence ~loc
         [%expr Sedlexing.start [%e lexbuf]]
@@ -540,6 +540,10 @@ let gen_binding_code lexbuf (bindings : Sedlex.compiled_binding list) action =
                 let [%p pvar ~loc name] = [%e gen_sub_lexeme lexbuf st et] in
                 [%e acc]]
           | _ ->
+              (* All the discriminators on the way to an alternative are
+                 tested, the outermost included: the cells are not cleared
+                 between tokens, so an inner one may hold the value of an
+                 earlier token, and only counts once the outer ones agree. *)
               let gen_disc_cond discs =
                 let check (cell, value) =
                   [%expr

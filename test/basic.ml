@@ -1456,7 +1456,7 @@ let%expect_test "as_bindings_multi_rule_mem_cells" =
 
 let%expect_test "as_bindings_nested_sedlex" =
   (* Regression: a nested match%sedlex in a case RHS must not reset the
-     outer match's tag counter, which would cause init_mem/set_mem to be
+     outer match's tag counter, which would cause ensure_mem/set_mem to be
      dropped and as-bindings to read uninitialized memory cells. The outer
      bindings need a tag (variable-length prefix). *)
   let buf = Sedlexing.Utf8.from_string "abc" in

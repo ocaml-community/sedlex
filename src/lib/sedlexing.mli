@@ -249,10 +249,10 @@ val __private__next_int : lexbuf -> int
 
     This is a private API used by generated code and may change at any time. *)
 
-(** [__private__init_mem lexbuf n] ensures at least [n] memory cells are
+(** [__private__ensure_mem lexbuf n] ensures at least [n] memory cells are
     available. Called once at the start of each [match%sedlex] block that uses
     [as] bindings. *)
-val __private__init_mem : lexbuf -> int -> unit
+val __private__ensure_mem : lexbuf -> int -> unit
 
 (** [__private__set_mem_pos lexbuf i] records the current position in cell [i],
     for later retrieval by {!__private__mem_pos}. Used by [Set_position] tag
