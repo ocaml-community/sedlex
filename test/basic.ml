@@ -2302,3 +2302,137 @@ let%expect_test "stale_cells_between_tokens" =
     other: a="x" b="yy" c="z"
     single: v="cccc"
     |}]
+
+(* Same as above with the cells overwritten before every token, by the value
+   they used to be cleared with (-1), by plausible positions and by encoded
+   discriminator values: the submatches must not depend on it. The input is
+   read through a generator and is long enough for the buffer to be refilled,
+   which shifts the positions left in the cells. *)
+let%expect_test "poisoned_cells" =
+  let sub = Sedlexing.Utf8.of_submatch in
+  let digit = [%sedlex.regexp? '0' .. '9'] in
+  let rule_a buf =
+    match%sedlex buf with
+      (* nested or-patterns *)
+      | ('a', (Plus 'x' as v) | 'b', (Plus 'y' as v)), ';'
+      | 'c', ((Plus 'z' as v) | (Plus 'w' as v)), ';' ->
+          Some ("nested " ^ sub v)
+      (* a loop before an overlapping capture *)
+      | Star 'a', (Plus ('a' | 'b') as u), '!' -> Some ("loop " ^ sub u)
+      | (Plus digit as n), '.', (Plus digit as f) ->
+          Some ("float " ^ sub n ^ " " ^ sub f)
+      (* a capture that may end at the end of input *)
+      | '#', (Star (Compl ' ') as c), (' ' | eof) -> Some ("comment " ^ sub c)
+      | ' ' -> Some "space"
+      | eof -> None
+      | any -> Some ("any " ^ Sedlexing.Utf8.lexeme buf)
+      | _ -> assert false
+  in
+  let rule_b buf =
+    match%sedlex buf with
+      | (Plus 'k' as k), '=', (Plus 'v' as v)
+      | (Plus 'v' as v), ':', (Plus 'k' as k) ->
+          Some ("pair " ^ sub k ^ " " ^ sub v)
+      | (Plus digit as n), Opt ('e', Plus digit) -> Some ("int " ^ sub n)
+      | ' ' -> Some "space"
+      | eof -> None
+      | any -> Some ("any " ^ Sedlexing.Utf8.lexeme buf)
+      | _ -> assert false
+  in
+  let input =
+    let words =
+      [|
+        "axx;";
+        "kk=v";
+        "byyy;";
+        "v:k";
+        "czz;";
+        "12";
+        "cw;";
+        "vvv:kk";
+        "aab!";
+        "k=vv";
+        "ab!";
+        "7";
+        "bb!";
+        "kkk=vvv";
+        "12.5";
+        "v:kkk";
+        "3.14159";
+        "42";
+        "#note";
+        "k=v";
+        "x";
+        "y";
+      |]
+    in
+    let b = Buffer.create 4096 in
+    for i = 0 to 399 do
+      Buffer.add_string b words.(i * 7 mod Array.length words);
+      Buffer.add_char b ' '
+    done;
+    Buffer.add_string b "#end";
+    Buffer.contents b
+  in
+  let run poison =
+    let buf = Sedlexing.Utf8.from_gen (gen_from_string input) in
+    Sedlexing.__private__ensure_mem buf 16;
+    let out = Buffer.create 4096 in
+    let seed = ref 42 in
+    let rec loop i =
+      (match poison with
+        | None -> ()
+        | Some v ->
+            for c = 0 to Sedlexing.__private__num_mem_cells buf - 1 do
+              Sedlexing.__private__mem_set buf c v
+            done);
+      (* two rules with different cells, picked by a fixed pseudo-random
+         sequence so that every word meets both *)
+      seed := ((!seed * 1103515245) + 12345) land 0x3FFFFFFF;
+      match if (!seed lsr 16) land 1 = 0 then rule_a buf else rule_b buf with
+        | None -> i
+        | Some s ->
+            Buffer.add_string out s;
+            Buffer.add_char out '\n';
+            loop (i + 1)
+    in
+    let n = loop 0 in
+    (n, Buffer.contents out)
+  in
+  let n, reference = run None in
+  Printf.printf "%d characters, %d tokens\n" (String.length input) n;
+  (* how many tokens of each kind, and a few of them *)
+  let lines = String.split_on_char '\n' reference in
+  let kind l = List.hd (String.split_on_char ' ' l) in
+  List.iter
+    (fun k ->
+      let ls = List.filter (fun l -> kind l = k) lines in
+      Printf.printf "%-8s %4d  e.g. %s\n" k (List.length ls)
+        (String.concat ", "
+           (List.sort_uniq compare ls |> List.filteri (fun i _ -> i < 4))))
+    ["nested"; "loop"; "float"; "comment"; "pair"; "int"];
+  List.iter
+    (fun v ->
+      Printf.printf "cells set to %d: %s\n" v
+        (if run (Some v) = (n, reference) then "same" else "DIFFERENT"))
+    [-1; 0; 1; 3; 600; 1_000_003; -2; -3; -4; -5];
+  [%expect
+    {|
+    1877 characters, 1162 tokens
+    nested     39  e.g. nested w, nested xx, nested yyy, nested zz
+    loop       43  e.g. loop b, loop bb
+    float      24  e.g. float 12 5, float 3 14159
+    comment    11  e.g. comment end, comment note
+    pair       83  e.g. pair k v, pair k vv, pair k vvv, pair kk v
+    int        61  e.g. int 12, int 14159, int 2, int 3
+    cells set to -1: same
+    cells set to 0: same
+    cells set to 1: same
+    cells set to 3: same
+    cells set to 600: same
+    cells set to 1000003: same
+    cells set to -2: same
+    cells set to -3: same
+    cells set to -4: same
+    cells set to -5: same
+    |}]
