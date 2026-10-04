@@ -102,8 +102,37 @@ let ( >>| ) o f = match o with Some x -> Some (f x) | None -> None
 (* Absolute position from the beginning of the stream *)
 type apos = int
 
+(* The number of bytes of a code point in the input: [fixed_width] below
+   [fixed_below], given by [per_char] for the others. This spares a call to
+   [per_char] for every code point read. *)
+type widths = {
+  fixed_below : int;
+  fixed_width : int;
+  per_char : Uchar.t -> int;
+}
+
+let one_byte =
+  { fixed_below = max_int; fixed_width = 1; per_char = (fun _ -> 1) }
+
+let utf8_widths =
+  { fixed_below = 0x80; fixed_width = 1; per_char = Uchar.utf_8_byte_length }
+
+let utf16_widths =
+  {
+    fixed_below = 0x10000;
+    fixed_width = 2;
+    per_char = Uchar.utf_16_byte_length;
+  }
+
+(* A user-supplied [bytes_per_char] is called for every code point. *)
+let widths_of = function
+  | None -> one_byte
+  | Some per_char -> { fixed_below = 0; fixed_width = 0; per_char }
+
 type lexbuf = {
   refill : Uchar.t array -> int -> int -> int;
+  fixed_below : int;
+  fixed_width : int;
   bytes_per_char : Uchar.t -> int;
   mutable buf : Uchar.t array;
   (* Number of valid uchars in [buf] (from index 0 to len-1). *)
@@ -159,10 +188,12 @@ type lexbuf = {
 
 let chunk_size = 512
 
-let empty_lexbuf bytes_per_char =
+let empty_lexbuf (w : widths) =
   {
     refill = (fun _ _ _ -> assert false);
-    bytes_per_char;
+    fixed_below = w.fixed_below;
+    fixed_width = w.fixed_width;
+    bytes_per_char = w.per_char;
     buf = [||];
     len = 0;
     offset = 0;
@@ -189,14 +220,12 @@ let empty_lexbuf bytes_per_char =
   }
 
 let dummy_uchar = Uchar.of_int 0
-let nl_uchar = Uchar.of_int 10
 
-let create ?(bytes_per_char = fun _ -> 1) refill =
-  {
-    (empty_lexbuf bytes_per_char) with
-    refill;
-    buf = Array.make chunk_size dummy_uchar;
-  }
+let create_with widths refill =
+  { (empty_lexbuf widths) with refill; buf = Array.make chunk_size dummy_uchar }
+
+let create ?bytes_per_char refill =
+  create_with (widths_of bytes_per_char) refill
 
 let set_position ?bytes_position lexbuf position =
   lexbuf.offset <- position.Lexing.pos_cnum - lexbuf.pos;
@@ -208,7 +237,7 @@ let set_position ?bytes_position lexbuf position =
 
 let set_filename lexbuf fname = lexbuf.filename <- fname
 
-let from_gen ?bytes_per_char gen =
+let from_gen_with widths gen =
   let malformed = ref false in
   let refill buf pos len =
     let rec loop i =
@@ -226,16 +255,18 @@ let from_gen ?bytes_per_char gen =
     in
     loop 0
   in
-  create ?bytes_per_char refill
+  create_with widths refill
+
+let from_gen ?bytes_per_char gen = from_gen_with (widths_of bytes_per_char) gen
 
 let from_int_array ?bytes_per_char a =
   from_gen ?bytes_per_char
     (Gen.init ~limit:(Array.length a) (fun i -> Uchar.of_int a.(i)))
 
-let from_uchar_array ?(bytes_per_char = fun _ -> 1) a =
+let from_uchar_array ?bytes_per_char a =
   let len = Array.length a in
   {
-    (empty_lexbuf bytes_per_char) with
+    (empty_lexbuf (widths_of bytes_per_char)) with
     buf = Array.init len (fun i -> a.(i));
     len;
     finished = true;
@@ -280,19 +311,33 @@ let new_line lexbuf =
   lexbuf.curr_bol <- lexbuf.pos + lexbuf.offset;
   lexbuf.curr_bytes_bol <- lexbuf.bytes_pos + lexbuf.bytes_offset
 
-let[@inline always] next_aux some none lexbuf =
-  if (not lexbuf.finished) && lexbuf.pos = lexbuf.len then refill lexbuf;
-  if lexbuf.finished && lexbuf.pos = lexbuf.len then none
-  else begin
-    let ret = lexbuf.buf.(lexbuf.pos) in
-    lexbuf.pos <- lexbuf.pos + 1;
-    lexbuf.bytes_pos <- lexbuf.bytes_pos + lexbuf.bytes_per_char ret;
-    if Uchar.equal ret nl_uchar then new_line lexbuf;
-    some ret
-  end
+(* Reads the code point at [pos], which must be below [lexbuf.len]. *)
+let[@inline] read lexbuf pos =
+  let c = Uchar.to_int (Array.unsafe_get lexbuf.buf pos) in
+  lexbuf.pos <- pos + 1;
+  lexbuf.bytes_pos <-
+    (lexbuf.bytes_pos
+    +
+    if c < lexbuf.fixed_below then lexbuf.fixed_width
+    else lexbuf.bytes_per_char (Uchar.unsafe_of_int c));
+  if c = 10 then new_line lexbuf;
+  c
 
-let next lexbuf = (next_aux [@inlined]) (fun x -> Some x) None lexbuf
-let __private__next_int lexbuf = (next_aux [@inlined]) Uchar.to_int (-1) lexbuf
+(* The buffer is exhausted: refill it, or report the end of input. *)
+let next_int_refill lexbuf =
+  if not lexbuf.finished then refill lexbuf;
+  let pos = lexbuf.pos in
+  if pos < lexbuf.len then read lexbuf pos else -1
+
+(* Returns -1 at the end of input. *)
+let __private__next_int lexbuf =
+  let pos = lexbuf.pos in
+  if pos < lexbuf.len then read lexbuf pos else next_int_refill lexbuf
+
+let next lexbuf =
+  match __private__next_int lexbuf with
+    | -1 -> None
+    | c -> Some (Uchar.unsafe_of_int c)
 
 let mark lexbuf i =
   lexbuf.marked_pos <- lexbuf.pos;
@@ -503,8 +548,8 @@ module Chan = struct
   let raw_pos (t : t) = t.pos
 end
 
-let make_from_channel ?bytes_per_char ic ~max_bytes_per_uchar
-    ~min_bytes_per_uchar ~read_uchar =
+let make_from_channel widths ic ~max_bytes_per_uchar ~min_bytes_per_uchar
+    ~read_uchar =
   let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
   let malformed = ref false in
   let refill buf pos len =
@@ -530,25 +575,22 @@ let make_from_channel ?bytes_per_char ic ~max_bytes_per_uchar
     in
     loop 0
   in
-  create ?bytes_per_char refill
+  create_with widths refill
 
 module Latin1 = struct
-  let from_gen s =
-    from_gen ~bytes_per_char:(fun _ -> 1) (Gen.map Uchar.of_char s)
+  let from_gen s = from_gen_with one_byte (Gen.map Uchar.of_char s)
 
   let from_string s =
     let len = String.length s in
     {
-      (empty_lexbuf (fun _ -> 1)) with
+      (empty_lexbuf one_byte) with
       buf = Array.init len (fun i -> Uchar.of_char s.[i]);
       len;
       finished = true;
     }
 
   let from_channel ic =
-    make_from_channel ic
-      ~bytes_per_char:(fun _ -> 1)
-      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
+    make_from_channel one_byte ic ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
       ~read_uchar:(fun ~can_refill:_ t ->
         let c = Chan.get t 0 in
         Chan.advance t 1;
@@ -680,9 +722,8 @@ module Utf8 = struct
   end
 
   let from_channel ic =
-    make_from_channel ic ~bytes_per_char:Uchar.utf_8_byte_length
-      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
+    make_from_channel utf8_widths ic ~min_bytes_per_uchar:1
+      ~max_bytes_per_uchar:4 ~read_uchar:(fun ~can_refill t ->
         let w = Helper.width (Chan.get t 0) in
         Chan.ensure_bytes_available t ~can_refill w;
         let c =
@@ -691,9 +732,7 @@ module Utf8 = struct
         Chan.advance t w;
         Uchar.of_int c)
 
-  let from_gen s =
-    from_gen ~bytes_per_char:Uchar.utf_8_byte_length
-      (Helper.gen_from_char_gen s)
+  let from_gen s = from_gen_with utf8_widths (Helper.gen_from_char_gen s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
@@ -779,9 +818,8 @@ module Utf16 = struct
 
   let from_channel ic opt_bo =
     let bo = ref opt_bo in
-    make_from_channel ic ~bytes_per_char:Uchar.utf_16_byte_length
-      ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
+    make_from_channel utf16_widths ic ~min_bytes_per_uchar:2
+      ~max_bytes_per_uchar:4 ~read_uchar:(fun ~can_refill t ->
         let n1 = Char.code (Chan.get t 0) in
         let n2 = Char.code (Chan.get t 1) in
         let o = Helper.get_bo bo n1 n2 in
@@ -802,8 +840,7 @@ module Utf16 = struct
         else raise MalFormed)
 
   let from_gen s opt_bo =
-    from_gen ~bytes_per_char:Uchar.utf_16_byte_length
-      (Helper.gen_from_char_gen opt_bo s)
+    from_gen_with utf16_widths (Helper.gen_from_char_gen opt_bo s)
 
   let from_string s =
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))

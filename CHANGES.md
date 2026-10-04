@@ -36,6 +36,9 @@
 ## Performance
 - Faster `lexeme`, `sub_lexeme` and `of_submatch` in `Sedlexing.Latin1`,
   `Sedlexing.Utf8` and `Sedlexing.Utf16` (#219)
+- Reading a code point is cheaper: byte positions no longer need a call to
+  `bytes_per_char` for every code point, unless one is supplied by the user
+  (#221)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0

@@ -2484,3 +2484,29 @@ let%expect_test "positions_after_backtrack" =
     long  cp 7-13 bytes 12-23, ends line 3 bol 11 (bytes 18)
     eof   cp 13-13 bytes 23-23, ends line 3 bol 11 (bytes 18)
     |}]
+
+let%expect_test "next" =
+  let buf = Sedlexing.Utf8.from_string "a\xc3\xa9\n\xf0\x9f\x98\x80" in
+  Sedlexing.start buf;
+  let rec loop () =
+    match Sedlexing.next buf with
+      | Some c ->
+          let p = Sedlexing.lexing_bytes_position_curr buf in
+          Printf.printf "U+%04X, then at %d bytes %d line %d\n" (Uchar.to_int c)
+            (Sedlexing.lexeme_end buf) p.pos_cnum p.pos_lnum;
+          loop ()
+      | None -> print_endline "None"
+  in
+  loop ();
+  (* still None, and nothing is consumed *)
+  assert (Sedlexing.next buf = None);
+  Printf.printf "at %d\n" (Sedlexing.lexeme_end buf);
+  [%expect
+    {|
+    U+0061, then at 1 bytes 1 line 1
+    U+00E9, then at 2 bytes 3 line 1
+    U+000A, then at 3 bytes 4 line 2
+    U+1F600, then at 4 bytes 8 line 2
+    None
+    at 4
+    |}]
