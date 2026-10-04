@@ -492,8 +492,8 @@ module Latin1 = struct
         Chan.advance t 1;
         Uchar.of_char c)
 
-  let to_latin1 c =
-    if Uchar.is_char c then Uchar.to_char c
+  let[@inline] to_latin1 c =
+    if Uchar.is_char c then Uchar.unsafe_to_char c
     else raise (InvalidCodepoint (Uchar.to_int c))
 
   let lexeme_char lexbuf pos = to_latin1 (lexeme_char lexbuf pos)
@@ -505,9 +505,9 @@ module Latin1 = struct
     in
     let s = Bytes.create len in
     for i = 0 to len - 1 do
-      Bytes.set s i (to_latin1 buf.(off + i))
+      Bytes.unsafe_set s i (to_latin1 (Array.unsafe_get buf (off + i)))
     done;
-    Bytes.to_string s
+    Bytes.unsafe_to_string s
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
   let of_submatch s = sub_lexeme s.lexbuf s.pos s.len

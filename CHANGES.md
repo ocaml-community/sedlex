@@ -33,6 +33,9 @@
   returning code points of the rest of the buffer or, for a negative length,
   an empty string (#219)
 
+## Performance
+- Faster `Sedlexing.Latin1.lexeme`, `sub_lexeme` and `of_submatch` (#219)
+
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
 
