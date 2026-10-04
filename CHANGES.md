@@ -34,8 +34,8 @@
   an empty string (#219)
 
 ## Performance
-- Faster `lexeme`, `sub_lexeme` and `of_submatch` in `Sedlexing.Latin1` and
-  `Sedlexing.Utf8` (#219)
+- Faster `lexeme`, `sub_lexeme` and `of_submatch` in `Sedlexing.Latin1`,
+  `Sedlexing.Utf8` and `Sedlexing.Utf16` (#219)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
