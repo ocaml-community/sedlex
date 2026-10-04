@@ -316,8 +316,24 @@ let bytes_loc lexbuf =
 let lexeme_length lexbuf = lexbuf.pos - lexbuf.start_pos
 let lexeme_bytes_length lexbuf = lexbuf.bytes_pos - lexbuf.start_bytes_pos
 
+(* The index in [buf] of the code point at [pos] in the lexeme, once checked
+   that [len] code points from there are in the lexeme. [buf] is the buffer
+   of [lexbuf], read once by the caller: the range is also checked against
+   that very array, so that the caller can read it without bounds checks
+   whatever happens to [lexbuf] in between. *)
+let sub_lexeme_offset name lexbuf buf pos len =
+  let off = lexbuf.start_pos + pos in
+  if
+    pos < 0 || len < 0
+    || pos > lexbuf.pos - lexbuf.start_pos - len
+    || off > Array.length buf - len
+  then invalid_arg name;
+  off
+
 let sub_lexeme lexbuf pos len =
-  Array.sub lexbuf.buf (lexbuf.start_pos + pos) len
+  let buf = lexbuf.buf in
+  let off = sub_lexeme_offset "Sedlexing.sub_lexeme" lexbuf buf pos len in
+  Array.sub buf off len
 
 type submatch = { lexbuf : lexbuf; pos : int; len : int }
 
@@ -483,9 +499,13 @@ module Latin1 = struct
   let lexeme_char lexbuf pos = to_latin1 (lexeme_char lexbuf pos)
 
   let sub_lexeme lexbuf pos len =
+    let buf = lexbuf.buf in
+    let off =
+      sub_lexeme_offset "Sedlexing.Latin1.sub_lexeme" lexbuf buf pos len
+    in
     let s = Bytes.create len in
     for i = 0 to len - 1 do
-      Bytes.set s i (to_latin1 lexbuf.buf.(lexbuf.start_pos + pos + i))
+      Bytes.set s i (to_latin1 buf.(off + i))
     done;
     Bytes.to_string s
 
@@ -624,8 +644,10 @@ module Utf8 = struct
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lexbuf pos len =
+    let a = lexbuf.buf in
+    let off = sub_lexeme_offset "Sedlexing.Utf8.sub_lexeme" lexbuf a pos len in
     let buf = Buffer.create (len * 4) in
-    Helper.to_buffer lexbuf.buf (lexbuf.start_pos + pos) len buf;
+    Helper.to_buffer a off len buf;
     Buffer.contents buf
 
   let lexeme lexbuf = sub_lexeme lexbuf 0 (lexbuf.pos - lexbuf.start_pos)
@@ -722,9 +744,11 @@ module Utf16 = struct
     from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
 
   let sub_lexeme lb pos len bo bom =
+    let a = lb.buf in
+    let off = sub_lexeme_offset "Sedlexing.Utf16.sub_lexeme" lb a pos len in
     let buf = Buffer.create ((len * 4) + 2) in
     (* +2 for the BOM *)
-    Helper.to_buffer bo lb.buf (lb.start_pos + pos) len bom buf;
+    Helper.to_buffer bo a off len bom buf;
     Buffer.contents buf
 
   let lexeme lb bo bom = sub_lexeme lb 0 (lb.pos - lb.start_pos) bo bom

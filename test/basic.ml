@@ -1994,7 +1994,13 @@ let%expect_test "latin1_sub_lexeme" =
         Printf.printf "%S\n" (Sedlexing.Latin1.lexeme buf);
         sub 0 5;
         sub 1 3;
-        sub 5 0
+        sub 5 0;
+        sub 2 (-1);
+        sub (-1) 2;
+        (* past the lexeme, inside the buffer *)
+        sub 0 6;
+        sub 4 2;
+        sub 0 100
     | _ -> assert false);
   [%expect
     {|
@@ -2002,6 +2008,11 @@ let%expect_test "latin1_sub_lexeme" =
     0 5 -> "h\233llo"
     1 3 -> "\233ll"
     5 0 -> ""
+    2 -1 -> Invalid_argument
+    -1 2 -> Invalid_argument
+    0 6 -> Invalid_argument
+    4 2 -> Invalid_argument
+    0 100 -> Invalid_argument
     |}];
   (* A code point outside Latin1 *)
   let buf = Sedlexing.Utf8.from_string "a\xe2\x82\xacb" in
@@ -2089,6 +2100,68 @@ let%expect_test "utf_sub_lexeme_encoding" =
     (reference Buffer.add_utf_16be_uchar ~bom:true 0 n);
   Printf.printf "%d checks, %d errors\n" !checked !errors;
   [%expect {| 857 checks, 0 errors |}]
+
+let%expect_test "utf_sub_lexeme_range" =
+  let buf = Sedlexing.Utf8.from_string "h\xc3\xa9llo w\xc3\xb6rld" in
+  let show name f pos len =
+    match f pos len with
+      | s -> Printf.printf "%s %d %d -> %S\n" name pos len s
+      | exception Invalid_argument _ ->
+          Printf.printf "%s %d %d -> Invalid_argument\n" name pos len
+  in
+  let uchars =
+    show "uchars" (fun pos len ->
+        Sedlexing.sub_lexeme buf pos len
+        |> Array.map (fun c -> Printf.sprintf "%X" (Uchar.to_int c))
+        |> Array.to_list |> String.concat " ")
+  in
+  let utf8 = show "utf8" (Sedlexing.Utf8.sub_lexeme buf) in
+  let utf16 =
+    show "utf16" (fun pos len ->
+        Sedlexing.Utf16.sub_lexeme buf pos len Sedlexing.Utf16.Big_endian true)
+  in
+  (match%sedlex buf with
+    | Plus (Compl ' ') ->
+        List.iter
+          (fun f ->
+            f 0 5;
+            f 1 3;
+            f 5 0;
+            f 2 (-1);
+            f (-1) 2;
+            (* past the lexeme, inside the buffer *)
+            f 0 6;
+            f 4 2;
+            f 0 100)
+          [uchars; utf8; utf16]
+    | _ -> assert false);
+  [%expect
+    {|
+    uchars 0 5 -> "68 E9 6C 6C 6F"
+    uchars 1 3 -> "E9 6C 6C"
+    uchars 5 0 -> ""
+    uchars 2 -1 -> Invalid_argument
+    uchars -1 2 -> Invalid_argument
+    uchars 0 6 -> Invalid_argument
+    uchars 4 2 -> Invalid_argument
+    uchars 0 100 -> Invalid_argument
+    utf8 0 5 -> "h\195\169llo"
+    utf8 1 3 -> "\195\169ll"
+    utf8 5 0 -> ""
+    utf8 2 -1 -> Invalid_argument
+    utf8 -1 2 -> Invalid_argument
+    utf8 0 6 -> Invalid_argument
+    utf8 4 2 -> Invalid_argument
+    utf8 0 100 -> Invalid_argument
+    utf16 0 5 -> "\254\255\000h\000\233\000l\000l\000o"
+    utf16 1 3 -> "\254\255\000\233\000l\000l"
+    utf16 5 0 -> "\254\255"
+    utf16 2 -1 -> Invalid_argument
+    utf16 -1 2 -> Invalid_argument
+    utf16 0 6 -> Invalid_argument
+    utf16 4 2 -> Invalid_argument
+    utf16 0 100 -> Invalid_argument
+    |}]
 
 let%expect_test "utf_of_submatch_non_ascii" =
   let buf =

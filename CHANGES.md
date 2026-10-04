@@ -28,6 +28,10 @@
   generate invalid code (#201)
 - UTF-8 decoding: the surrogate range rejected by `Utf8.Helper.check_three`
   ended at U+DF00 instead of U+DFFF (#184)
+- `Sedlexing.sub_lexeme` and its `Latin1`, `Utf8` and `Utf16` versions raise
+  `Invalid_argument` when the range is not within the lexeme, instead of
+  returning code points of the rest of the buffer or, for a negative length,
+  an empty string (#219)
 
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
