@@ -2261,3 +2261,226 @@ let%expect_test "sub_lexeme_later_tokens" =
     all widths: 858 tokens, 0 errors
     latin1: 858 tokens, 0 errors
     |}]
+
+(* Positions in code points and in bytes, lines included, checked on every
+   token against a count made from the lexemes themselves. [width] is the
+   number of bytes of a code point in the encoding of the input. *)
+let check_positions name ~width buf =
+  let errors = ref 0 and tokens = ref 0 in
+  let check what got expected =
+    if got <> expected then begin
+      incr errors;
+      if !errors <= 5 then
+        Printf.printf "%s, token %d: %s is %d, expected %d\n" name !tokens what
+          got expected
+    end
+  in
+  (* expected state at the end of the previous token *)
+  let cp = ref 0 and bytes = ref 0 in
+  let line = ref 1 and bol = ref 0 and bytes_bol = ref 0 in
+  let check_pos what ((p : Lexing.position), (b : Lexing.position)) =
+    check (what ^ " cnum") p.pos_cnum !cp;
+    check (what ^ " lnum") p.pos_lnum !line;
+    check (what ^ " bol") p.pos_bol !bol;
+    check (what ^ " bytes cnum") b.pos_cnum !bytes;
+    check (what ^ " bytes lnum") b.pos_lnum !line;
+    check (what ^ " bytes bol") b.pos_bol !bytes_bol
+  in
+  let token () =
+    incr tokens;
+    check "lexeme_start" (Sedlexing.lexeme_start buf) !cp;
+    check "lexeme_bytes_start" (Sedlexing.lexeme_bytes_start buf) !bytes;
+    check_pos "start"
+      ( Sedlexing.lexing_position_start buf,
+        Sedlexing.lexing_bytes_position_start buf );
+    let start_bytes = !bytes in
+    Array.iter
+      (fun c ->
+        incr cp;
+        bytes := !bytes + width c;
+        if Uchar.to_int c = 10 then begin
+          incr line;
+          bol := !cp;
+          bytes_bol := !bytes
+        end)
+      (Sedlexing.lexeme buf);
+    check "lexeme_end" (Sedlexing.lexeme_end buf) !cp;
+    check "lexeme_bytes_end" (Sedlexing.lexeme_bytes_end buf) !bytes;
+    check "lexeme_bytes_length"
+      (Sedlexing.lexeme_bytes_length buf)
+      (!bytes - start_bytes);
+    check "bytes_loc" (snd (Sedlexing.bytes_loc buf)) !bytes;
+    check_pos "curr"
+      ( Sedlexing.lexing_position_curr buf,
+        Sedlexing.lexing_bytes_position_curr buf )
+  in
+  let rec loop () =
+    match%sedlex buf with
+      | Plus (Compl (Chars " \n")) ->
+          token ();
+          loop ()
+      (* a token spanning several lines *)
+      | '\n', Plus (' ' | '\n') ->
+          token ();
+          loop ()
+      | ' ' | '\n' ->
+          token ();
+          loop ()
+      | eof -> token ()
+      | _ -> assert false
+  in
+  loop ();
+  Printf.printf "%s: %d tokens, %d errors\n" name !tokens !errors
+
+let utf8_width c = Uchar.utf_8_byte_length c
+let utf16_width c = Uchar.utf_16_byte_length c
+
+(* Words of 1 to 4 byte code points, long enough to cross several refills of
+   the 512 code point chunks. *)
+let positions_text =
+  let b = Buffer.create 4096 in
+  let cps = [| 0x61; 0xE9; 0x20AC; 0x1F600; 0x62; 0x7F; 0x80; 0x7FF |] in
+  for i = 0 to 2999 do
+    if i mod 7 = 3 then Buffer.add_char b ' '
+    else if i mod 41 = 17 then Buffer.add_char b '\n'
+    else if i mod 97 = 50 then Buffer.add_string b "\n \n\n  "
+    else Buffer.add_utf_8_uchar b (Uchar.of_int cps.(i * 5 mod 8))
+  done;
+  Buffer.contents b
+
+let%expect_test "positions_utf8" =
+  List.iter
+    (fun (name, s) ->
+      let check src buf =
+        check_positions (name ^ " " ^ src) ~width:utf8_width buf
+      in
+      check "from_string" (Sedlexing.Utf8.from_string s);
+      check "from_gen" (Sedlexing.Utf8.from_gen (gen_from_string s));
+      check "from_channel" (Sedlexing.Utf8.from_channel (channel_from_string s)))
+    [
+      ("empty", "");
+      ("short", "a \xc3\xa9\xe2\x82\xac\xf0\x9f\x98\x80\nx\xc3\xa9 y\n\n z");
+      ("long", positions_text);
+    ];
+  [%expect
+    {|
+    empty from_string: 1 tokens, 0 errors
+    empty from_gen: 1 tokens, 0 errors
+    empty from_channel: 1 tokens, 0 errors
+    short from_string: 10 tokens, 0 errors
+    short from_gen: 10 tokens, 0 errors
+    short from_channel: 10 tokens, 0 errors
+    long from_string: 991 tokens, 0 errors
+    long from_gen: 991 tokens, 0 errors
+    long from_channel: 991 tokens, 0 errors
+    |}]
+
+let%expect_test "positions_utf16" =
+  List.iter
+    (fun (name, endian) ->
+      let s = utf16_of_utf8 ~endian positions_text in
+      let bo = Some endian in
+      let check src buf =
+        check_positions (name ^ " " ^ src) ~width:utf16_width buf
+      in
+      check "from_string" (Sedlexing.Utf16.from_string s bo);
+      check "from_gen" (Sedlexing.Utf16.from_gen (gen_from_string s) bo);
+      check "from_channel"
+        (Sedlexing.Utf16.from_channel (channel_from_string s) bo))
+    [("be", Sedlexing.Utf16.Big_endian); ("le", Sedlexing.Utf16.Little_endian)];
+  [%expect
+    {|
+    be from_string: 991 tokens, 0 errors
+    be from_gen: 991 tokens, 0 errors
+    be from_channel: 991 tokens, 0 errors
+    le from_string: 991 tokens, 0 errors
+    le from_gen: 991 tokens, 0 errors
+    le from_channel: 991 tokens, 0 errors
+    |}]
+
+let%expect_test "positions_latin1_and_arrays" =
+  let s =
+    String.init 3000 (fun i ->
+        if i mod 7 = 3 then ' '
+        else if i mod 41 = 17 then '\n'
+        else Char.chr (33 + (i * 5 mod 220)))
+  in
+  let one _ = 1 in
+  check_positions "latin1 from_string" ~width:one
+    (Sedlexing.Latin1.from_string s);
+  check_positions "latin1 from_gen" ~width:one
+    (Sedlexing.Latin1.from_gen (gen_from_string s));
+  check_positions "latin1 from_channel" ~width:one
+    (Sedlexing.Latin1.from_channel (channel_from_string s));
+  let ints = Array.init (String.length s) (fun i -> Char.code s.[i]) in
+  let uchars = Array.map Uchar.of_int ints in
+  check_positions "from_int_array" ~width:one (Sedlexing.from_int_array ints);
+  check_positions "from_uchar_array" ~width:one
+    (Sedlexing.from_uchar_array uchars);
+  (* a user-supplied width, different for every code point *)
+  let odd c = 1 + (Uchar.to_int c mod 5) in
+  check_positions "from_int_array, custom width" ~width:odd
+    (Sedlexing.from_int_array ~bytes_per_char:odd ints);
+  check_positions "from_uchar_array, custom width" ~width:odd
+    (Sedlexing.from_uchar_array ~bytes_per_char:odd uchars);
+  check_positions "from_gen, custom width" ~width:odd
+    (Sedlexing.from_gen ~bytes_per_char:odd
+       (let i = ref 0 in
+        fun () ->
+          if !i >= Array.length uchars then None
+          else (
+            incr i;
+            Some uchars.(!i - 1))));
+  [%expect
+    {|
+    latin1 from_string: 951 tokens, 0 errors
+    latin1 from_gen: 951 tokens, 0 errors
+    latin1 from_channel: 951 tokens, 0 errors
+    from_int_array: 951 tokens, 0 errors
+    from_uchar_array: 951 tokens, 0 errors
+    from_int_array, custom width: 951 tokens, 0 errors
+    from_uchar_array, custom width: 951 tokens, 0 errors
+    from_gen, custom width: 951 tokens, 0 errors
+    |}]
+
+(* Backtracking over multi-byte code points and a newline restores the
+   positions, in bytes and lines too. *)
+let%expect_test "positions_after_backtrack" =
+  let buf =
+    Sedlexing.Utf8.from_string
+      "ab\xe2\x82\xac\n\xf0\x9f\x98\x80d ab\xe2\x82\xac\n\xf0\x9f\x98\x80c"
+  in
+  let pos () =
+    let p, _ = Sedlexing.lexing_positions buf in
+    let c, _ = (Sedlexing.lexing_position_curr buf, ()) in
+    let bs, be = Sedlexing.bytes_loc buf in
+    let bc = Sedlexing.lexing_bytes_position_curr buf in
+    Printf.sprintf "cp %d-%d bytes %d-%d, ends line %d bol %d (bytes %d)"
+      p.pos_cnum c.pos_cnum bs be c.pos_lnum c.pos_bol bc.pos_bol
+  in
+  let rec loop () =
+    match%sedlex buf with
+      | "ab", 0x20AC, '\n', 0x1F600, 'c' ->
+          Printf.printf "long  %s\n" (pos ());
+          loop ()
+      | Plus (Chars "ab") ->
+          Printf.printf "short %s\n" (pos ());
+          loop ()
+      | eof -> Printf.printf "eof   %s\n" (pos ())
+      | any ->
+          Printf.printf "any   %s\n" (pos ());
+          loop ()
+      | _ -> assert false
+  in
+  loop ();
+  [%expect
+    {|
+    short cp 0-2 bytes 0-2, ends line 1 bol 0 (bytes 0)
+    any   cp 2-3 bytes 2-5, ends line 1 bol 0 (bytes 0)
+    any   cp 3-4 bytes 5-6, ends line 2 bol 4 (bytes 6)
+    any   cp 4-5 bytes 6-10, ends line 2 bol 4 (bytes 6)
+    any   cp 5-6 bytes 10-11, ends line 2 bol 4 (bytes 6)
+    any   cp 6-7 bytes 11-12, ends line 2 bol 4 (bytes 6)
+    long  cp 7-13 bytes 12-23, ends line 3 bol 11 (bytes 18)
+    eof   cp 13-13 bytes 23-23, ends line 3 bol 11 (bytes 18)
+    |}]
