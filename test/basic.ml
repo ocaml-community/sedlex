@@ -1980,3 +1980,211 @@ let%expect_test "plus_nullable_first_alternative" =
     "bb" -> x="bb"
     "db" -> x="db"
     |}]
+
+let%expect_test "latin1_sub_lexeme" =
+  let buf = Sedlexing.Latin1.from_string "h\233llo wor\255d" in
+  let sub pos len =
+    match Sedlexing.Latin1.sub_lexeme buf pos len with
+      | s -> Printf.printf "%d %d -> %S\n" pos len s
+      | exception Invalid_argument _ ->
+          Printf.printf "%d %d -> Invalid_argument\n" pos len
+  in
+  (match%sedlex buf with
+    | Plus (Compl ' ') ->
+        Printf.printf "%S\n" (Sedlexing.Latin1.lexeme buf);
+        sub 0 5;
+        sub 1 3;
+        sub 5 0
+    | _ -> assert false);
+  [%expect
+    {|
+    "h\233llo"
+    0 5 -> "h\233llo"
+    1 3 -> "\233ll"
+    5 0 -> ""
+    |}];
+  (* A code point outside Latin1 *)
+  let buf = Sedlexing.Utf8.from_string "a\xe2\x82\xacb" in
+  (match%sedlex buf with
+    | Plus any -> (
+        match Sedlexing.Latin1.lexeme buf with
+          | s -> Printf.printf "%S\n" s
+          | exception Sedlexing.InvalidCodepoint c -> Printf.printf "U+%04X\n" c
+        )
+    | _ -> assert false);
+  [%expect {| U+20AC |}]
+
+(* [Utf8.sub_lexeme] and [Utf16.sub_lexeme] against the encoders of the
+   standard library, on every sub-range of a lexeme that mixes all the
+   encoding lengths. *)
+let%expect_test "utf_sub_lexeme_encoding" =
+  let cps =
+    [|
+      0x41;
+      0x00;
+      0x7a;
+      0x7F;
+      0x80;
+      0x7FF;
+      0x800;
+      0xD7FF;
+      0xE000;
+      0xFEFF;
+      0xFFFD;
+      0xFFFF;
+      0x10000;
+      0x1F600;
+      0x10FFFF;
+      0x62;
+      0x63;
+    |]
+  in
+  let a = Array.map Uchar.of_int cps in
+  let n = Array.length a in
+  let buf = Sedlexing.from_uchar_array a in
+  (match%sedlex buf with Plus any -> () | _ -> assert false);
+  assert (Sedlexing.lexeme_length buf = n);
+  let reference add ~bom pos len =
+    let b = Buffer.create 16 in
+    if bom then add b (Uchar.of_int 0xFEFF);
+    for i = pos to pos + len - 1 do
+      add b a.(i)
+    done;
+    Buffer.contents b
+  in
+  let errors = ref 0 and checked = ref 0 in
+  let check what got expected =
+    incr checked;
+    if got <> expected then begin
+      incr errors;
+      Printf.printf "%s: got %S, expected %S\n" what got expected
+    end
+  in
+  for pos = 0 to n do
+    for len = 0 to n - pos do
+      check
+        (Printf.sprintf "utf8 %d %d" pos len)
+        (Sedlexing.Utf8.sub_lexeme buf pos len)
+        (reference Buffer.add_utf_8_uchar ~bom:false pos len);
+      List.iter
+        (fun (name, bo, add) ->
+          List.iter
+            (fun bom ->
+              check
+                (Printf.sprintf "utf16%s %d %d bom=%b" name pos len bom)
+                (Sedlexing.Utf16.sub_lexeme buf pos len bo bom)
+                (reference add ~bom pos len))
+            [false; true])
+        [
+          ("le", Sedlexing.Utf16.Little_endian, Buffer.add_utf_16le_uchar);
+          ("be", Sedlexing.Utf16.Big_endian, Buffer.add_utf_16be_uchar);
+        ]
+    done
+  done;
+  check "utf8 lexeme"
+    (Sedlexing.Utf8.lexeme buf)
+    (reference Buffer.add_utf_8_uchar ~bom:false 0 n);
+  check "utf16 lexeme"
+    (Sedlexing.Utf16.lexeme buf Sedlexing.Utf16.Big_endian true)
+    (reference Buffer.add_utf_16be_uchar ~bom:true 0 n);
+  Printf.printf "%d checks, %d errors\n" !checked !errors;
+  [%expect {| 857 checks, 0 errors |}]
+
+let%expect_test "utf_of_submatch_non_ascii" =
+  let buf =
+    Sedlexing.Utf8.from_string
+      "h\xc3\xa9llo w\xc3\xb6rld\xe2\x82\xac\xf0\x9f\x98\x80"
+  in
+  (match%sedlex buf with
+    | (Plus (Compl ' ') as x), ' ', (Plus any as y) ->
+        Printf.printf "utf8: %S %S\n"
+          (Sedlexing.Utf8.of_submatch x)
+          (Sedlexing.Utf8.of_submatch y);
+        Printf.printf "utf16le: %S\n"
+          (Sedlexing.Utf16.of_submatch y Sedlexing.Utf16.Little_endian false);
+        Printf.printf "utf16be+bom: %S\n"
+          (Sedlexing.Utf16.of_submatch x Sedlexing.Utf16.Big_endian true)
+    | _ -> assert false);
+  [%expect
+    {|
+    utf8: "h\195\169llo" "w\195\182rld\226\130\172\240\159\152\128"
+    utf16le: "w\000\246\000r\000l\000d\000\172 =\216\000\222"
+    utf16be+bom: "\254\255\000h\000\233\000l\000l\000o"
+    |}]
+
+(* Extraction from tokens that do not start the buffer, read through a
+   generator so that the buffer is refilled and compacted several times. The
+   reference is built from the code points of [Sedlexing.lexeme]. *)
+let%expect_test "sub_lexeme_later_tokens" =
+  let run name ~latin1 cps =
+    let text =
+      Array.init 3000 (fun i ->
+          Uchar.of_int
+            (if i mod 7 = 3 then 0x20 else cps.(i * 5 mod Array.length cps)))
+    in
+    let buf =
+      let i = ref 0 in
+      Sedlexing.from_gen (fun () ->
+          if !i >= Array.length text then None
+          else (
+            incr i;
+            Some text.(!i - 1)))
+    in
+    let encode add a =
+      let b = Buffer.create 16 in
+      Array.iter (add b) a;
+      Buffer.contents b
+    in
+    let tokens = ref 0 and errors = ref 0 in
+    let check what got expected =
+      if got <> expected then begin
+        incr errors;
+        if !errors <= 5 then
+          Printf.printf "%s, token %d, %s: got %S, expected %S\n" name !tokens
+            what got expected
+      end
+    in
+    let token () =
+      incr tokens;
+      let a = Sedlexing.lexeme buf in
+      let n = Array.length a in
+      (* the whole lexeme, then without its first and last code points *)
+      List.iter
+        (fun (pos, len) ->
+          let a = Array.sub a pos len in
+          check "utf8"
+            (Sedlexing.Utf8.sub_lexeme buf pos len)
+            (encode Buffer.add_utf_8_uchar a);
+          check "utf16le"
+            (Sedlexing.Utf16.sub_lexeme buf pos len
+               Sedlexing.Utf16.Little_endian false)
+            (encode Buffer.add_utf_16le_uchar a);
+          check "utf16be"
+            (Sedlexing.Utf16.sub_lexeme buf pos len Sedlexing.Utf16.Big_endian
+               true)
+            ("\xfe\xff" ^ encode Buffer.add_utf_16be_uchar a);
+          if latin1 then
+            check "latin1"
+              (Sedlexing.Latin1.sub_lexeme buf pos len)
+              (encode (fun b u -> Buffer.add_char b (Uchar.to_char u)) a))
+        [(0, n); (1, n - 1); (0, n - 1)]
+    in
+    let rec loop () =
+      match%sedlex buf with
+        | Plus (Compl ' ') | ' ' ->
+            token ();
+            loop ()
+        | eof -> ()
+        | _ -> assert false
+    in
+    loop ();
+    Printf.printf "%s: %d tokens, %d errors\n" name !tokens !errors
+  in
+  run "all widths" ~latin1:false
+    [| 0x61; 0xE9; 0x20AC; 0x1F600; 0x62; 0x7F; 0x80; 0x7FF |];
+  run "latin1" ~latin1:true [| 0x61; 0xE9; 0xFF; 0x62; 0x7F; 0x80 |];
+  [%expect
+    {|
+    all widths: 858 tokens, 0 errors
+    latin1: 858 tokens, 0 errors
+    |}]
