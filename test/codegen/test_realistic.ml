@@ -1,5 +1,5 @@
 (* Realistic multi-rule lexer exercising many patterns simultaneously.
-   Current: init_mem 4 (2 tags, each with its canonical cell and a working
+   Current: ensure_mem 4 (2 tags, each with its canonical cell and a working
    register).
    - Rule 0: (Plus 'a'..'z' as ns), '.', (Plus 'a'..'z' as name) → 1 tag
      (ns: start=0, end=tag0; name: start=tag0+1 via Tag offset, end=lexeme_length)
@@ -10,9 +10,9 @@
    - Rule 4: (Plus digits as tok) | (Plus letters as tok) → 0 tags (discriminator elided)
    Each tag is set once, on the '.' or '=' transition leaving the loop.
    Remaining optimization goals:
-   - Unambiguous tags written directly to their canonical cell (init_mem
+   - Unambiguous tags written directly to their canonical cell (ensure_mem
      4 → 2)
-   - Cross-rule cell sharing → rules 0,1 share cells (init_mem 2 → 1) *)
+   - Cross-rule cell sharing → rules 0,1 share cells (ensure_mem 2 → 1) *)
 let%expect_test "realistic: multi-token lexer" =
   (match%sedlex_test buf with
     | (Plus 'a' .. 'z' as ns), '.', (Plus 'a' .. 'z' as name) ->
@@ -152,7 +152,7 @@ let%expect_test "realistic: multi-token lexer" =
        | 0 -> __sedlex_state_16 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 4;
+          Sedlexing.__private__ensure_mem buf 4;
           __sedlex_state_0 buf
     with
     | 0 ->

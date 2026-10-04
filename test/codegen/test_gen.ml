@@ -216,7 +216,7 @@ let%expect_test "as binding: simple, no static elimination" =
        | 0 -> __sedlex_state_3 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 4;
+          Sedlexing.__private__ensure_mem buf 4;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -362,7 +362,7 @@ let%expect_test "as binding: multiple bindings, no static elimination" =
        | 0 -> __sedlex_state_3 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -442,7 +442,7 @@ let%expect_test
        | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 5;
+          Sedlexing.__private__ensure_mem buf 5;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -517,7 +517,7 @@ let%expect_test "as binding: shared prefix or-pattern" =
       | 1 -> (Sedlexing.__private__set_mem_value buf 0 1; 0)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 1;
+          Sedlexing.__private__ensure_mem buf 1;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -590,7 +590,7 @@ let%expect_test "as binding: 3-way or reuses disc cell" =
        | 0 -> (Sedlexing.__private__set_mem_value buf 0 0; 0)
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 1;
+          Sedlexing.__private__ensure_mem buf 1;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -716,7 +716,7 @@ let%expect_test "as binding: multi-rule, no static elimination" =
       | 0 -> 1
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -821,7 +821,7 @@ let%expect_test "as binding: wrapping alternation, no static elimination" =
        | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -841,9 +841,9 @@ let%expect_test "as binding: wrapping alternation, no static elimination" =
 (* Optimization 1: Element-length (Offset_from_tag)
    When neither prefix nor suffix length is known but the element itself
    has a fixed codepoint length, only 1 tag should be needed instead of 2.
-   Current: init_mem 2 (1 tag, end = tag + 1; every tag costs its canonical
+   Current: ensure_mem 2 (1 tag, end = tag + 1; every tag costs its canonical
    cell plus a working register, copied on accept).
-   Goal: init_mem 1 (an unambiguous tag written directly to its canonical
+   Goal: ensure_mem 1 (an unambiguous tag written directly to its canonical
    cell). *)
 let%expect_test "optim: element-length (Offset_from_tag)" =
   (match%sedlex_test buf with
@@ -890,7 +890,7 @@ let%expect_test "optim: element-length (Offset_from_tag)" =
        | 0 -> __sedlex_state_3 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1012,9 +1012,9 @@ let%expect_test "optim: discriminator elision" =
 (* Optimization 4: Intra-rule tag coalescing
    Tags with identical occurrence signatures should share one memory cell.
    Here x_end and y_start fire on the same transitions.
-   Current: init_mem 2 (1 tag: x_start=0, x_end=y_start via Tag offset,
+   Current: ensure_mem 2 (1 tag: x_start=0, x_end=y_start via Tag offset,
    y_end=lexeme_length; canonical cell plus working register).
-   Goal: init_mem 1 (the tag written directly to its canonical cell). *)
+   Goal: ensure_mem 1 (the tag written directly to its canonical cell). *)
 let%expect_test "optim: intra-rule tag coalescing" =
   (match%sedlex_test buf with
     | (Plus 'a' as x), (Plus 'b' as y) -> ignore (x, y)
@@ -1054,7 +1054,7 @@ let%expect_test "optim: intra-rule tag coalescing" =
        | 0 -> __sedlex_state_2 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1074,9 +1074,9 @@ let%expect_test "optim: intra-rule tag coalescing" =
    Non-interfering rules should reuse the same memory cells.
    Rule 0 and rule 1 never co-exist in the same DFA state (beyond state 0),
    so their tags can share cells.
-   Current: init_mem 8 (2 tags per rule, start + end of the variable-length
+   Current: ensure_mem 8 (2 tags per rule, start + end of the variable-length
    binding, each with a canonical cell and a working register).
-   Goal: init_mem 2 (tags written directly to their canonical cells, and
+   Goal: ensure_mem 2 (tags written directly to their canonical cells, and
    cells shared across non-interfering rules). *)
 let%expect_test "optim: cross-rule cell sharing" =
   (match%sedlex_test buf with
@@ -1154,7 +1154,7 @@ let%expect_test "optim: cross-rule cell sharing" =
        | 0 -> __sedlex_state_6 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 8;
+          Sedlexing.__private__ensure_mem buf 8;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1177,7 +1177,7 @@ let%expect_test "optim: cross-rule cell sharing" =
    a final state should be removed.
    Rule 0 has a binding on Plus 'b'; rule 1 does not.
    Both share the Plus 'a', Plus 'b' prefix in the DFA.
-   Current: init_mem 4. The start tag is set once, on the transition entering
+   Current: ensure_mem 4. The start tag is set once, on the transition entering
    the 'b's, shared by both rules; the end tag is set on the 'c' transition
    only rule 0 takes, and nothing is written on the 'd' transition only
    rule 1 takes.
@@ -1240,7 +1240,7 @@ let%expect_test "optim: dead tag elimination" =
        | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 4;
+          Sedlexing.__private__ensure_mem buf 4;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1295,7 +1295,7 @@ let%expect_test "end of input gets its own transition" =
            0)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1310,7 +1310,7 @@ let%expect_test "end of input gets its own transition" =
 (* Optimization 7: Self-loop tag delay (Set_prev)
    Tags on a self-loop that also appear on all entering transitions
    should be delayed to exit transitions as Set_prev.
-   Current: init_mem 2; no write on the self-loop, the tag is set once on
+   Current: ensure_mem 2; no write on the self-loop, the tag is set once on
    the transition leaving it (set_mem_prev_pos).
    Goal: reached (O(1) instead of O(n) writes). *)
 let%expect_test "optim: self-loop tag delay" =
@@ -1350,7 +1350,7 @@ let%expect_test "optim: self-loop tag delay" =
        | 0 -> __sedlex_state_2 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1426,7 +1426,7 @@ let%expect_test "optim: static offsets around a variable-length capture" =
    the optional 'a'). The tag delayed out of the 'a' loop is materialized
    into its canonical cell at each accept, so backtracking to the earlier
    one sees the right value (the runtime check is in test/basic.ml).
-   Current: init_mem 2 (1 tag, canonical cell plus working register; x:
+   Current: ensure_mem 2 (1 tag, canonical cell plus working register; x:
    start=0, end=tag0; y: start=tag0, end=lexeme_length). *)
 let%expect_test "optim: delayed tag with backtracking" =
   (match%sedlex_test buf with
@@ -1470,7 +1470,7 @@ let%expect_test "optim: delayed tag with backtracking" =
        | 1 -> __sedlex_state_2 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1600,7 +1600,7 @@ let%expect_test "Rep variable-length prefix forces a tag" =
        | 0 -> __sedlex_state_4 buf
        | _ -> Sedlexing.backtrack buf) in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 2;
+          Sedlexing.__private__ensure_mem buf 2;
           __sedlex_state_0 buf
     with
     | 0 ->
@@ -1707,7 +1707,7 @@ let%expect_test "as binding: or-chain then nested or on right" =
       | 0 -> (Sedlexing.__private__set_mem_value buf 2 1; __sedlex_state_9 buf)
       | _ -> Sedlexing.backtrack buf in
     match Sedlexing.start buf;
-          Sedlexing.__private__init_mem buf 3;
+          Sedlexing.__private__ensure_mem buf 3;
           __sedlex_state_0 buf
     with
     | 0 ->

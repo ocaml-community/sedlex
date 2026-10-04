@@ -335,8 +335,10 @@ let rollback lexbuf =
 
 (* Only grows the array. The cells keep the contents of the previous token:
    clearing them at each token costs more than the tag operations. *)
-let __private__init_mem lexbuf n =
+let __private__ensure_mem lexbuf n =
   if Array.length lexbuf.__private__mem < n then
+    (* -1 is neither a position nor a value. Nothing relies on it: reused
+       cells hold whatever earlier tokens left. *)
     lexbuf.__private__mem <- Array.make n (-1)
 
 let __private__set_mem_pos lexbuf i = lexbuf.__private__mem.(i) <- lexbuf.pos
