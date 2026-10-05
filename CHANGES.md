@@ -39,6 +39,9 @@
 - The memory cells of `as` bindings are no longer cleared at the start of
   every token (#220)
 
+## Other changes
+- Require OCaml 4.11, the oldest compiler still in opam-repository
+
 # 3.7 (2025-10-06)
 - Update to unicode 17.0.0
 
