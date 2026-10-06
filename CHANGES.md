@@ -1,4 +1,4 @@
-# unreleased
+# 3.8.1 (2026-10-06)
 
 ## Bug fixes
 - End of input counts as one more character read, as it did before 3.8: a rule
