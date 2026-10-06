@@ -19,6 +19,7 @@
   at runtime. A submatch is only valid inside its action (#177, #178, #204,
   #208, #209, #212)
 - Nested `let .. in` definitions of `[%sedlex.regexp?]` (#176)
+- `Sedlexing.accept` for custom buffer control over final state acceptance (#81)
 - Unicode 18.0.0 (#205)
 - `Compl`, `Sub` and `Intersect` accept `Rep (c, 1 .. 1)` (#201)
 - Clearer errors for a bare `Star`, `Plus`, `Opt`, `Utf8`, `Latin1` or `Ascii`
