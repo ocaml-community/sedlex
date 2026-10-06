@@ -1,6 +1,6 @@
 (lang dune 3.18)
 (using menhir 2.1)
-(version 3.8)
+(version 3.8.1)
 (name sedlex)
 (source (github ocaml-community/sedlex))
 (license MIT)
