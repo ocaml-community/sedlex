@@ -1569,11 +1569,10 @@ let%expect_test "capture_before_eof" =
   lex (Sedlexing.Latin1.from_string "xa");
   [%expect {| x="x" |}]
 
-(* Regression (eof and rule priority): an earlier rule matching [s] must beat
-   a later rule matching [s, eof] — same lexeme length, so declaration order
-   breaks the tie. The zero-width accept of eof, reached last, used to
-   override the earlier mark. *)
-let%expect_test "eof_rule_priority" =
+(* End of input counts as one more symbol read: a rule matching [s, eof]
+   beats an earlier rule matching [s]. 3.8 let declaration order decide
+   instead, and a lexer with a nullable rule before [eof] looped forever. *)
+let%expect_test "eof_longest_match" =
   let inputs = ["cc"; "c"; ""; "a"] in
   let run lex =
     List.iter
@@ -1581,7 +1580,6 @@ let%expect_test "eof_rule_priority" =
         Printf.printf "%-4S -> %s\n" s (lex (Sedlexing.Utf8.from_string s)))
       inputs
   in
-  (* expected "cc" -> rule0 and "c" -> rule0 *)
   let lex buf =
     match%sedlex buf with
       | Plus ('b' | 'c') -> "rule0"
@@ -1591,12 +1589,12 @@ let%expect_test "eof_rule_priority" =
   run lex;
   [%expect
     {|
-    "cc" -> rule0
-    "c"  -> rule0
+    "cc" -> rule1
+    "c"  -> rule1
     ""   -> rule1
     "a"  -> rule1
     |}];
-  (* mirror: the eof-terminated rule is declared first and wins every tie *)
+  (* mirror: the eof-terminated rule is declared first *)
   let lex_eof_first buf =
     match%sedlex buf with
       | Star 'a' .. 'c', eof -> "rule0"
@@ -1610,16 +1608,62 @@ let%expect_test "eof_rule_priority" =
     "c"  -> rule0
     ""   -> rule0
     "a"  -> rule0
-    |}]
+    |}];
+  (* two rules reading eof: declaration order decides *)
+  let lex_both buf =
+    match%sedlex buf with
+      | Plus ('b' | 'c'), eof -> "rule0"
+      | Star 'a' .. 'c', eof -> "rule1"
+      | _ -> "none"
+  in
+  run lex_both;
+  [%expect
+    {|
+    "cc" -> rule0
+    "c"  -> rule0
+    ""   -> rule1
+    "a"  -> rule1
+    |}];
+  (* a nullable rule before [eof], the usual shape of a lexer loop *)
+  let rec tokens fuel acc buf =
+    if fuel = 0 then "loops"
+    else (
+      match%sedlex buf with
+        | '@' -> tokens (fuel - 1) ("@" :: acc) buf
+        | Star (Sub (any, '@')) ->
+            tokens (fuel - 1) (Sedlexing.Utf8.lexeme buf :: acc) buf
+        | eof -> String.concat " " (List.rev_map (Printf.sprintf "%S") acc)
+        | _ -> assert false)
+  in
+  List.iter
+    (fun s ->
+      Printf.printf "%-8S -> %s\n" s
+        (tokens 100 [] (Sedlexing.Utf8.from_string s)))
+    ["ab@cd"; "@@"; ""];
+  [%expect
+    {|
+    "ab@cd"  -> "ab" "@" "cd"
+    "@@"     -> "@" "@"
+    ""       ->
+    |}];
+  (* the final operations of the rule accepting before eof are overridden *)
+  let sub = Sedlexing.Latin1.of_submatch in
+  let lex buf =
+    match%sedlex buf with
+      | Plus 'a' as x -> Printf.printf "rule0 x=%S\n" (sub x)
+      | (Star 'a' as x), 'a', eof -> Printf.printf "rule1 x=%S\n" (sub x)
+      | _ -> print_endline "nomatch"
+  in
+  lex (Sedlexing.Latin1.from_string "aaa");
+  [%expect {| rule1 x="aa" |}];
+  lex (Sedlexing.Latin1.from_string "aab");
+  [%expect {| rule0 x="aa" |}]
 
-(* eof tie within a rule: the leftmost-greedy parse only becomes accepting
-   through the zero-width [eof] arm, after the state reached by the last real
-   character has already marked an equal-length parse of the same rule with a
-   shorter capture. The eof arm's parse outranks it (its Star is still open in
-   that state, so it precedes the accepting configuration), and the eof
-   transition is kept and returns directly over the mark. A tie-break that
-   let the state's own accept win over every eof parse would regress this
-   test. *)
+(* eof within a rule: the leftmost-greedy parse only becomes accepting
+   through the [eof] arm, after the state reached by the last real character
+   has already marked a parse of the same rule with a shorter capture. The
+   parse reading eof is the longer one: its transition returns directly over
+   the mark. *)
 let%expect_test "eof_zero_width_tie_within_rule" =
   let sub = Sedlexing.Latin1.of_submatch in
   (* expected x="aaa" and x="a" *)
@@ -1647,7 +1691,17 @@ let%expect_test "eof_zero_width_tie_within_rule" =
   (match%sedlex buf with
     | ('a' as x), 'b', eof | 'a', ('b' as x) -> Printf.printf "x=%S\n" (sub x)
     | _ -> print_endline "nomatch");
-  [%expect {| x="a" |}]
+  [%expect {| x="a" |}];
+  (* mirror: the right branch reads eof and beats the leftmost one *)
+  let lex buf =
+    match%sedlex buf with
+      | 'a', ('b' as x) | ('a' as x), 'b', eof -> Printf.printf "x=%S\n" (sub x)
+      | _ -> print_endline "nomatch"
+  in
+  lex (Sedlexing.Latin1.from_string "ab");
+  [%expect {| x="a" |}];
+  lex (Sedlexing.Latin1.from_string "abc");
+  [%expect {| x="b" |}]
 
 (* Regression (eof self-loop): end of input is read once. [eof] used to be
    reported again and again without advancing, so an accepting state with an
