@@ -93,6 +93,12 @@ Like ocamllex, sedlex uses **longest match** with **first rule priority**:
   the input `"if"` is matched by the first rule because it is listed
   first, even though the second rule also accepts `"if"`.
 
+- The end of input, matched by `eof`, counts as one more character
+  read: at the end of the input, a rule matching `s, eof` is a longer
+  match than a rule matching `s`, whichever is listed first.  In
+  particular, `eof` wins over an earlier rule that matches the empty
+  string.
+
 **Important:** The `_` (catch-all) case is *not* a regexp — it is the
 fallback when no rule matches.  Because no characters were consumed, the
 matched lexeme is empty (`""`).  If you need to consume and report an

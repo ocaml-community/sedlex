@@ -45,9 +45,9 @@
       - Transition operations execute before their character is consumed,
         final operations on entering the state.
       - End of input is a transition of its own, read once: it leads to a
-        state without transitions. It has zero width, so it ties with the
-        state's own accept; only configurations of higher priority than
-        that accept may take it.
+        state without transitions. It does not advance the position but
+        counts as one more symbol read, so a match that reads it is longer
+        than the state's own accept.
       - Each tag write of a transition gets a fresh register. States are
         looked up modulo register renaming, with equal delayed writes;
         reaching an existing state emits the moves realigning the
@@ -513,12 +513,12 @@ and build_state (ctx : ctx) (num : int) (configs : stored) : unit =
    close each piece, and look the pieces up in character-set order, so that
    state numbers follow that order.
 
-   End of input is apart. It has zero width, so matching it ties with the
-   state's own accept, and priority decides: only the configurations that
-   precede the first final one may read it. End of input is read once, so
-   what they reach is cut down to its accepting configuration, which has no
-   transitions, or dropped if it has none: reading end of input then fails
-   like any missing transition. *)
+   End of input is apart. It does not advance the position, but it counts
+   as one more symbol read: a match that reads it is longer than the state's
+   own accept, so any configuration may read it. End of input is read once,
+   so what they reach is cut down to its accepting configuration, which has
+   no transitions, or dropped if it has none: reading end of input then
+   fails like any missing transition. *)
 and transitions (ctx : ctx) (configs : stored) :
     (Cset.t * int * tag_op list) array =
   let is_final c = Array.exists (fun r -> r.final == c.node) ctx.rules in
@@ -540,12 +540,8 @@ and transitions (ctx : ctx) (configs : stored) :
         else Some (cset, { node; tags; delayed = TagMap.empty }))
       c.node.trans
   in
-  let rec leading = function
-    | c :: rest when not (is_final c) -> c :: leading rest
-    | _ -> []
-  in
   let on_eof =
-    let seeds = List.concat (List.map (moves_of ~eof:true) (leading configs)) in
+    let seeds = List.concat (List.map (moves_of ~eof:true) configs) in
     match List.find_opt is_final (eps_closure (List.map snd seeds)) with
       | Some accepting -> [(Cset.eof, [accepting])]
       | None -> []
