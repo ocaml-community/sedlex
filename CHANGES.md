@@ -4,7 +4,7 @@
 - End of input counts as one more character read, as it did before 3.8: a rule
   matching `s, eof` beats an earlier rule matching `s`. 3.8 let the earlier
   rule win, so a lexer with a rule matching the empty string before its `eof`
-  rule looped forever at end of input
+  rule looped forever at end of input (#223)
 
 # 3.8 (2026-10-01)
 
