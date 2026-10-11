@@ -538,14 +538,24 @@ module Latin1 = struct
   let from_gen s =
     from_gen ~bytes_per_char:(fun _ -> 1) (Gen.map Uchar.of_char s)
 
+  (* Converts a chunk at a time, rather than the whole string up front into
+     an array eight times its size. *)
   let from_string s =
-    let len = String.length s in
-    {
-      (empty_lexbuf (fun _ -> 1)) with
-      buf = Array.init len (fun i -> Uchar.of_char s.[i]);
-      len;
-      finished = true;
-    }
+    let n = String.length s in
+    let i = ref 0 in
+    let refill buf pos len =
+      if pos < 0 || len < 0 || pos > Array.length buf - len then
+        invalid_arg "Sedlexing.Latin1.from_string";
+      let k = min len (n - !i) in
+      let j = !i in
+      for m = 0 to k - 1 do
+        Array.unsafe_set buf (pos + m)
+          (Uchar.of_char (String.unsafe_get s (j + m)))
+      done;
+      i := j + k;
+      k
+    in
+    create refill
 
   let from_channel ic =
     make_from_channel ic
