@@ -476,16 +476,21 @@ module Chan = struct
 
   let available (t : t) = t.len - t.pos
 
+  (* Moves the unread bytes to the front and reads after them; the number
+     of bytes read, 0 at end of input. *)
+  let read_more (t : t) =
+    let len = t.len - t.pos in
+    if len > 0 then Bytes.blit t.b t.pos t.b 0 len;
+    let read = input t.ic t.b len (Bytes.length t.b - len) in
+    t.len <- len + read;
+    t.pos <- 0;
+    read
+
   let rec ensure_bytes_available (t : t) ~can_refill n =
     if available t >= n then ()
-    else if can_refill then (
-      let len = t.len - t.pos in
-      if len > 0 then Bytes.blit t.b t.pos t.b 0 len;
-      let read = input t.ic t.b len (Bytes.length t.b - len) in
-      t.len <- len + read;
-      t.pos <- 0;
-      if read = 0 then raise Missing_input
-      else ensure_bytes_available t ~can_refill n)
+    else if can_refill then
+      if read_more t = 0 then raise Missing_input
+      else ensure_bytes_available t ~can_refill n
     else raise Missing_input
 
   let ensure_bytes_available t ~can_refill n =
@@ -502,7 +507,6 @@ module Chan = struct
     t.pos <- t.pos + n
 
   let raw_buf (t : t) = t.b
-  let raw_pos (t : t) = t.pos
 end
 
 let make_from_channel ?bytes_per_char ic ~max_bytes_per_uchar
@@ -681,19 +685,59 @@ module Utf8 = struct
           | _ -> raise MalFormed
   end
 
+  (* Decodes a chunk straight from the byte buffer of the channel, which is
+     only read when nothing could be decoded, so that the lexer gets what is
+     available before blocking. A sequence cut by the end of the buffer waits
+     for the next read; a malformed one is left unread, so that the next
+     refill, starting on it, raises. *)
   let from_channel ic =
-    make_from_channel ic ~bytes_per_char:Uchar.utf_8_byte_length
-      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
-        let w = Helper.width (Chan.get t 0) in
-        Chan.ensure_bytes_available t ~can_refill w;
-        let c =
-          Helper.next
-            (Bytes.unsafe_to_string (Chan.raw_buf t))
-            (Chan.raw_pos t) w
-        in
-        Chan.advance t w;
-        Uchar.of_int c)
+    let t = Chan.create ic (chunk_size * 4) in
+    let refill buf pos len =
+      if pos < 0 || len < 0 || pos > Array.length buf - len then
+        invalid_arg "Sedlexing.Utf8.from_channel";
+      let k = ref 0 in
+      let decode () =
+        let b = Chan.raw_buf t in
+        let n = t.len in
+        let j = ref t.pos in
+        (try
+           while !k < len && !j < n do
+             let c = Bytes.unsafe_get b !j in
+             let u =
+               if c < '\128' then begin
+                 incr j;
+                 Uchar.of_char c
+               end
+               else begin
+                 let w = Helper.width c in
+                 if !j + w > n then raise Chan.Missing_input;
+                 let u =
+                   Uchar.of_int (Helper.next (Bytes.unsafe_to_string b) !j w)
+                 in
+                 j := !j + w;
+                 u
+               end
+             in
+             Array.unsafe_set buf (pos + !k) u;
+             incr k
+           done
+         with
+          | Chan.Missing_input -> ()
+          | MalFormed when !k <> 0 -> ());
+        t.pos <- !j
+      in
+      decode ();
+      let eof = ref false in
+      while !k = 0 && not !eof do
+        if Chan.read_more t = 0 then begin
+          if Chan.available t > 0 then raise MalFormed;
+          eof := true
+        end
+        else decode ()
+      done;
+      !k
+    in
+    create ~bytes_per_char:Uchar.utf_8_byte_length refill
 
   let from_gen s =
     from_gen ~bytes_per_char:Uchar.utf_8_byte_length
