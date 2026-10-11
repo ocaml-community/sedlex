@@ -697,8 +697,40 @@ module Utf8 = struct
     from_gen ~bytes_per_char:Uchar.utf_8_byte_length
       (Helper.gen_from_char_gen s)
 
+  (* Decodes a chunk straight from the string. A malformed sequence is left
+     unread, so that the next refill, starting on it, raises. *)
   let from_string s =
-    from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
+    let n = String.length s in
+    let i = ref 0 in
+    let refill buf pos len =
+      if pos < 0 || len < 0 || pos > Array.length buf - len then
+        invalid_arg "Sedlexing.Utf8.from_string";
+      let j = ref !i in
+      let k = ref 0 in
+      (try
+         while !k < len && !j < n do
+           let c = String.unsafe_get s !j in
+           let u =
+             if c < '\128' then begin
+               incr j;
+               Uchar.of_char c
+             end
+             else begin
+               let w = Helper.width c in
+               if !j + w > n then raise MalFormed;
+               let u = Uchar.of_int (Helper.next s !j) in
+               j := !j + w;
+               u
+             end
+           in
+           Array.unsafe_set buf (pos + !k) u;
+           incr k
+         done
+       with MalFormed when !k <> 0 -> ());
+      i := !j;
+      !k
+    in
+    create ~bytes_per_char:Uchar.utf_8_byte_length refill
 
   (* A first pass computes the size of the result, which is then written in
      place: no intermediate buffer. *)

@@ -2490,3 +2490,26 @@ let%expect_test "poisoned_cells" =
     cells set to -4: same
     cells set to -5: same
     |}]
+
+let%expect_test "utf8 truncated sequence" =
+  (* a multi-byte sequence cut by the end of input is malformed; the input
+     before it is lexed first *)
+  test_utf8 "as \xe2\x82" (fun lb -> token lb);
+  [%expect
+    {|
+    == from_string ==
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    MalFormed
+    == from_gen ==
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    MalFormed
+    == from_channel ==
+    code point pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    bytes pos: [line=1:bol=0:cnum=0;line=1:bol=0:cnum=2]
+    Ident as
+    MalFormed
+    |}]
