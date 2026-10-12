@@ -459,6 +459,7 @@ let with_tokenizer lexer' lexbuf =
   lexer
 
 module Chan = struct
+  (* Raised by a decoder on a sequence cut by the end of the buffer. *)
   exception Missing_input
 
   type t = {
@@ -485,26 +486,6 @@ module Chan = struct
     t.len <- len + read;
     t.pos <- 0;
     read
-
-  let rec ensure_bytes_available (t : t) ~can_refill n =
-    if available t >= n then ()
-    else if can_refill then
-      if read_more t = 0 then raise Missing_input
-      else ensure_bytes_available t ~can_refill n
-    else raise Missing_input
-
-  let ensure_bytes_available t ~can_refill n =
-    (* [n] should not exceed the size of the buffer. Here we are
-       conservative and make sure it doesn't exceed the mininum size
-       for the buffer. *)
-    if n <= 0 || n > min_buffer_size then invalid_arg "Sedlexing.Chan.ensure";
-    ensure_bytes_available t ~can_refill n
-
-  let get (t : t) i = Bytes.get t.b (t.pos + i)
-
-  let advance (t : t) n =
-    if t.pos + n > t.len then invalid_arg "advance";
-    t.pos <- t.pos + n
 end
 
 (* [decode t buf pos len] decodes up to [len] code points from the bytes
@@ -528,35 +509,6 @@ let make_from_channel ?bytes_per_char ic ~max_bytes_per_uchar ~decode ~name =
       else k := decode t buf pos len
     done;
     !k
-  in
-  create ?bytes_per_char refill
-
-let make_from_channel_uchar ?bytes_per_char ic ~max_bytes_per_uchar
-    ~min_bytes_per_uchar ~read_uchar =
-  let t = Chan.create ic (chunk_size * max_bytes_per_uchar) in
-  let malformed = ref false in
-  let refill buf pos len =
-    let rec loop i =
-      if !malformed then raise MalFormed;
-      if i = len then i
-      else (
-        match
-          (* we refill our bytes buffer only if we haven't refilled any uchar yet. *)
-          let can_refill = i = 0 in
-          Chan.ensure_bytes_available t ~can_refill min_bytes_per_uchar;
-          read_uchar ~can_refill t
-        with
-          | c ->
-              buf.(pos + i) <- c;
-              loop (i + 1)
-          | exception MalFormed when i <> 0 ->
-              malformed := true;
-              i
-          | exception Chan.Missing_input ->
-              if i = 0 && Chan.available t > 0 then raise MalFormed;
-              i)
-    in
-    loop 0
   in
   create ?bytes_per_char refill
 
@@ -885,29 +837,50 @@ module Utf16 = struct
         else raise MalFormed
   end
 
+  (* Decodes a chunk of the byte buffer, see [make_from_channel]. *)
   let from_channel ic opt_bo =
     let bo = ref opt_bo in
-    make_from_channel_uchar ic ~bytes_per_char:Uchar.utf_16_byte_length
-      ~min_bytes_per_uchar:2 ~max_bytes_per_uchar:4
-      ~read_uchar:(fun ~can_refill t ->
-        let n1 = Char.code (Chan.get t 0) in
-        let n2 = Char.code (Chan.get t 1) in
-        let o = Helper.get_bo bo n1 n2 in
-        let w1 = Helper.number_of_pair o n1 n2 in
-        if w1 = 0xfffe then raise (InvalidCodepoint w1);
-        if w1 < 0xd800 || 0xdfff < w1 then (
-          Chan.advance t 2;
-          Uchar.of_int w1)
-        else if w1 <= 0xdbff then (
-          Chan.ensure_bytes_available t ~can_refill 4;
-          let n3 = Char.code (Chan.get t 2) in
-          let n4 = Char.code (Chan.get t 3) in
-          let w2 = Helper.number_of_pair o n3 n4 in
-          if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
-          let upper10 = (w1 land 0x3ff) lsl 10 and lower10 = w2 land 0x3ff in
-          Chan.advance t 4;
-          Uchar.of_int (0x10000 + upper10 + lower10))
-        else raise MalFormed)
+    let decode (t : Chan.t) buf pos len =
+      let b = t.b in
+      let n = t.len in
+      let j = ref t.pos in
+      let k = ref 0 in
+      (try
+         while !k < len && !j < n do
+           if !j + 2 > n then raise Chan.Missing_input;
+           let n1 = Char.code (Bytes.unsafe_get b !j) in
+           let n2 = Char.code (Bytes.unsafe_get b (!j + 1)) in
+           let o = Helper.get_bo bo n1 n2 in
+           let w1 = Helper.number_of_pair o n1 n2 in
+           if w1 = 0xfffe then raise (InvalidCodepoint w1);
+           let u =
+             if w1 < 0xd800 || 0xdfff < w1 then begin
+               j := !j + 2;
+               Uchar.of_int w1
+             end
+             else if w1 <= 0xdbff then begin
+               if !j + 4 > n then raise Chan.Missing_input;
+               let n3 = Char.code (Bytes.unsafe_get b (!j + 2)) in
+               let n4 = Char.code (Bytes.unsafe_get b (!j + 3)) in
+               let w2 = Helper.number_of_pair o n3 n4 in
+               if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
+               j := !j + 4;
+               Uchar.of_int
+                 (0x10000 + ((w1 land 0x3ff) lsl 10) + (w2 land 0x3ff))
+             end
+             else raise MalFormed
+           in
+           Array.unsafe_set buf (pos + !k) u;
+           incr k
+         done
+       with
+        | Chan.Missing_input -> ()
+        | MalFormed when !k <> 0 -> ());
+      t.pos <- !j;
+      !k
+    in
+    make_from_channel ic ~bytes_per_char:Uchar.utf_16_byte_length
+      ~max_bytes_per_uchar:4 ~decode ~name:"Sedlexing.Utf16.from_channel"
 
   let from_gen s opt_bo =
     from_gen ~bytes_per_char:Uchar.utf_16_byte_length
