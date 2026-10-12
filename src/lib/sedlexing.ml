@@ -634,24 +634,24 @@ module Utf8 = struct
       lor ((n3 land 0x3f) lsl 6)
       lor (n4 land 0x3f)
 
-    let next s i =
-      let c1 = s.[i] in
-      match width c1 with
-        | 1 -> Char.code c1
+    (* The code point of the sequence of width [w] at [i], checked once to
+       lie within [s]. *)
+    let next s i w =
+      if i < 0 || i + w > String.length s then raise MalFormed;
+      let n1 = Char.code (String.unsafe_get s i) in
+      match w with
+        | 1 -> n1
         | 2 ->
-            let n1 = Char.code c1 in
-            let n2 = Char.code s.[i + 1] in
+            let n2 = Char.code (String.unsafe_get s (i + 1)) in
             check_two n1 n2
         | 3 ->
-            let n1 = Char.code c1 in
-            let n2 = Char.code s.[i + 1] in
-            let n3 = Char.code s.[i + 2] in
+            let n2 = Char.code (String.unsafe_get s (i + 1)) in
+            let n3 = Char.code (String.unsafe_get s (i + 2)) in
             check_three n1 n2 n3
         | 4 ->
-            let n1 = Char.code c1 in
-            let n2 = Char.code s.[i + 1] in
-            let n3 = Char.code s.[i + 2] in
-            let n4 = Char.code s.[i + 3] in
+            let n2 = Char.code (String.unsafe_get s (i + 1)) in
+            let n3 = Char.code (String.unsafe_get s (i + 2)) in
+            let n4 = Char.code (String.unsafe_get s (i + 3)) in
             check_four n1 n2 n3 n4
         | _ -> assert false
 
@@ -688,7 +688,9 @@ module Utf8 = struct
         let w = Helper.width (Chan.get t 0) in
         Chan.ensure_bytes_available t ~can_refill w;
         let c =
-          Helper.next (Bytes.unsafe_to_string (Chan.raw_buf t)) (Chan.raw_pos t)
+          Helper.next
+            (Bytes.unsafe_to_string (Chan.raw_buf t))
+            (Chan.raw_pos t) w
         in
         Chan.advance t w;
         Uchar.of_int c)
@@ -717,8 +719,7 @@ module Utf8 = struct
              end
              else begin
                let w = Helper.width c in
-               if !j + w > n then raise MalFormed;
-               let u = Uchar.of_int (Helper.next s !j) in
+               let u = Uchar.of_int (Helper.next s !j w) in
                j := !j + w;
                u
              end
