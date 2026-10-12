@@ -4,6 +4,10 @@
 - `Sedlexing.Utf8.from_string` decodes straight from the string instead of
   going through two `Gen` layers: lexing a UTF-8 string is about 40% faster
   on ASCII-heavy input
+- `Sedlexing.Latin1.from_string` converts a chunk at a time instead of the
+  whole string up front, about 1.8x faster including the conversion and eight
+  times less memory; `Utf16.from_string` decodes straight from the string
+  instead of going through two `Gen` layers, about 1.8x faster
 
 # 3.8.1 (2026-10-06)
 
