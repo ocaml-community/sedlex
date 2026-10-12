@@ -538,14 +538,24 @@ module Latin1 = struct
   let from_gen s =
     from_gen ~bytes_per_char:(fun _ -> 1) (Gen.map Uchar.of_char s)
 
+  (* Converts a chunk at a time, rather than the whole string up front into
+     an array eight times its size. *)
   let from_string s =
-    let len = String.length s in
-    {
-      (empty_lexbuf (fun _ -> 1)) with
-      buf = Array.init len (fun i -> Uchar.of_char s.[i]);
-      len;
-      finished = true;
-    }
+    let n = String.length s in
+    let i = ref 0 in
+    let refill buf pos len =
+      if pos < 0 || len < 0 || pos > Array.length buf - len then
+        invalid_arg "Sedlexing.Latin1.from_string";
+      let k = min len (n - !i) in
+      let j = !i in
+      for m = 0 to k - 1 do
+        Array.unsafe_set buf (pos + m)
+          (Uchar.of_char (String.unsafe_get s (j + m)))
+      done;
+      i := j + k;
+      k
+    in
+    create refill
 
   let from_channel ic =
     make_from_channel ic
@@ -840,8 +850,50 @@ module Utf16 = struct
     from_gen ~bytes_per_char:Uchar.utf_16_byte_length
       (Helper.gen_from_char_gen opt_bo s)
 
-  let from_string s =
-    from_gen (Gen.init ~limit:(String.length s) (fun i -> String.get s i))
+  (* Decodes a chunk straight from the string. A malformed sequence is left
+     unread, so that the next refill, starting on it, raises. *)
+  let from_string s opt_bo =
+    let n = String.length s in
+    let bo = ref opt_bo in
+    let i = ref 0 in
+    let refill buf pos len =
+      if pos < 0 || len < 0 || pos > Array.length buf - len then
+        invalid_arg "Sedlexing.Utf16.from_string";
+      let j = ref !i in
+      let k = ref 0 in
+      (try
+         while !k < len && !j < n do
+           if !j + 2 > n then raise MalFormed;
+           let n1 = Char.code (String.unsafe_get s !j) in
+           let n2 = Char.code (String.unsafe_get s (!j + 1)) in
+           let o = Helper.get_bo bo n1 n2 in
+           let w1 = Helper.number_of_pair o n1 n2 in
+           if w1 = 0xfffe then raise (InvalidCodepoint w1);
+           let u =
+             if w1 < 0xd800 || 0xdfff < w1 then begin
+               j := !j + 2;
+               Uchar.of_int w1
+             end
+             else if w1 <= 0xdbff then begin
+               if !j + 4 > n then raise MalFormed;
+               let n3 = Char.code (String.unsafe_get s (!j + 2)) in
+               let n4 = Char.code (String.unsafe_get s (!j + 3)) in
+               let w2 = Helper.number_of_pair o n3 n4 in
+               if w2 < 0xdc00 || w2 > 0xdfff then raise MalFormed;
+               j := !j + 4;
+               Uchar.of_int
+                 (0x10000 + ((w1 land 0x3ff) lsl 10) + (w2 land 0x3ff))
+             end
+             else raise MalFormed
+           in
+           Array.unsafe_set buf (pos + !k) u;
+           incr k
+         done
+       with MalFormed when !k <> 0 -> ());
+      i := !j;
+      !k
+    in
+    create ~bytes_per_char:Uchar.utf_16_byte_length refill
 
   (* As for UTF-8: the size first, then the result written in place. The
      encoding loop is written once for each byte order, so that the encoder
