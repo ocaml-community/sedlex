@@ -573,14 +573,20 @@ module Latin1 = struct
       finished = true;
     }
 
+  (* Converts a chunk of the byte buffer, see [make_from_channel]. *)
+  let decode (t : Chan.t) buf pos len =
+    let k = min len (t.len - t.pos) in
+    let b = t.b and j = t.pos in
+    for m = 0 to k - 1 do
+      Array.unsafe_set buf (pos + m)
+        (Uchar.of_char (Bytes.unsafe_get b (j + m)))
+    done;
+    t.pos <- j + k;
+    k
+
   let from_channel ic =
-    make_from_channel_uchar ic
-      ~bytes_per_char:(fun _ -> 1)
-      ~min_bytes_per_uchar:1 ~max_bytes_per_uchar:1
-      ~read_uchar:(fun ~can_refill:_ t ->
-        let c = Chan.get t 0 in
-        Chan.advance t 1;
-        Uchar.of_char c)
+    make_from_channel ic ~max_bytes_per_uchar:1 ~decode
+      ~name:"Sedlexing.Latin1.from_channel"
 
   let[@inline] to_latin1 c =
     if Uchar.is_char c then Uchar.unsafe_to_char c
