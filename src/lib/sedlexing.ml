@@ -659,6 +659,26 @@ module Utf8 = struct
             check_four n1 n2 n3 n4
         | _ -> assert false
 
+    (* As [next], on bytes. *)
+    let next_bytes b i w =
+      if i < 0 || i + w > Bytes.length b then raise MalFormed;
+      let n1 = Char.code (Bytes.unsafe_get b i) in
+      match w with
+        | 1 -> n1
+        | 2 ->
+            let n2 = Char.code (Bytes.unsafe_get b (i + 1)) in
+            check_two n1 n2
+        | 3 ->
+            let n2 = Char.code (Bytes.unsafe_get b (i + 1)) in
+            let n3 = Char.code (Bytes.unsafe_get b (i + 2)) in
+            check_three n1 n2 n3
+        | 4 ->
+            let n2 = Char.code (Bytes.unsafe_get b (i + 1)) in
+            let n3 = Char.code (Bytes.unsafe_get b (i + 2)) in
+            let n4 = Char.code (Bytes.unsafe_get b (i + 3)) in
+            check_four n1 n2 n3 n4
+        | _ -> assert false
+
     let gen_from_char_gen s =
       let next_or_fail () =
         match Gen.next s with None -> raise MalFormed | Some x -> Char.code x
@@ -711,9 +731,7 @@ module Utf8 = struct
                else begin
                  let w = Helper.width c in
                  if !j + w > n then raise Chan.Missing_input;
-                 let u =
-                   Uchar.of_int (Helper.next (Bytes.unsafe_to_string b) !j w)
-                 in
+                 let u = Uchar.of_int (Helper.next_bytes b !j w) in
                  j := !j + w;
                  u
                end
